@@ -299,11 +299,18 @@ function getPoLedger(invoices) {
       poStatus: scraped ? scraped.status : null,
       // Amazon's PO issue date (SearchOpenPOs orderDate, e.g. "Aug 4, 2026").
       orderDate: scraped ? (scraped.orderDate || null) : null,
-      // PO document filename date (PO-…_v2_20251203.pdf): v1 = when the PO PDF
-      // was issued/filed (receipt), v2+ = the latest revision date.
-      docDate: (doc && doc.latestFile && doc.latestFile.name
-        ? ((doc.latestFile.name.match(/_v\d+_(\d{4})(\d{2})(\d{2})/) || []).slice(1).join('-') || null)
+      // Doc date, most-authoritative first: the PDF's internal "REVISED DATE:"
+      // field (real revision date — filenames often just repeat the order date,
+      // 215/312 revised POs verified), then the internal "ORDER DATE:" for
+      // unrevised docs, then the filename date as last resort until the doc
+      // scan has re-parsed the PDF.
+      docDate: (doc
+        ? (doc.pdfRevisedDate || doc.pdfOrderDate
+          || (doc.latestFile && doc.latestFile.name
+            ? ((doc.latestFile.name.match(/_v\d+_(\d{4})(\d{2})(\d{2})/) || []).slice(1).join('-') || null)
+            : null))
         : null),
+      docDateIsRevision: !!(doc && doc.pdfRevisedDate),
       // Placeholder = not a real Amazon PO number and not present in Amazon's
       // open-PO list. These are "roll into a real PO" candidates.
       isPlaceholder: isPlaceholderPo(poNumber) && !scraped,

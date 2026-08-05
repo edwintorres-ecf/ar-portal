@@ -1777,7 +1777,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
         const row = ws.addRow([
           '', r.poNumber + (r.serviceType === 'snow' ? ' ❄' : '') + (r.noRealPo ? ' (no PO)' : ''),
           r.orderDate || null,
-          r.docDate ? shortDate(r.docDate) + (r.docRevised ? ` (rev v${r.docVersion})` : '') : null,
+          r.docDate ? shortDate(r.docDate) + (r.docDateIsRevision ? ` (rev v${r.docVersion})` : '') : null,
           r.pendingUploadInvoiceCount || null,
           r.ceilingAmount, r.consumed || 0, r.pendingUpload || null,
           r.available, remFrac, '', '',
@@ -1785,7 +1785,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
         [6, 7, 8, 9].forEach(ci => { row.getCell(ci).numFmt = money; });
         row.getCell(2).font = { bold: true, color: { argb: NAVY }, size: 10 };
         [3, 4].forEach(ci => { const c = row.getCell(ci); c.font = { size: 9, color: { argb: 'FF64748B' } }; c.alignment = { horizontal: 'center' }; });
-        if (r.docRevised) row.getCell(4).font = { size: 9, bold: true, color: { argb: 'FF5B21B6' } };
+        if (r.docDateIsRevision) row.getCell(4).font = { size: 9, bold: true, color: { argb: 'FF5B21B6' } };
         row.getCell(9).font = { bold: true, size: 10, color: { argb: r.available != null && r.available < 0 ? 'FFDC2626' : 'FF1F2937' } };
         const pf = pctFill(remFrac);
         const pc = row.getCell(10);

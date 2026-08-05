@@ -159,7 +159,17 @@ async function fetchAndExtract(fileName, folder) {
         .replace(/\d{5}(-\d{4})?\s*$/, '')          // drop trailing ZIP
         .trim().toUpperCase().slice(0, 90)
     : null;
-  return { amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6 };
+  // Internal PO dates — the AUTHORITATIVE ones. Layout is a header row with the
+  // values on the NEXT line:  "ORDER DATE: …" / "10/27/2025  Adis …" and
+  // "REVISED DATE: …" / "05/15/2026  -  -". On unrevised POs the REVISED DATE
+  // row has no value line, so the match simply fails (null). The filename date
+  // is NOT reliable: 215/312 revised POs reuse the ORDER date in every
+  // version's filename (verified 2026-08-05, e.g. 2D-19170857 v3 filename says
+  // 20251027 but the PDF says REVISED DATE 05/15/2026).
+  const usDate = (s) => { if (!s) return null; const [mm, dd, yy] = s.split('/'); return `${yy}-${String(+mm).padStart(2, '0')}-${String(+dd).padStart(2, '0')}`; };
+  const pdfOrderDate = usDate((text.match(/ORDER DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
+  const pdfRevisedDate = usDate((text.match(/REVISED DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
+  return { amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6, pdfOrderDate, pdfRevisedDate, pdfDatesV: 1 };
 }
 
 // Small concurrency limiter so we don't fire hundreds of parses at once.
@@ -226,8 +236,10 @@ async function scanPoDocs(opts = {}) {
           // ~57 PDFs, not all ~1,900, so no Graph 429 storm.
           // v4 adds shipToAddr/descLeadSite (needed on ALL docs to learn the
           // address→site map), so anything below v4 re-parses once.
-          if (e.latestFile && e.docAmount !== undefined && (e.siteExtractV === 6 || e.docSiteCode)) {
-            prevByFile[e.latestFile.name] = { docAmount: e.docAmount, pdfVersion: e.pdfVersion, docSiteCode: e.docSiteCode, pdfRevised: e.pdfRevised, description: e.description, isSnow: e.isSnow, descLeadSite: e.descLeadSite, shipToAddr: e.shipToAddr, docParseError: e.docParseError, siteExtractV: e.siteExtractV };
+          // pdfDatesV gate: entries parsed before the internal ORDER/REVISED
+          // date extraction re-parse ONCE to pick the dates up (2026-08-05).
+          if (e.latestFile && e.docAmount !== undefined && (e.siteExtractV === 6 || e.docSiteCode) && e.pdfDatesV === 1) {
+            prevByFile[e.latestFile.name] = { docAmount: e.docAmount, pdfVersion: e.pdfVersion, docSiteCode: e.docSiteCode, pdfRevised: e.pdfRevised, description: e.description, isSnow: e.isSnow, descLeadSite: e.descLeadSite, shipToAddr: e.shipToAddr, docParseError: e.docParseError, siteExtractV: e.siteExtractV, pdfOrderDate: e.pdfOrderDate, pdfRevisedDate: e.pdfRevisedDate, pdfDatesV: e.pdfDatesV };
           }
         }
       } catch (e) { /* first run */ }
@@ -253,6 +265,9 @@ async function scanPoDocs(opts = {}) {
         e.descLeadSite = x.descLeadSite;
         e.shipToAddr = x.shipToAddr;
         e.siteExtractV = x.siteExtractV;
+        e.pdfOrderDate = x.pdfOrderDate;
+        e.pdfRevisedDate = x.pdfRevisedDate;
+        e.pdfDatesV = x.pdfDatesV;
         e.docParseError = null;
         parsedNew++;
       } catch (err) {
