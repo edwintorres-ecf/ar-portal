@@ -1748,13 +1748,13 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     const pctFill = (frac) => frac == null ? null : frac < 0 ? [RED, RED_T] : frac < 0.15 ? [AMBER, AMBER_T] : [GREEN, GREEN_T];
 
     // Title + generated stamp
-    ws.mergeCells('A1:J1');
+    ws.mergeCells('A1:L1');
     const title = ws.getCell('A1');
     title.value = `ECF — Amazon PO Funds by Site (${mode}${snowOnly ? ' · snow only' : ''}) — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
     title.font = { bold: true, size: 12, color: { argb: NAVY } };
     ws.getRow(1).height = 20;
 
-    const HEAD = ['Site', 'PO #', '# Inv', 'PO Value', 'Charges', 'Pending', 'Value Remaining', 'Remaining %', 'Site Pending', 'Site Remaining'];
+    const HEAD = ['Site', 'PO #', 'PO Date', 'Doc/Rev Date', '# Inv', 'PO Value', 'Charges', 'Pending', 'Value Remaining', 'Remaining %', 'Site Pending', 'Site Remaining'];
     const hrow = ws.addRow(HEAD);
     hrow.eachCell(c => {
       c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -1763,8 +1763,11 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
       c.alignment = { horizontal: 'center' };
     });
 
-    const widths = [14, 18, 7, 14, 14, 14, 15, 12, 14, 15];
+    const widths = [14, 18, 11, 12, 7, 14, 14, 14, 15, 12, 14, 15];
     widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+    // PO doc filename date "YYYY-MM-DD" -> "12/3/25"; v1 = receipt, v2+ = revision.
+    const shortDate = (s) => { if (!s) return null; const [y, m, d] = String(s).split('-'); return `${+m}/${+d}/${String(y).slice(2)}`; };
 
     let rowIdx = 3;
     for (const s of list) {
@@ -1772,16 +1775,20 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
       for (const r of s.poRows) {
         const remFrac = (r.available != null && r.ceilingAmount > 0) ? r.available / r.ceilingAmount : null;
         const row = ws.addRow([
-          '', r.poNumber + (r.serviceType === 'snow' ? ' ❄' : '') + (r.noRealPo ? ' (no PO)' : '') + (r.docRevised ? ` (v${r.docVersion})` : ''),
+          '', r.poNumber + (r.serviceType === 'snow' ? ' ❄' : '') + (r.noRealPo ? ' (no PO)' : ''),
+          r.orderDate || null,
+          r.docDate ? shortDate(r.docDate) + (r.docRevised ? ` (rev v${r.docVersion})` : '') : null,
           r.pendingUploadInvoiceCount || null,
           r.ceilingAmount, r.consumed || 0, r.pendingUpload || null,
           r.available, remFrac, '', '',
         ]);
-        [4, 5, 6, 7].forEach(ci => { row.getCell(ci).numFmt = money; });
+        [6, 7, 8, 9].forEach(ci => { row.getCell(ci).numFmt = money; });
         row.getCell(2).font = { bold: true, color: { argb: NAVY }, size: 10 };
-        row.getCell(7).font = { bold: true, size: 10, color: { argb: r.available != null && r.available < 0 ? 'FFDC2626' : 'FF1F2937' } };
+        [3, 4].forEach(ci => { const c = row.getCell(ci); c.font = { size: 9, color: { argb: 'FF64748B' } }; c.alignment = { horizontal: 'center' }; });
+        if (r.docRevised) row.getCell(4).font = { size: 9, bold: true, color: { argb: 'FF5B21B6' } };
+        row.getCell(9).font = { bold: true, size: 10, color: { argb: r.available != null && r.available < 0 ? 'FFDC2626' : 'FF1F2937' } };
         const pf = pctFill(remFrac);
-        const pc = row.getCell(8);
+        const pc = row.getCell(10);
         pc.numFmt = '0.0%';
         if (pf) { pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: pf[0] } }; pc.font = { bold: true, size: 10, color: { argb: pf[1] } }; }
         pc.alignment = { horizontal: 'center' };
@@ -1797,28 +1804,28 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
       sc.font = { bold: true, color: { argb: NAVY }, size: 10 };
       sc.alignment = { vertical: 'middle', wrapText: true };
       sc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } };
-      if (end > start) ws.mergeCells(`I${start}:I${end}`);
-      const sp = ws.getCell(`I${start}`);
+      if (end > start) ws.mergeCells(`K${start}:K${end}`);
+      const sp = ws.getCell(`K${start}`);
       sp.value = s.pending; sp.numFmt = money;
       sp.font = { bold: true, size: 10 };
       sp.alignment = { vertical: 'middle', horizontal: 'right' };
       sp.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } };
-      if (end > start) ws.mergeCells(`J${start}:J${end}`);
-      const sa = ws.getCell(`J${start}`);
+      if (end > start) ws.mergeCells(`L${start}:L${end}`);
+      const sa = ws.getCell(`L${start}`);
       sa.value = s.available; sa.numFmt = money;
       sa.font = { bold: true, size: 10, color: { argb: s.available != null && s.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
       sa.alignment = { vertical: 'middle', horizontal: 'right' };
       sa.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s.available != null && s.available < 0 ? RED : GREEN } };
       // group separator
-      for (let ci = 1; ci <= 10; ci++) ws.getCell(end, ci).border = { ...(ws.getCell(end, ci).border || {}), bottom: { style: 'thin', color: { argb: 'FF94A3B8' } } };
+      for (let ci = 1; ci <= 12; ci++) ws.getCell(end, ci).border = { ...(ws.getCell(end, ci).border || {}), bottom: { style: 'thin', color: { argb: 'FF94A3B8' } } };
     }
 
     // Totals
     const tot = list.reduce((a, s) => ({ count: a.count + s.count, pending: a.pending + s.pending, ceiling: a.ceiling + s.ceiling, consumed: a.consumed + s.consumed, available: a.available + (s.available || 0) }), { count: 0, pending: 0, ceiling: 0, consumed: 0, available: 0 });
-    const trow = ws.addRow(['Total', '', tot.count, tot.ceiling, tot.consumed, tot.pending, tot.available, null, tot.pending, tot.available]);
+    const trow = ws.addRow(['Total', '', '', '', tot.count, tot.ceiling, tot.consumed, tot.pending, tot.available, null, tot.pending, tot.available]);
     trow.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; c.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } }; });
-    [4, 5, 6, 7, 9, 10].forEach(ci => { trow.getCell(ci).numFmt = money; });
-    trow.getCell(10).font = { bold: true, size: 10, color: { argb: tot.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
+    [6, 7, 8, 9, 11, 12].forEach(ci => { trow.getCell(ci).numFmt = money; });
+    trow.getCell(12).font = { bold: true, size: 10, color: { argb: tot.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
 
     db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''} — ${list.length} sites`);
     // Cloudflare caches .xlsx URLs at the edge BY DEFAULT — without no-store,

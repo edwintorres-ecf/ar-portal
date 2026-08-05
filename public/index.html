@@ -3954,6 +3954,13 @@ function pbsPctChip(frac) {
   return `<span style="background:${col.bg};color:${col.fg};font-weight:700;border-radius:5px;padding:1px 7px;font-size:11px">${pct.toFixed(pct < 100 && pct > -100 ? 1 : 0)}%</span>`;
 }
 
+// "YYYY-MM-DD" -> "12/3/25" for compact date display in tight PO cells.
+function pbsShortDate(s) {
+  if (!s) return '';
+  const [y, m, d] = String(s).split('-');
+  return (+m) + '/' + (+d) + '/' + String(y).slice(2);
+}
+
 // Service-type chip so snow work is visibly separate from landscape/other at a
 // site (a site mixes services). Derived from the PO document description.
 function pbsServiceChip(t) {
@@ -4082,7 +4089,7 @@ function renderPendingBySite() {
         : (r.siteManual ? ` <span title="Site manually assigned — click to change" onclick="assignPoSite('${escHtml(r.poNumber)}')" style="font-size:9px;background:#e0f2fe;color:#0369a1;border-radius:5px;padding:0 5px;cursor:pointer;vertical-align:middle">manual</span>` : '');
       return `<tr style="border-bottom:1px solid var(--gray-100)">
         ${i === 0 ? siteCell : ''}
-        <td style="padding:6px 8px;color:var(--navy);font-weight:600;white-space:nowrap">${escHtml(r.poNumber)}${pbsServiceChip(r.serviceType)}${r.serviceManual ? '<span title="Service set manually" style="font-size:9px;color:#0369a1">✎</span>' : ''}${r.needsServiceReview ? ` <span title="Service not identified from the PO document — click to classify (hidden by the ❄️ snow filter until you do)" style="cursor:pointer" onclick="openServiceReview()">⚠️</span>` : ''}${r.noRealPo ? ` <span title="Not a real Amazon PO — invoice is waiting for a PO to be assigned before it can be uploaded" style="font-size:9px;background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 5px;vertical-align:middle">no PO</span>` : ''}${r.docUrl ? ` <a href="${escHtml(r.docUrl)}" target="_blank" onclick="event.stopPropagation()" title="PO document${r.docVersion ? ' v' + r.docVersion : ''}">📄</a>` : ''}${r.docRevised ? `<span title="PO has been uplifted/revised (v${r.docVersion})" style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:6px;padding:0 5px;margin-left:3px;vertical-align:middle">v${r.docVersion}</span>` : ''}${assignBtn}</td>
+        <td style="padding:6px 8px;color:var(--navy);font-weight:600;white-space:nowrap">${escHtml(r.poNumber)}${pbsServiceChip(r.serviceType)}${r.serviceManual ? '<span title="Service set manually" style="font-size:9px;color:#0369a1">✎</span>' : ''}${r.needsServiceReview ? ` <span title="Service not identified from the PO document — click to classify (hidden by the ❄️ snow filter until you do)" style="cursor:pointer" onclick="openServiceReview()">⚠️</span>` : ''}${r.noRealPo ? ` <span title="Not a real Amazon PO — invoice is waiting for a PO to be assigned before it can be uploaded" style="font-size:9px;background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 5px;vertical-align:middle">no PO</span>` : ''}${r.docUrl ? ` <a href="${escHtml(r.docUrl)}" target="_blank" onclick="event.stopPropagation()" title="PO document${r.docVersion ? ' v' + r.docVersion : ''}">📄</a>` : ''}${r.docRevised ? `<span title="PO has been uplifted/revised (v${r.docVersion})" style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:6px;padding:0 5px;margin-left:3px;vertical-align:middle">v${r.docVersion}</span>` : ''}${assignBtn}${(r.orderDate || r.docDate) ? `<div style="font-size:9.5px;color:var(--gray-400);font-weight:400" title="PO issue date (Amazon)${r.docDate ? (r.docRevised ? ' · latest revision date' : ' · PO document date') : ''}">${r.orderDate ? 'PO ' + escHtml(r.orderDate) : ''}${r.docDate ? (r.orderDate ? ' · ' : '') + (r.docRevised ? 'rev ' : 'doc ') + pbsShortDate(r.docDate) : ''}</div>` : ''}</td>
         <td style="padding:6px 8px;text-align:right">${r.pendingUploadInvoiceCount || '—'}</td>
         <td style="padding:6px 8px;text-align:right;white-space:nowrap" class="amount">${r.ceilingAmount != null ? c$(r.ceilingAmount) : '—'}</td>
         <td style="padding:6px 8px;text-align:right;white-space:nowrap" class="amount">${c$(r.consumed || 0)}</td>
