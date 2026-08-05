@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECF AR Portal — User Management</title>
+<style>
+  :root {
+    --navy: #1a2744; --navy-light: #2a4f7c; --white: #fff;
+    --gray-50: #f8fafc; --gray-100: #f1f5f9; --gray-200: #e2e8f0;
+    --gray-500: #64748b; --gray-700: #334155; --gray-900: #0f172a;
+    --blue: #2563eb; --green: #16a34a; --orange: #e65c00; --red: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--gray-100); color: var(--gray-900); min-height: 100vh; }
+  nav { background: var(--navy); color: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 100; }
+  .nav-brand { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .nav-brand span { opacity: 0.5; margin: 0 4px; }
+  .nav-links a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px; margin-left: 16px; }
+  .nav-links a:hover { color: #fff; }
+  .container { max-width: 1160px; margin: 32px auto; padding: 0 24px; display: flex; flex-direction: column; gap: 24px; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; }
+  .page-header h1 { font-size: 22px; font-weight: 700; }
+  .page-header p { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+  .card { background: var(--white); border-radius: 12px; border: 1px solid var(--gray-200); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; }
+  .card-header h2 { font-size: 15px; font-weight: 700; }
+  .card-header p { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+
+  /* Role badges */
+  .role-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; gap: 4px; }
+  .role-admin     { background: #fef3c7; color: #92400e; }
+  .role-manager   { background: #dbeafe; color: #1e40af; }
+  .role-ar_specialist { background: #d1fae5; color: #065f46; }
+  .role-viewer    { background: var(--gray-100); color: var(--gray-500); }
+
+  /* User table */
+  .user-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .user-table thead th { background: var(--gray-50); padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-500); border-bottom: 1px solid var(--gray-200); }
+  .user-table tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+  .user-table tbody tr:last-child { border-bottom: none; }
+  .user-table tbody tr:hover { background: var(--gray-50); }
+  .user-table td { padding: 10px 16px; color: var(--gray-700); vertical-align: middle; }
+
+  /* Avatar */
+  .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gray-200); flex-shrink: 0; }
+  .avatar-initials { width: 36px; height: 36px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.2); }
+  .user-info { display: flex; align-items: center; gap: 10px; }
+  .user-name { font-weight: 600; font-size: 13px; }
+  .user-email { font-size: 11px; color: var(--gray-500); }
+  .user-title { font-size: 11px; color: var(--gray-500); font-style: italic; margin-top: 1px; }
+
+  /* Form controls */
+  select.role-select { padding: 5px 10px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 12px; outline: none; background: var(--white); min-width: 130px; cursor: pointer; }
+  select.role-select:focus { border-color: var(--navy); }
+  input.filter-input { padding: 5px 8px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 12px; outline: none; width: 150px; }
+  input.filter-input:focus { border-color: var(--navy); }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: var(--navy-light); }
+  .btn-secondary { background: var(--white); color: var(--gray-700); border: 1px solid var(--gray-200); }
+  .btn-secondary:hover { background: var(--gray-50); }
+  .btn-danger { background: #fef2f2; color: var(--red); border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-xs { padding: 3px 8px; font-size: 11px; }
+
+  /* Invite form */
+  .invite-form { padding: 20px; display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 10px; align-items: end; background: var(--gray-50); border-bottom: 1px solid var(--gray-200); }
+  .invite-form label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .invite-form input, .invite-form select { width: 100%; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 7px; font-size: 13px; outline: none; background: var(--white); }
+  .invite-form input:focus, .invite-form select:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(26,39,68,0.08); }
+
+  /* Role reference */
+  .role-ref { padding: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: var(--gray-50); }
+  .role-card { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--gray-200); background: var(--white); }
+  .role-card-title { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+  .role-card-desc { font-size: 11px; color: var(--gray-500); line-height: 1.4; }
+
+  /* Status indicator */
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .status-active { background: #22c55e; }
+  .status-pending { background: #f59e0b; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 10px 18px; background: var(--gray-900); color: #fff; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(6px); transition: all .25s; pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { background: #166534; }
+  .toast.error { background: #991b1b; }
+
+  /* Empty state */
+  .empty { padding: 40px; text-align: center; color: var(--gray-500); font-size: 13px; }
+
+  @media (max-width: 768px) {
+    .invite-form { grid-template-columns: 1fr 1fr; }
+    .role-ref { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-brand">
+    ECF AR Portal <span>›</span> User Management
+  </div>
+  <div class="nav-links">
+    <a href="/">← Dashboard</a>
+    <a href="/auth/logout">Sign Out</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <div>
+      <h1>User Management</h1>
+      <p>Manage M365 user access and roles for the AR Portal. Users sign in with their ECF Microsoft account.</p>
+    </div>
+    <button class="btn btn-secondary" onclick="loadUsers()">↻ Refresh</button>
+  </div>
+
+  <!-- Role Reference -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>Role Definitions</h2>
+        <p>What each role can do in the portal</p>
+      </div>
+    </div>
+    <div class="role-ref">
+      <div class="role-card">
+        <div class="role-card-title"><span class="role-badge role-admin">⚡ Admin</span></div>
+        <div class="role-card-desc">Full access. Manage users, assign roles, see all invoices, add notes, create PTPs, refresh data.</div>
+      </div>
+      <div class="role-card">
+        <div class="role-card-title"><span class="role-badge role-manager">👔 Manager</span></div>
+        <div class="role-card-desc">View all invoices. Add notes and PTPs. Cannot manage users or change roles.</div>
+      </div>
+      <div class="role-card">
+        <div class="role-card-title"><span class="role-badge role-ar_specialist">📋 AR Specialist</span></div>
+        <div class="role-card-desc">View and work invoices. Add notes and PTPs. Filtered to assigned locations/customers.</div>
+      </div>
+      <div class="role-card">
+        <div class="role-card-title"><span class="role-badge role-viewer">👁 Viewer</span></div>
+        <div class="role-card-desc">Read-only. Can view invoices and notes but cannot add notes, PTPs, or modify anything.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User List -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>Users</h2>
+        <p id="user-count-label">Loading…</p>
+      </div>
+    </div>
+
+    <!-- Invite / Pre-provision -->
+    <div class="invite-form">
+      <div>
+        <label>Email address</label>
+        <input type="email" id="invite-email" placeholder="user@eastcoastfacilities.com" autocomplete="off">
+      </div>
+      <div>
+        <label>Role</label>
+        <select id="invite-role">
+          <option value="viewer">Viewer</option>
+          <option value="ar_specialist">AR Specialist</option>
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="btn btn-primary" onclick="inviteUser()">+ Add User</button>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="btn btn-secondary" onclick="toggleFilters()">⚙ Filters</button>
+      </div>
+    </div>
+
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th style="width:260px">User</th>
+          <th>Role</th>
+          <th>Location Filter</th>
+          <th>Customer Filter</th>
+          <th>Status</th>
+          <th>Since</th>
+          <th style="width:80px">Save</th>
+        </tr>
+      </thead>
+      <tbody id="user-tbody">
+        <tr><td colspan="7" class="empty">Loading users…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ROLES = ['admin','manager','ar_specialist','viewer'];
+const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', ar_specialist: 'AR Specialist', viewer: 'Viewer' };
+let users = [];
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function initials(name, email) {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2 ? (parts[0][0]+parts[parts.length-1][0]).toUpperCase() : name.slice(0,2).toUpperCase();
+  }
+  return (email||'?').slice(0,2).toUpperCase();
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return s; }
+}
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(t._t); t._t = setTimeout(() => t.className='toast', 3200);
+}
+
+async function loadUsers() {
+  const res = await fetch('/api/admin/users');
+  if (res.status === 403) {
+    document.getElementById('user-tbody').innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--red)">Access denied — admin role required.</td></tr>`;
+    document.getElementById('user-count-label').textContent = 'Access denied';
+    return;
+  }
+  users = await res.json();
+  document.getElementById('user-count-label').textContent = `${users.length} user${users.length !== 1 ? 's' : ''}`;
+  renderUsers();
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('user-tbody');
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">No users yet. Add one above.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const hasLoggedIn = !!u.updated_at && u.updated_at !== u.created_at || !!u.photo_data_url;
+    const statusDot = hasLoggedIn
+      ? `<span class="status-dot status-active"></span>Active`
+      : `<span class="status-dot status-pending"></span>Pending login`;
+    const avatarHtml = u.photo_data_url
+      ? `<img class="avatar" src="${esc(u.photo_data_url)}" alt="${esc(u.name||u.email)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const initialsHtml = `<div class="avatar-initials" style="${u.photo_data_url?'display:none':'display:flex'}">${initials(u.name, u.email)}</div>`;
+
+    return `
+    <tr id="row-${CSS.escape(u.email)}">
+      <td>
+        <div class="user-info">
+          ${avatarHtml}${initialsHtml}
+          <div>
+            <div class="user-name">${esc(u.name || u.email)}</div>
+            <div class="user-email">${esc(u.email)}</div>
+            ${u.job_title ? `<div class="user-title">${esc(u.job_title)}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td>
+        <select class="role-select" id="role-${CSS.escape(u.email)}" onchange="markDirty('${esc(u.email)}')">
+          ${ROLES.map(r => `<option value="${r}"${u.role===r?' selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <input class="filter-input" id="locf-${CSS.escape(u.email)}" value="${esc(u.location_filter||'')}" placeholder='e.g. ["L-ECF-TRN"]' oninput="markDirty('${esc(u.email)}')">
+      </td>
+      <td>
+        <input class="filter-input" id="custf-${CSS.escape(u.email)}" value="${esc(u.customer_filter||'')}" placeholder='e.g. ["C-00403"]' oninput="markDirty('${esc(u.email)}')">
+      </td>
+      <td style="font-size:12px;white-space:nowrap">${statusDot}</td>
+      <td style="font-size:11px;color:var(--gray-500);white-space:nowrap">${fmtDate(u.created_at)}</td>
+      <td>
+        <button class="btn btn-primary btn-sm" id="save-${CSS.escape(u.email)}" onclick="saveUser('${esc(u.email)}')">Save</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function markDirty(email) {
+  const btn = document.getElementById('save-' + CSS.escape(email));
+  if (btn) btn.style.background = '#e65c00';
+}
+
+async function saveUser(email) {
+  const role  = document.getElementById('role-' + CSS.escape(email)).value;
+  const locf  = document.getElementById('locf-' + CSS.escape(email)).value.trim();
+  const custf = document.getElementById('custf-' + CSS.escape(email)).value.trim();
+  try {
+    const res = await fetch('/api/admin/users/' + encodeURIComponent(email), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, location_filter: locf || null, customer_filter: custf || null })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    const btn = document.getElementById('save-' + CSS.escape(email));
+    if (btn) btn.style.background = '';
+    showToast('Saved ' + email, 'success');
+    await loadUsers();
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function inviteUser() {
+  const email = document.getElementById('invite-email').value.trim().toLowerCase();
+  const role  = document.getElementById('invite-role').value;
+  if (!email || !email.includes('@')) { showToast('Enter a valid email', 'error'); return; }
+  if (!email.endsWith('@eastcoastfacilities.com')) { showToast('Must be @eastcoastfacilities.com', 'error'); return; }
+  if (users.find(u => u.email.toLowerCase() === email)) { showToast('User already exists', 'error'); return; }
+  try {
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Add failed');
+    document.getElementById('invite-email').value = '';
+    showToast(`Added ${email} as ${ROLE_LABELS[role]}`, 'success');
+    await loadUsers();
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+let filtersVisible = false;
+function toggleFilters() {
+  // Future: add filter row toggling
+  showToast('Use the Location Filter and Customer Filter columns to restrict user access', 'info');
+}
+
+// Enter to invite
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('invite-email').addEventListener('keydown', e => {
+    if (e.key === 'Enter') inviteUser();
+  });
+  loadUsers();
+});
+</script>
+</body>
+</html>

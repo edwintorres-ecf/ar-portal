@@ -1,0 +1,972 @@
+'use strict';
+/**
+ * db.js — SQLite database init and helpers for ECF AR Portal
+ * Uses Node.js built-in node:sqlite (Node 22+)
+ */
+
+const { DatabaseSync } = require('node:sqlite');
+const path = require('path');
+
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'ar-portal.db');
+let db;
+
+function getDb() {
+  if (!db) {
+    db = new DatabaseSync(DB_PATH);
+    // WAL mode for better concurrency
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA foreign_keys = ON');
+
+    // customer_accounts: stop_service flag + owner assignment
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS customer_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id TEXT UNIQUE NOT NULL,
+        customer_name TEXT,
+        stop_service INTEGER DEFAULT 0,
+        owner_name TEXT DEFAULT NULL,
+        owner_email TEXT DEFAULT NULL,
+        notes TEXT DEFAULT NULL,
+        updated_by TEXT DEFAULT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_ca_cid ON customer_accounts(customer_id)');
+
+    // watchlist: per-user pinned invoices
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS watchlist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        record_no TEXT NOT NULL,
+        invoice_id TEXT,
+        customer_name TEXT,
+        added_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_email, record_no)
+      )
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_wl_user ON watchlist(user_email)');
+
+
+    initSchema();
+  }
+  return db;
+}
+
+function initSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_no TEXT NOT NULL,
+      user_email TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      type TEXT DEFAULT 'note',
+      body TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS promises_to_pay (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_no TEXT NOT NULL,
+      user_email TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      promise_date TEXT NOT NULL,
+      note TEXT,
+      status TEXT DEFAULT 'open',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT,
+      role TEXT DEFAULT 'viewer',
+      location_filter TEXT,
+      customer_filter TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT,
+      action TEXT,
+      record_no TEXT,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notes_record ON notes(record_no);
+    CREATE INDEX IF NOT EXISTS idx_ptp_record ON promises_to_pay(record_no);
+    CREATE INDEX IF NOT EXISTS idx_ptp_date ON promises_to_pay(promise_date);
+    CREATE INDEX IF NOT EXISTS idx_audit_record ON audit_log(record_no);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_email);
+
+    CREATE TABLE IF NOT EXISTS invoice_location (
+      record_no    TEXT PRIMARY KEY,
+      location_id  TEXT,
+      location_name TEXT,
+      fetched_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS location_map (
+      sage_recordno  INTEGER PRIMARY KEY,
+      location_id    TEXT NOT NULL,
+      location_name  TEXT NOT NULL,
+      fetched_at     TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS note_mentions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL,
+      mentioned_email TEXT NOT NULL,
+      seen INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (note_id) REFERENCES notes(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mentions_email ON note_mentions(mentioned_email);
+    CREATE INDEX IF NOT EXISTS idx_mentions_note ON note_mentions(note_id);
+
+    CREATE TABLE IF NOT EXISTS note_reactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL,
+      user_email TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(note_id, user_email, emoji),
+      FOREIGN KEY (note_id) REFERENCES notes(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      po_number TEXT PRIMARY KEY,
+      location_id TEXT,
+      customer_id TEXT DEFAULT 'C-00403',
+      ceiling_amount REAL,
+      ceiling_email_amount REAL,
+      ceiling_scrape_amount REAL,
+      ceiling_source TEXT,
+      discrepancy_flag INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      updated_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS po_source_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      po_number TEXT NOT NULL,
+      source TEXT NOT NULL,
+      file_ref TEXT,
+      extracted_amount REAL,
+      extracted_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_po_source_docs_po ON po_source_documents(po_number);
+
+    CREATE TABLE IF NOT EXISTS po_document_intake (
+      file_id TEXT PRIMARY KEY,
+      folder TEXT,
+      seen_at TEXT DEFAULT (datetime('now')),
+      processed INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS regions (
+      region_code TEXT PRIMARY KEY,
+      region_name TEXT NOT NULL,
+      location_ids TEXT NOT NULL DEFAULT '[]',
+      updated_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_po_assignments (
+      record_no TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      original_po TEXT,
+      assigned_po TEXT NOT NULL,
+      note TEXT,
+      assigned_by TEXT,
+      assigned_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_collector (
+      record_no TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      collector_email TEXT NOT NULL,
+      assigned_by TEXT,
+      assigned_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ops_health (
+      check_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL,            -- ok | warn | fail
+      detail TEXT,
+      metric REAL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ops_alert_log (
+      alert_key TEXT PRIMARY KEY,
+      last_sent_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_stop_service (
+      record_no TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      effective_date TEXT,
+      note TEXT,
+      issued_by TEXT,
+      issued_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Collector + richer stop-service on customer_accounts (idempotent)
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN collector_email TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN stop_service_effective_date TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN stop_service_issued_by TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN stop_service_at TEXT DEFAULT NULL"); } catch(e) {}
+
+  // Manual site assignment for POs whose documents/invoices don't reveal one
+  try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
+
+  // Manual service-type override for POs the doc description can't classify
+  // (e.g. a PO doc that's just an address) — wins over classifyService().
+  try { db.exec("ALTER TABLE purchase_orders ADD COLUMN service_type TEXT DEFAULT NULL"); } catch(e) {}
+
+  // Add mentions column if missing (idempotent)
+  try { db.exec("ALTER TABLE notes ADD COLUMN mentions TEXT DEFAULT NULL"); } catch(e) { /* already exists */ }
+  // Add photo column to user_roles if missing
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN photo_data_url TEXT DEFAULT NULL"); } catch(e) { /* already exists */ }
+  // Add job_title column to user_roles if missing
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN job_title TEXT DEFAULT NULL"); } catch(e) { /* already exists */ }
+
+  // Email notification prefs. The master switch (notify_master) is a fresh
+  // column defaulting to 0, so every user — existing and new — starts opted
+  // OUT; no email is sent until the user explicitly turns notifications on.
+  // The per-event columns default ON so that once a user opts in they receive
+  // all three unless they uncheck one. (notify_email is the retired v1 master.)
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_email INTEGER DEFAULT 1"); } catch(e) {}
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_master INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_mentions INTEGER DEFAULT 1"); } catch(e) {}
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_collector INTEGER DEFAULT 1"); } catch(e) {}
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_stop INTEGER DEFAULT 1"); } catch(e) {}
+  // Add stated_amount to purchase_orders if missing — the PO's original value,
+  // set once and preserved even when ceiling_amount is later revised
+  try { db.exec("ALTER TABLE purchase_orders ADD COLUMN stated_amount REAL DEFAULT NULL"); } catch(e) { /* already exists */ }
+
+  seedDefaultRegions();
+}
+
+// Pre-populate the existing hardcoded region definitions on first run so
+// nothing changes visually until someone actually edits them.
+function seedDefaultRegions() {
+  const existing = db.prepare('SELECT COUNT(*) as c FROM regions').get();
+  if (existing.c > 0) return;
+  const defaults = [
+    { code: 'I95',  name: 'I-95 Corridor', locs: ['L-ECF-BLT', 'L-ECF-TRN', 'L-ECF-HCT', 'L-ECF-SRN'] },
+    { code: 'SE',   name: 'Southeast',     locs: ['L-ECF-BRW', 'L-ECF-WPB'] },
+    { code: 'MW',   name: 'Midwest',       locs: ['L-ECF-CIN', 'L-ECF-SCSC'] },
+    { code: 'MA',   name: 'Mid-Atlantic',  locs: ['L-ECF-ALN', 'L-ECF-HBG'] },
+    { code: 'CORP', name: 'Corporate',     locs: ['L-ECF-FCR', 'E-ECF'] },
+  ];
+  const stmt = db.prepare('INSERT INTO regions (region_code, region_name, location_ids) VALUES (?,?,?)');
+  for (const r of defaults) stmt.run(r.code, r.name, JSON.stringify(r.locs));
+}
+
+// ─── User Roles ────────────────────────────────────────────────────────────
+
+function getUserRole(email) {
+  const db = getDb();
+  const stmt = db.prepare('SELECT * FROM user_roles WHERE email = ?');
+  return stmt.get(email) || null;
+}
+
+function upsertUserRole(email, name, role, locationFilter, customerFilter) {
+  const db = getDb();
+  const existing = getUserRole(email);
+  if (existing) {
+    db.prepare(`
+      UPDATE user_roles SET name=?, role=?, location_filter=?, customer_filter=?, updated_at=datetime('now')
+      WHERE email=?
+    `).run(name, role, locationFilter, customerFilter, email);
+  } else {
+    db.prepare(`
+      INSERT INTO user_roles (email, name, role, location_filter, customer_filter)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(email, name, role, locationFilter, customerFilter);
+  }
+  return getUserRole(email);
+}
+
+function provisionNewUser(email, name) {
+  const db = getDb();
+  // Edwin always gets admin
+  const role = (email.toLowerCase() === 'edwin.torres@eastcoastfacilities.com') ? 'admin' : 'viewer';
+  db.prepare(`
+    INSERT OR IGNORE INTO user_roles (email, name, role)
+    VALUES (?, ?, ?)
+  `).run(email, name, role);
+  console.log(`[auth] Auto-provisioned ${email} as ${role}`);
+  return getUserRole(email);
+}
+
+function listUsers() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM user_roles ORDER BY created_at DESC').all();
+}
+
+// notify_email in the returned object is the effective master switch, sourced
+// from notify_master (defaults 0 = opted out until the user turns it on).
+function getNotifyPrefs(email) {
+  const u = getUserRole(email);
+  return {
+    notify_email:     u ? (u.notify_master == null ? 0 : u.notify_master) : 0,
+    notify_mentions:  u ? (u.notify_mentions == null ? 1 : u.notify_mentions) : 1,
+    notify_collector: u ? (u.notify_collector == null ? 1 : u.notify_collector) : 1,
+    notify_stop:      u ? (u.notify_stop == null ? 1 : u.notify_stop) : 1,
+  };
+}
+
+function updateNotifyPrefs(email, prefs) {
+  const db = getDb();
+  const cur = getNotifyPrefs(email);
+  const next = {
+    notify_email:     prefs.notify_email     !== undefined ? (prefs.notify_email ? 1 : 0)     : cur.notify_email,
+    notify_mentions:  prefs.notify_mentions  !== undefined ? (prefs.notify_mentions ? 1 : 0)  : cur.notify_mentions,
+    notify_collector: prefs.notify_collector !== undefined ? (prefs.notify_collector ? 1 : 0) : cur.notify_collector,
+    notify_stop:      prefs.notify_stop      !== undefined ? (prefs.notify_stop ? 1 : 0)      : cur.notify_stop,
+  };
+  db.prepare(`UPDATE user_roles SET notify_master=?, notify_mentions=?, notify_collector=?, notify_stop=?, updated_at=datetime('now') WHERE email=?`)
+    .run(next.notify_email, next.notify_mentions, next.notify_collector, next.notify_stop, email);
+  return next;
+}
+
+function updateUserRole(email, updates) {
+  const db = getDb();
+  const fields = [];
+  const vals = [];
+  if (updates.role !== undefined) { fields.push('role=?'); vals.push(updates.role); }
+  if (updates.name !== undefined) { fields.push('name=?'); vals.push(updates.name); }
+  if (updates.location_filter !== undefined) { fields.push('location_filter=?'); vals.push(updates.location_filter); }
+  if (updates.customer_filter !== undefined) { fields.push('customer_filter=?'); vals.push(updates.customer_filter); }
+  if (fields.length === 0) return;
+  fields.push("updated_at=datetime('now')");
+  vals.push(email);
+  db.prepare(`UPDATE user_roles SET ${fields.join(', ')} WHERE email=?`).run(...vals);
+}
+
+// ─── Notes ─────────────────────────────────────────────────────────────────
+
+function getNotes(recordNo) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM notes WHERE record_no=? ORDER BY created_at ASC').all(recordNo);
+}
+
+function addNote(recordNo, userEmail, userName, body, type = 'note', mentions) {
+  if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+    return addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions);
+  }
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO notes (record_no, user_email, user_name, type, body) VALUES (?,?,?,?,?)
+  `).run(recordNo, userEmail, userName, type, body);
+  return db.prepare('SELECT * FROM notes WHERE id=?').get(result.lastInsertRowid);
+}
+
+// ─── Promises to Pay ───────────────────────────────────────────────────────
+
+function getPtpForRecord(recordNo) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM promises_to_pay WHERE record_no=? ORDER BY created_at DESC').all(recordNo);
+}
+
+function getAllOpenPtp() {
+  const db = getDb();
+  return db.prepare("SELECT * FROM promises_to_pay WHERE status='open' ORDER BY promise_date ASC").all();
+}
+
+function addPtp(recordNo, userEmail, userName, amount, promiseDate, note) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO promises_to_pay (record_no, user_email, user_name, amount, promise_date, note)
+    VALUES (?,?,?,?,?,?)
+  `).run(recordNo, userEmail, userName, amount, promiseDate, note || null);
+  return db.prepare('SELECT * FROM promises_to_pay WHERE id=?').get(result.lastInsertRowid);
+}
+
+function updatePtpStatus(id, status) {
+  const db = getDb();
+  db.prepare("UPDATE promises_to_pay SET status=?, updated_at=datetime('now') WHERE id=?").run(status, id);
+}
+
+// ─── Audit Log ─────────────────────────────────────────────────────────────
+
+function auditLog(userEmail, action, recordNo, detail) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO audit_log (user_email, action, record_no, detail) VALUES (?,?,?,?)
+  `).run(userEmail, action, recordNo || null, detail || null);
+}
+
+function getAuditLog(recordNo) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM audit_log WHERE record_no=? ORDER BY created_at DESC').all(recordNo);
+}
+
+// ─── Location Map (Sage LOCATION objects → ID/name) ───────────────────────
+
+function getLocationMap() {
+  const d = getDb();
+  const rows = d.prepare('SELECT sage_recordno, location_id, location_name FROM location_map').all();
+  const map = {};
+  rows.forEach(r => { map[r.sage_recordno] = { locationId: r.location_id, locationName: r.location_name }; });
+  return map;
+}
+
+function setLocationMapEntries(entries) {
+  const d = getDb();
+  const stmt = d.prepare('INSERT OR REPLACE INTO location_map (sage_recordno, location_id, location_name) VALUES (?, ?, ?)');
+  for (const e of entries) {
+    stmt.run(e.recordNo, e.locationId, e.locationName);
+  }
+}
+
+function locationMapSize() {
+  const d = getDb();
+  return d.prepare('SELECT COUNT(*) as c FROM location_map').get().c;
+}
+
+// ─── Invoice Location Cache ────────────────────────────────────────────────
+
+function getLocation(recordNo) {
+  const d = getDb();
+  return d.prepare('SELECT location_id, location_name FROM invoice_location WHERE record_no=?').get(recordNo) || null;
+}
+
+function setLocation(recordNo, locationId, locationName) {
+  const d = getDb();
+  d.prepare(`
+    INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
+    VALUES (?, ?, ?, datetime('now'))
+  `).run(recordNo, locationId || '', locationName || '');
+}
+
+function getMissingLocationRecordNos(recordNos) {
+  // Returns those not yet in the cache
+  const d = getDb();
+  const stmt = d.prepare('SELECT record_no FROM invoice_location WHERE record_no=?');
+  return recordNos.filter(rn => !stmt.get(rn));
+}
+
+// ─── Notes with Mentions ───────────────────────────────────────────────────
+
+function addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions) {
+  const d = getDb();
+  const mentionList = Array.isArray(mentions) ? mentions : [];
+  const mentionsJson = mentionList.length ? JSON.stringify(mentionList) : null;
+
+  const result = d.prepare(`
+    INSERT INTO notes (record_no, user_email, user_name, type, body, mentions) VALUES (?,?,?,?,?,?)
+  `).run(recordNo, userEmail, userName, type || 'note', body, mentionsJson);
+
+  const noteId = result.lastInsertRowid;
+
+  if (mentionList.length > 0) {
+    const mentionStmt = d.prepare(`
+      INSERT OR IGNORE INTO note_mentions (note_id, mentioned_email) VALUES (?, ?)
+    `);
+    for (const email of mentionList) {
+      mentionStmt.run(noteId, email);
+    }
+  }
+
+  return d.prepare('SELECT * FROM notes WHERE id=?').get(noteId);
+}
+
+function getMentionsForUser(email) {
+  const d = getDb();
+  return d.prepare(`
+    SELECT nm.id as mention_id, nm.note_id, nm.mentioned_email, nm.seen, nm.created_at as mention_created_at,
+           n.record_no, n.user_email as author_email, n.user_name as author_name,
+           n.body, n.type, n.created_at as note_created_at
+    FROM note_mentions nm
+    JOIN notes n ON n.id = nm.note_id
+    WHERE nm.mentioned_email = ?
+    ORDER BY nm.created_at DESC
+    LIMIT 100
+  `).all(email);
+}
+
+function markMentionSeen(noteId, email) {
+  const d = getDb();
+  d.prepare(`UPDATE note_mentions SET seen=1 WHERE note_id=? AND mentioned_email=?`).run(noteId, email);
+}
+
+function getUnseenMentionCount(email) {
+  const d = getDb();
+  const row = d.prepare(`SELECT COUNT(*) as c FROM note_mentions WHERE mentioned_email=? AND seen=0`).get(email);
+  return row ? row.c : 0;
+}
+
+// ─── Reactions ─────────────────────────────────────────────────────────────
+
+function addReaction(noteId, userEmail, emoji) {
+  const d = getDb();
+  d.prepare(`INSERT OR IGNORE INTO note_reactions (note_id, user_email, emoji) VALUES (?,?,?)`).run(noteId, userEmail, emoji);
+}
+
+function removeReaction(noteId, userEmail, emoji) {
+  const d = getDb();
+  d.prepare(`DELETE FROM note_reactions WHERE note_id=? AND user_email=? AND emoji=?`).run(noteId, userEmail, emoji);
+}
+
+function getReactionsForNote(noteId) {
+  const d = getDb();
+  const rows = d.prepare(`SELECT emoji, user_email FROM note_reactions WHERE note_id=? ORDER BY created_at ASC`).all(noteId);
+  const map = {};
+  for (const row of rows) {
+    if (!map[row.emoji]) map[row.emoji] = { emoji: row.emoji, count: 0, users: [] };
+    map[row.emoji].count++;
+    map[row.emoji].users.push(row.user_email);
+  }
+  return Object.values(map);
+}
+
+function getReactionsForNotes(noteIds) {
+  if (!noteIds || noteIds.length === 0) return {};
+  const d = getDb();
+  const placeholders = noteIds.map(() => '?').join(',');
+  const rows = d.prepare(`SELECT note_id, emoji, user_email FROM note_reactions WHERE note_id IN (${placeholders}) ORDER BY created_at ASC`).all(...noteIds);
+  const result = {};
+  for (const row of rows) {
+    if (!result[row.note_id]) result[row.note_id] = {};
+    if (!result[row.note_id][row.emoji]) result[row.note_id][row.emoji] = { emoji: row.emoji, count: 0, users: [] };
+    result[row.note_id][row.emoji].count++;
+    result[row.note_id][row.emoji].users.push(row.user_email);
+  }
+  const final = {};
+  for (const [nid, emojis] of Object.entries(result)) {
+    final[nid] = Object.values(emojis);
+  }
+  return final;
+}
+
+function updateUserPhoto(email, photoDataUrl) {
+  const d = getDb();
+  d.prepare("UPDATE user_roles SET photo_data_url=? WHERE email=?").run(photoDataUrl || null, email);
+}
+
+function updateUserJobTitle(email, jobTitle) {
+  const d = getDb();
+  d.prepare("UPDATE user_roles SET job_title=? WHERE email=?").run(jobTitle || null, email);
+}
+
+function preProvisionUser(email, name, role, jobTitle) {
+  const d = getDb();
+  d.prepare(`
+    INSERT OR IGNORE INTO user_roles (email, name, role, job_title)
+    VALUES (?, ?, ?, ?)
+  `).run(email, name || '', role || 'viewer', jobTitle || null);
+  return d.prepare('SELECT * FROM user_roles WHERE email=?').get(email);
+}
+
+// Returns { record_no: count } for all records that have notes
+function getNoteCounts() {
+  const d = getDb();
+  const rows = d.prepare('SELECT record_no, COUNT(*) as cnt FROM notes GROUP BY record_no').all();
+  const map = {};
+  for (const r of rows) map[r.record_no] = r.cnt;
+  return map;
+}
+
+
+function getCustomerAccount(customerId) {
+  return db.prepare('SELECT * FROM customer_accounts WHERE customer_id=?').get(customerId) || null;
+}
+
+function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
+  const existing = getCustomerAccount(customerId);
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO customer_accounts (customer_id, customer_name, stop_service, owner_name, owner_email, notes, updated_by)
+      VALUES (?,?,?,?,?,?,?)
+    `).run(customerId, customerName,
+      fields.stop_service ?? 0,
+      fields.owner_name ?? null,
+      fields.owner_email ?? null,
+      fields.notes ?? null,
+      updatedBy ?? null);
+  } else {
+    const sets = [];
+    const vals = [];
+    if (fields.stop_service !== undefined) { sets.push('stop_service=?'); vals.push(fields.stop_service ? 1 : 0); }
+    if (fields.owner_name !== undefined)   { sets.push('owner_name=?');   vals.push(fields.owner_name); }
+    if (fields.owner_email !== undefined)  { sets.push('owner_email=?');  vals.push(fields.owner_email); }
+    if (fields.collector_email !== undefined) { sets.push('collector_email=?'); vals.push(fields.collector_email); }
+    if (fields.stop_service_effective_date !== undefined) { sets.push('stop_service_effective_date=?'); vals.push(fields.stop_service_effective_date); }
+    if (fields.stop_service_issued_by !== undefined) { sets.push('stop_service_issued_by=?'); vals.push(fields.stop_service_issued_by); }
+    if (fields.stop_service_at !== undefined) { sets.push('stop_service_at=?'); vals.push(fields.stop_service_at); }
+    if (fields.notes !== undefined)        { sets.push('notes=?');        vals.push(fields.notes); }
+    if (fields.customer_name || customerName) { sets.push('customer_name=?'); vals.push(fields.customer_name || customerName); }
+    sets.push("updated_at=datetime('now')");
+    sets.push('updated_by=?'); vals.push(updatedBy ?? null);
+    vals.push(customerId);
+    db.prepare(`UPDATE customer_accounts SET ${sets.join(',')} WHERE customer_id=?`).run(...vals);
+  }
+  return getCustomerAccount(customerId);
+}
+
+function getAllCustomerAccounts() {
+  return db.prepare('SELECT * FROM customer_accounts').all();
+}
+
+
+function getWatchlist(userEmail) {
+  return db.prepare('SELECT * FROM watchlist WHERE user_email=? ORDER BY added_at DESC').all(userEmail);
+}
+function addToWatchlist(userEmail, recordNo, invoiceId, customerName) {
+  try {
+    db.prepare('INSERT OR IGNORE INTO watchlist (user_email, record_no, invoice_id, customer_name) VALUES (?,?,?,?)')
+      .run(userEmail, recordNo, invoiceId || null, customerName || null);
+    return true;
+  } catch { return false; }
+}
+function removeFromWatchlist(userEmail, recordNo) {
+  db.prepare('DELETE FROM watchlist WHERE user_email=? AND record_no=?').run(userEmail, recordNo);
+}
+function isWatched(userEmail, recordNo) {
+  return !!db.prepare('SELECT 1 FROM watchlist WHERE user_email=? AND record_no=?').get(userEmail, recordNo);
+}
+
+
+// ─── Purchase Orders ───────────────────────────────────────────────────────
+
+function getPurchaseOrders() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM purchase_orders ORDER BY po_number ASC').all();
+}
+
+function getPurchaseOrder(poNumber) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM purchase_orders WHERE po_number=?').get(poNumber) || null;
+}
+
+// Manually pin a PO to a site (wins over every automatic attribution source).
+// Creates a minimal purchase_orders row if the PO isn't tracked yet.
+function setPoSite(poNumber, siteCode, updatedBy) {
+  const db = getDb();
+  const existing = getPurchaseOrder(poNumber);
+  if (!existing) {
+    db.prepare(`INSERT INTO purchase_orders (po_number, site_code, updated_by) VALUES (?,?,?)`)
+      .run(poNumber, siteCode ?? null, updatedBy ?? null);
+  } else {
+    db.prepare(`UPDATE purchase_orders SET site_code=?, updated_by=?, updated_at=datetime('now') WHERE po_number=?`)
+      .run(siteCode ?? null, updatedBy ?? null, poNumber);
+  }
+  return getPurchaseOrder(poNumber);
+}
+
+// Manually pin a PO's service type (wins over doc-description classification).
+// Used to resolve POs flagged for manual review because their document text
+// carries no service keyword. null clears the override (back to auto-classify).
+function setPoService(poNumber, serviceType, updatedBy) {
+  const db = getDb();
+  const existing = getPurchaseOrder(poNumber);
+  if (!existing) {
+    db.prepare(`INSERT INTO purchase_orders (po_number, service_type, updated_by) VALUES (?,?,?)`)
+      .run(poNumber, serviceType ?? null, updatedBy ?? null);
+  } else {
+    db.prepare(`UPDATE purchase_orders SET service_type=?, updated_by=?, updated_at=datetime('now') WHERE po_number=?`)
+      .run(serviceType ?? null, updatedBy ?? null, poNumber);
+  }
+  return getPurchaseOrder(poNumber);
+}
+
+function upsertPo(poNumber, fields, updatedBy) {
+  const db = getDb();
+  const existing = getPurchaseOrder(poNumber);
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO purchase_orders (po_number, location_id, customer_id, ceiling_amount, stated_amount, ceiling_source, status, notes, updated_by)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(
+      poNumber,
+      fields.location_id ?? null,
+      fields.customer_id ?? 'C-00403',
+      fields.ceiling_amount ?? null,
+      fields.ceiling_amount ?? null, // stated_amount mirrors ceiling_amount on first entry — it's the "original" value
+      fields.ceiling_source ?? (fields.ceiling_amount != null ? 'manual' : null),
+      fields.status ?? 'active',
+      fields.notes ?? null,
+      updatedBy ?? null
+    );
+    if (fields.ceiling_amount != null) {
+      addPoSourceDocument(poNumber, fields.ceiling_source || 'manual', null, fields.ceiling_amount);
+    }
+  } else {
+    const sets = [];
+    const vals = [];
+    if (fields.location_id !== undefined)    { sets.push('location_id=?');    vals.push(fields.location_id); }
+    if (fields.customer_id !== undefined)    { sets.push('customer_id=?');    vals.push(fields.customer_id); }
+    if (fields.ceiling_amount !== undefined) {
+      sets.push('ceiling_amount=?'); vals.push(fields.ceiling_amount);
+      if (existing.stated_amount == null && fields.ceiling_amount != null) {
+        // First real ceiling ever recorded for this PO — that's the stated/original value.
+        sets.push('stated_amount=?'); vals.push(fields.ceiling_amount);
+      } else if (existing.ceiling_amount != null && fields.ceiling_amount != null && existing.ceiling_amount !== fields.ceiling_amount) {
+        // Existing ceiling changing to a different value — a genuine revision. stated_amount
+        // is left untouched so the original value is preserved; log the revision for history.
+        addPoSourceDocument(poNumber, 'revision', null, fields.ceiling_amount);
+      }
+    }
+    if (fields.ceiling_source !== undefined) { sets.push('ceiling_source=?'); vals.push(fields.ceiling_source); }
+    if (fields.status !== undefined)         { sets.push('status=?');        vals.push(fields.status); }
+    if (fields.notes !== undefined)          { sets.push('notes=?');         vals.push(fields.notes); }
+    sets.push("updated_at=datetime('now')");
+    sets.push('updated_by=?'); vals.push(updatedBy ?? null);
+    vals.push(poNumber);
+    db.prepare(`UPDATE purchase_orders SET ${sets.join(',')} WHERE po_number=?`).run(...vals);
+  }
+  return getPurchaseOrder(poNumber);
+}
+
+function deletePo(poNumber) {
+  const db = getDb();
+  db.prepare('DELETE FROM purchase_orders WHERE po_number=?').run(poNumber);
+}
+
+// ─── PO Source Documents ───────────────────────────────────────────────────
+
+function addPoSourceDocument(poNumber, source, fileRef, extractedAmount) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO po_source_documents (po_number, source, file_ref, extracted_amount)
+    VALUES (?,?,?,?)
+  `).run(poNumber, source, fileRef ?? null, extractedAmount ?? null);
+}
+
+function getPoSourceDocuments(poNumber) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM po_source_documents WHERE po_number=? ORDER BY extracted_at DESC').all(poNumber);
+}
+
+// ─── Regions ────────────────────────────────────────────────────────────────
+
+function getRegions() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM regions ORDER BY region_name ASC').all()
+    .map(r => ({ ...r, location_ids: JSON.parse(r.location_ids || '[]') }));
+}
+
+function getRegion(regionCode) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM regions WHERE region_code=?').get(regionCode);
+  return row ? { ...row, location_ids: JSON.parse(row.location_ids || '[]') } : null;
+}
+
+function upsertRegion(regionCode, regionName, locationIds, updatedBy) {
+  const db = getDb();
+  const existing = getRegion(regionCode);
+  const locsJson = JSON.stringify(locationIds || []);
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO regions (region_code, region_name, location_ids, updated_by)
+      VALUES (?,?,?,?)
+    `).run(regionCode, regionName, locsJson, updatedBy ?? null);
+  } else {
+    db.prepare(`
+      UPDATE regions SET region_name=?, location_ids=?, updated_at=datetime('now'), updated_by=?
+      WHERE region_code=?
+    `).run(regionName ?? existing.region_name, locsJson, updatedBy ?? null, regionCode);
+  }
+  return getRegion(regionCode);
+}
+
+function deleteRegion(regionCode) {
+  const db = getDb();
+  db.prepare('DELETE FROM regions WHERE region_code=?').run(regionCode);
+}
+
+// ─── Invoice PO Assignments (manual reroute before upload) ────────────────
+
+function getAllPoAssignments() {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM invoice_po_assignments').all();
+  const map = {};
+  for (const r of rows) map[r.record_no] = r;
+  return map;
+}
+
+function setInvoicePoAssignment(recordNo, invoiceId, originalPo, assignedPo, note, assignedBy) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO invoice_po_assignments (record_no, invoice_id, original_po, assigned_po, note, assigned_by, assigned_at)
+    VALUES (?,?,?,?,?,?,datetime('now'))
+    ON CONFLICT(record_no) DO UPDATE SET
+      assigned_po=excluded.assigned_po, note=excluded.note, assigned_by=excluded.assigned_by, assigned_at=datetime('now')
+  `).run(recordNo, invoiceId, originalPo, assignedPo, note ?? null, assignedBy ?? null);
+}
+
+function clearInvoicePoAssignment(recordNo) {
+  const db = getDb();
+  db.prepare('DELETE FROM invoice_po_assignments WHERE record_no=?').run(recordNo);
+}
+
+// ─── Invoice-level collector ownership ───────────────────────────────────
+
+function getAllInvoiceCollectors() {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM invoice_collector').all();
+  const map = {};
+  for (const r of rows) map[r.record_no] = r;
+  return map;
+}
+
+function setInvoiceCollector(recordNo, invoiceId, collectorEmail, assignedBy) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO invoice_collector (record_no, invoice_id, collector_email, assigned_by, assigned_at)
+    VALUES (?,?,?,?,datetime('now'))
+    ON CONFLICT(record_no) DO UPDATE SET
+      collector_email=excluded.collector_email, assigned_by=excluded.assigned_by, assigned_at=datetime('now')
+  `).run(recordNo, invoiceId ?? null, collectorEmail, assignedBy ?? null);
+}
+
+function clearInvoiceCollector(recordNo) {
+  const db = getDb();
+  db.prepare('DELETE FROM invoice_collector WHERE record_no=?').run(recordNo);
+}
+
+// ─── Invoice-level stop-service ──────────────────────────────────────────
+
+function getAllInvoiceStopService() {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM invoice_stop_service').all();
+  const map = {};
+  for (const r of rows) map[r.record_no] = r;
+  return map;
+}
+
+function setInvoiceStopService(recordNo, invoiceId, effectiveDate, note, issuedBy) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO invoice_stop_service (record_no, invoice_id, effective_date, note, issued_by, issued_at)
+    VALUES (?,?,?,?,?,datetime('now'))
+    ON CONFLICT(record_no) DO UPDATE SET
+      effective_date=excluded.effective_date, note=excluded.note, issued_by=excluded.issued_by, issued_at=datetime('now')
+  `).run(recordNo, invoiceId ?? null, effectiveDate ?? null, note ?? null, issuedBy ?? null);
+}
+
+function clearInvoiceStopService(recordNo) {
+  const db = getDb();
+  db.prepare('DELETE FROM invoice_stop_service WHERE record_no=?').run(recordNo);
+}
+
+// ─── Ops health + alert throttle ─────────────────────────────────────────
+
+function setHealth(checkKey, status, detail, metric) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO ops_health (check_key, status, detail, metric, updated_at)
+    VALUES (?,?,?,?,datetime('now'))
+    ON CONFLICT(check_key) DO UPDATE SET
+      status=excluded.status, detail=excluded.detail, metric=excluded.metric, updated_at=datetime('now')
+  `).run(checkKey, status, detail ?? null, metric ?? null);
+}
+
+function getHealth() {
+  return getDb().prepare('SELECT * FROM ops_health ORDER BY check_key').all();
+}
+
+// True (and records the send) if this alert key hasn't fired within the window.
+function shouldAlert(alertKey, minIntervalHours = 6) {
+  const db = getDb();
+  const row = db.prepare('SELECT last_sent_at FROM ops_alert_log WHERE alert_key=?').get(alertKey);
+  if (row) {
+    const ok = db.prepare(`SELECT datetime(?, '+' || ? || ' hours') <= datetime('now') AS due`).get(row.last_sent_at, String(minIntervalHours));
+    if (!ok || !ok.due) return false;
+  }
+  db.prepare(`INSERT INTO ops_alert_log (alert_key, last_sent_at) VALUES (?, datetime('now'))
+              ON CONFLICT(alert_key) DO UPDATE SET last_sent_at=datetime('now')`).run(alertKey);
+  return true;
+}
+
+function all(sql, params = []) {
+  return getDb().prepare(sql).all(...params);
+}
+function get(sql, params = []) {
+  return getDb().prepare(sql).get(...params);
+}
+
+module.exports = {
+  getDb,
+  getNoteCounts,
+  updateUserPhoto,
+  updateUserJobTitle,
+  preProvisionUser,
+  getUserRole,
+  upsertUserRole,
+  provisionNewUser,
+  listUsers,
+  getNotifyPrefs,
+  updateNotifyPrefs,
+  updateUserRole,
+  getNotes,
+  addNote,
+  addNoteWithMentions,
+  getMentionsForUser,
+  markMentionSeen,
+  getUnseenMentionCount,
+  addReaction,
+  removeReaction,
+  getReactionsForNote,
+  getReactionsForNotes,
+  getPtpForRecord,
+  getAllOpenPtp,
+  addPtp,
+  updatePtpStatus,
+  auditLog,
+  getAuditLog,
+  getLocation,
+  setLocation,
+  getMissingLocationRecordNos,
+  getLocationMap,
+  setLocationMapEntries,
+  locationMapSize,
+  getCustomerAccount,
+  upsertCustomerAccount,
+  getAllCustomerAccounts,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
+  isWatched,
+  getPurchaseOrders,
+  getPurchaseOrder,
+  setPoSite,
+  setPoService,
+  upsertPo,
+  deletePo,
+  addPoSourceDocument,
+  getPoSourceDocuments,
+  getRegions,
+  getRegion,
+  upsertRegion,
+  deleteRegion,
+  getAllPoAssignments,
+  setInvoicePoAssignment,
+  clearInvoicePoAssignment,
+  getAllInvoiceCollectors,
+  setInvoiceCollector,
+  clearInvoiceCollector,
+  getAllInvoiceStopService,
+  setInvoiceStopService,
+  clearInvoiceStopService,
+  setHealth,
+  getHealth,
+  shouldAlert,
+  all,
+  get,
+};
