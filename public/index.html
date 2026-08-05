@@ -4753,11 +4753,22 @@ function closeReassignModal() {
   _reassignTarget = null;
 }
 
+// A PO is never an invoice number (S-/AST-/ASTM-/ECI-<digits>) and never the
+// invoice's own id. Blocks the "typed the invoice number into the PO box" slip.
+function poAssignClientError(po, invoiceId) {
+  const v = String(po || '').trim();
+  if (!v) return 'Enter a PO number';
+  if (invoiceId && v.toUpperCase() === String(invoiceId).trim().toUpperCase()) return "That's the invoice's own number, not a PO.";
+  if (/^(ASTM|AST|ECI|S)-\d/i.test(v)) return `"${v}" looks like an invoice number, not a PO. Amazon POs look like 2D-…`;
+  return null;
+}
+
 async function saveReassignModal() {
   if (!_reassignTarget) return;
   const assignedPo = document.getElementById('reassign-po-input').value.trim();
   const note = document.getElementById('reassign-po-note').value.trim();
-  if (!assignedPo) { alert('Enter a PO number'); return; }
+  const cErr = poAssignClientError(assignedPo, _reassignTarget.invoiceId);
+  if (cErr) { alert(cErr); return; }
   try {
     await apiFetch('/api/po/reassign/' + encodeURIComponent(_reassignTarget.recordNo), {
       method: 'POST',

@@ -1286,11 +1286,26 @@ app.post('/api/po/edi/transmit', requireAuth, requireRole('admin', 'manager'), a
 // uploaded under. This never touches Sage or Payee Central — there's no API
 // into Payee Central, upload is still a manual step — it just records intent
 // so whoever does the upload knows which PO to use.
+// A PO must never be an invoice number. Amazon POs look like "2D-19170701";
+// Sage/Omnia invoice ids are S-/AST-/ASTM-/ECI-<digits>. Users have pasted an
+// invoice's own number into the PO box (observed 2026-07-30, 2 phantom POs),
+// which turns the invoice number into a placeholder PO. Reject it at the source.
+const INVOICE_ID_RE = /^(ASTM|AST|ECI|S)-\d/i;
+function poAssignError(assignedPo, invoiceId) {
+  const po = String(assignedPo || '').trim();
+  if (!po) return 'assignedPo is required';
+  if (invoiceId && po.toUpperCase() === String(invoiceId).trim().toUpperCase())
+    return "The PO cannot be the invoice's own number.";
+  if (INVOICE_ID_RE.test(po)) return `"${po}" looks like an invoice number, not a PO. Amazon POs look like 2D-…`;
+  return null;
+}
+
 app.post('/api/po/reassign/:recordNo', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
   try {
     const user = req.session.user;
     const { invoiceId, originalPo, assignedPo, note } = req.body || {};
-    if (!assignedPo) return res.status(400).json({ error: 'assignedPo is required' });
+    const vErr = poAssignError(assignedPo, invoiceId);
+    if (vErr) return res.status(400).json({ error: vErr });
     db.setInvoicePoAssignment(req.params.recordNo, invoiceId || null, originalPo || null, assignedPo, note || null, user.email);
     db.auditLog(user.email, 'po_reassign', req.params.recordNo, `${originalPo || '?'} -> ${assignedPo}${note ? ' — ' + note : ''}`);
     res.json({ ok: true });
@@ -1311,7 +1326,8 @@ app.post('/api/po/reassign-bulk', requireAuth, requireRole('admin', 'manager', '
   try {
     const user = req.session.user;
     const { items, assignedPo, note } = req.body || {};
-    if (!assignedPo) return res.status(400).json({ error: 'assignedPo is required' });
+    const vErr = poAssignError(assignedPo, null);
+    if (vErr) return res.status(400).json({ error: vErr });
     const list = Array.isArray(items) ? items : [];
     if (!list.length) return res.status(400).json({ error: 'items required' });
     let invoices = sage.getCachedInvoices();
@@ -1321,6 +1337,8 @@ app.post('/api/po/reassign-bulk', requireAuth, requireRole('admin', 'manager', '
       const rn = typeof it === 'string' ? it : it.recordNo;
       if (!rn) continue;
       const inv = invoices.find(i => i.recordNo === rn);
+      // Skip an item whose own invoice number equals the target PO (self-assign).
+      if (inv && String(inv.invoiceId || '').toUpperCase() === String(assignedPo).trim().toUpperCase()) continue;
       db.setInvoicePoAssignment(rn, inv ? inv.invoiceId : null, inv ? inv.poNumber : null, assignedPo, note || null, user.email);
       count++;
     }
