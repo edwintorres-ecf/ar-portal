@@ -3924,6 +3924,18 @@ async function assignPoSite(poNumber) {
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+// Pin an INVOICE's true service site — for multi-site blanket POs (header
+// ship-to is a corporate code like BNA12) where the PO fallback mislabels it.
+async function assignInvoiceSite(recordNo, invoiceId, currentSite) {
+  const input = prompt(`True service site for ${invoiceId || recordNo} (e.g. DYY8).\nCurrently showing: ${currentSite || '(none)'}\nLeave empty to clear a manual pin.`);
+  if (input === null) return;
+  try {
+    const r = await apiFetch('/api/invoice/' + encodeURIComponent(recordNo) + '/site', { method: 'POST', body: JSON.stringify({ invoiceId, siteCode: input.trim() }) });
+    showToast(r.siteCode ? `${invoiceId} → ${r.siteCode}` : `${invoiceId} site pin cleared`, 'success');
+    await loadPoFunds();
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 // Server-rendered styled .xlsx (merged site cells + color coding, matches the
 // on-screen layout). Session cookie rides along on same-origin navigation.
 function exportPendingBySiteXlsx() {
@@ -4691,7 +4703,7 @@ function renderPoNeedsUpload() {
       <td style="padding:10px 14px"><input type="checkbox" ${_poNeedsUploadSelected.has(inv.recordNo) ? 'checked' : ''} onchange="poNuToggle('${inv.recordNo}', this.checked)"></td>
       <td style="padding:10px 14px;font-weight:600;color:var(--navy);cursor:pointer" onclick="openDrawer('${inv.recordNo}')">${escHtml(inv.invoiceId || inv.recordNo)}${resubmitBadge}${sentBadge}</td>
       <td style="padding:10px 14px">${escHtml(inv.customerName || '—')}</td>
-      <td style="padding:10px 14px">${escHtml(inv.siteCode || '—')}</td>
+      <td style="padding:10px 14px;white-space:nowrap">${escHtml(inv.siteCode || '—')}${inv.siteOverride ? ' <span title="Site manually pinned for this invoice (multi-site PO)" style="font-size:9px;color:#0369a1">✎</span>' : ''} <span title="Pin this invoice's true service site (use when the PO covers multiple sites and the label is wrong)" style="cursor:pointer;font-size:10px;color:var(--gray-400)" onclick="assignInvoiceSite('${inv.recordNo}','${escHtml(inv.invoiceId || '')}','${escHtml(inv.siteCode || '')}')">🏷</span></td>
       <td style="padding:10px 14px;font-size:12px;color:var(--gray-500)">${escHtml(inv.invoiceDate || '—')}</td>
       <td style="padding:10px 14px">${poCell}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(inv.amount)}</td>

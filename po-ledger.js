@@ -350,6 +350,7 @@ function getNeedsUpload(invoices) {
   // Amazon ingests them (minutes–hours). Surface that state so nobody
   // re-transmits a live submission (observed: ECI-024912 sent 4x because the
   // row still read as plain "pending upload").
+  const siteOverrides = db.getAllInvoiceSiteOverrides();
   const recentTx = {};
   try {
     for (const r of db.all(
@@ -385,10 +386,13 @@ function getNeedsUpload(invoices) {
       invoiceId: inv.invoiceId,
       customerName: inv.customerName,
       locationName: inv.locationName,
-      // Canonical Amazon site for grouping. If the invoice's own ship-to is junk
-      // (e.g. an assigned orphan whose Sage site was "Amazon.com Services LLC"),
-      // fall back to the assigned PO's Amazon site so it groups correctly.
-      siteCode: (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : (poRow?.siteCode || null)),
+      // Canonical Amazon site for grouping. Chain: manual per-invoice override
+      // (multi-site blanket POs — the PO fallback would label with the PO's
+      // header ship-to, e.g. corporate "BNA12") > the invoice's own valid
+      // ship-to > the assigned PO's Amazon site.
+      siteCode: (siteOverrides[inv.recordNo]?.site_code
+        || (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : (poRow?.siteCode || null))),
+      siteOverride: !!siteOverrides[inv.recordNo],
       invoiceDate: inv.whenCreated || null,
       siteCodeRaw: inv.siteCode || null,               // exact Sage SHIPTO string (kept for reference)
       poOnRecord: inv.originalPo,      // what Sage/DOCNUMBER says — "the PO on the record"
@@ -629,6 +633,7 @@ function getOrphanInvoices(invoices) {
   }
 
   const orphans = [];
+  const siteOverrides = db.getAllInvoiceSiteOverrides();
   for (const inv of amazon) {
     if ((inv.totalDue || 0) <= 0) continue;
     const originalPo = (inv.poNumber || '').trim();
@@ -638,7 +643,8 @@ function getOrphanInvoices(invoices) {
     const payeeId = payee.toPayeeId(inv.invoiceId);
     const resolved = payeeId ? payee.resolveInvoice(payeeId) : null;
     if (resolved && !resolved.needsResubmission) continue; // already live in Amazon
-    const site = isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null;
+    const ovr = siteOverrides[inv.recordNo];
+    const site = (ovr && ovr.site_code) || (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null);
     orphans.push({
       recordNo: inv.recordNo,
       invoiceId: inv.invoiceId,

@@ -1680,6 +1680,20 @@ app.post('/api/po/:poNumber/site', requireAuth, requireRole('admin', 'manager', 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Pin an INVOICE's true service site. Needed for multi-site blanket POs whose
+// header ship-to is a corporate code (BNA12 = Amazon Nashville HQ), where the
+// PO-site fallback would mislabel the invoice. Empty siteCode clears.
+app.post('/api/invoice/:recordNo/site', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
+    if (raw && !/^[A-Z]{2,4}\d{1,2}$/.test(raw)) return res.status(400).json({ error: 'Site code must look like DYY8 / DTW1' });
+    db.setInvoiceSite(req.params.recordNo, (req.body && req.body.invoiceId) || null, raw || null, user.email);
+    db.auditLog(user.email, 'invoice_site_assign', req.params.recordNo, raw || '(cleared)');
+    res.json({ ok: true, siteCode: raw || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Manually pin a PO's service type (resolves a "needs service review" flag).
 const PO_SERVICE_TYPES = new Set(['snow', 'landscape', 'cleaning', 'maintenance', 'other']);
 app.post('/api/po/:poNumber/service', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {

@@ -192,6 +192,14 @@ function initSchema() {
       assigned_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS invoice_site_overrides (
+      record_no TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      site_code TEXT NOT NULL,
+      set_by TEXT,
+      set_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS invoice_collector (
       record_no TEXT PRIMARY KEY,
       invoice_id TEXT,
@@ -815,6 +823,33 @@ function clearInvoicePoAssignment(recordNo) {
   db.prepare('DELETE FROM invoice_po_assignments WHERE record_no=?').run(recordNo);
 }
 
+// ─── Invoice-level site overrides ────────────────────────────────────────
+// For multi-site blanket POs (e.g. 2D-20105615: ship-to is Amazon's Nashville
+// HQ "BNA12", line items serve DBL1/DJR5/DPP1/DYY8) the PO-site fallback labels
+// the invoice with a non-site. This pins the true service site per invoice; it
+// wins over both the Sage ship-to and the PO fallback.
+
+function getAllInvoiceSiteOverrides() {
+  const db = getDb();
+  const map = {};
+  for (const r of db.prepare('SELECT * FROM invoice_site_overrides').all()) map[r.record_no] = r;
+  return map;
+}
+
+function setInvoiceSite(recordNo, invoiceId, siteCode, setBy) {
+  const db = getDb();
+  if (!siteCode) {
+    db.prepare('DELETE FROM invoice_site_overrides WHERE record_no=?').run(recordNo);
+    return;
+  }
+  db.prepare(`
+    INSERT INTO invoice_site_overrides (record_no, invoice_id, site_code, set_by, set_at)
+    VALUES (?,?,?,?,datetime('now'))
+    ON CONFLICT(record_no) DO UPDATE SET
+      site_code=excluded.site_code, set_by=excluded.set_by, set_at=datetime('now')
+  `).run(recordNo, invoiceId ?? null, siteCode, setBy ?? null);
+}
+
 // ─── Invoice-level collector ownership ───────────────────────────────────
 
 function getAllInvoiceCollectors() {
@@ -958,6 +993,8 @@ module.exports = {
   getAllPoAssignments,
   setInvoicePoAssignment,
   clearInvoicePoAssignment,
+  getAllInvoiceSiteOverrides,
+  setInvoiceSite,
   getAllInvoiceCollectors,
   setInvoiceCollector,
   clearInvoiceCollector,
