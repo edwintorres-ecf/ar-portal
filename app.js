@@ -1717,6 +1717,9 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     const snowOnly = req.query.snow === '1';
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
+    // Same per-user scoping as the on-screen data routes — a filtered user's
+    // export must match their screen, not the global picture.
+    invoices = applyUserFilter(invoices, req.session.user);
 
     // ONE grouping shared with the on-screen report (invoice-site attribution,
     // serviceType snow filter, placeholder/no-real-PO rows, site overrides) —
