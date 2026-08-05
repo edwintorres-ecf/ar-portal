@@ -1821,6 +1821,12 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     trow.getCell(10).font = { bold: true, size: 10, color: { argb: tot.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
 
     db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''} — ${list.length} sites`);
+    // Cloudflare caches .xlsx URLs at the edge BY DEFAULT — without no-store,
+    // every download re-serves the first generated file (observed 2026-08-05:
+    // stale exports with no origin hit / no audit row). Belt: no-store here;
+    // suspenders: the client also appends a &t= cache-buster.
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="ecf-po-funds-by-site-${mode}${snowOnly ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
     await wb.xlsx.write(res);

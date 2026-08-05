@@ -3938,8 +3938,11 @@ async function assignInvoiceSite(recordNo, invoiceId, currentSite) {
 
 // Server-rendered styled .xlsx (merged site cells + color coding, matches the
 // on-screen layout). Session cookie rides along on same-origin navigation.
+// The &t= cache-buster is REQUIRED: Cloudflare edge-caches .xlsx URLs by
+// default, so a stable URL re-serves the first generated file forever
+// (bit us 2026-08-05 — stale exports with no origin hit).
 function exportPendingBySiteXlsx() {
-  window.location.href = '/api/po/pending-by-site.xlsx?mode=' + encodeURIComponent(_pbsMode) + (_pbsSnowOnly ? '&snow=1' : '');
+  window.location.href = '/api/po/pending-by-site.xlsx?mode=' + encodeURIComponent(_pbsMode) + (_pbsSnowOnly ? '&snow=1' : '') + '&t=' + Date.now();
 }
 
 // % chip color-coded like the Excel PO tracker: red when negative/exhausted,
