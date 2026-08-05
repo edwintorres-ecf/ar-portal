@@ -976,8 +976,9 @@
     <h3>Reassign PO</h3>
     <div id="reassign-modal-info" style="font-size:13px;color:var(--gray-600);margin-bottom:8px;"></div>
     <label>Upload under PO</label>
-    <input id="reassign-po-input" type="text" placeholder="e.g. 2D-21933635" list="reassign-po-datalist" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;box-sizing:border-box">
+    <input id="reassign-po-input" type="text" placeholder="e.g. 2D-21933635" list="reassign-po-datalist" oninput="reassignRecompute()" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;box-sizing:border-box">
     <datalist id="reassign-po-datalist"></datalist>
+    <div id="reassign-po-capacity" style="font-size:12px;margin:8px 0;min-height:18px"></div>
     <label>Note (optional)</label>
     <input id="reassign-po-note" type="text" placeholder="e.g. original PO exhausted" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;box-sizing:border-box">
     <div style="display:flex;gap:8px;margin-top:16px">
@@ -3711,10 +3712,10 @@ function renderPoOrphans() {
 function openOrphanAssign(recordNo) {
   const o = (_poOrphans || []).find(x => x.recordNo === recordNo);
   if (!o) return;
-  openReassignModal({ recordNo: o.recordNo, invoiceId: o.invoiceId, poOnRecord: '', assignedPo: '', reassigned: false });
+  openReassignModal({ recordNo: o.recordNo, invoiceId: o.invoiceId, poOnRecord: '', assignedPo: '', reassigned: false, amount: o.amount });
   const sugg = (o.suggestedPos || [])[0];
   const input = document.getElementById('reassign-po-input');
-  if (sugg && input) input.value = sugg.poNumber;
+  if (sugg && input) { input.value = sugg.poNumber; reassignRecompute(); }
   const info = document.getElementById('reassign-modal-info');
   if (info) info.innerHTML = `${escHtml(o.invoiceId)} · ${fmt$(o.amount)} · no PO on record.${o.hasValidSite ? ` Site ${escHtml(o.site)}.` : ''} Assigning a PO moves it into Needs Upload for transmit.`;
 }
@@ -4698,7 +4699,7 @@ function renderPoNeedsUpload() {
       <td style="padding:10px 14px">${overageBadge}</td>
       <td style="padding:10px 14px;white-space:nowrap">
         ${inv.assignedPlaceholder ? `<button class="btn-sm" style="background:#fef3c7;color:#92400e;font-weight:600" title="Roll every invoice on placeholder ${escHtml(inv.assignedPo || inv.poOnRecord)} onto a real PO" onclick="openRollModal('${escHtml(inv.assignedPo || inv.poOnRecord)}')">↪ Roll all</button>` : ''}
-        <button class="btn-sm" onclick='openReassignModal(${JSON.stringify({recordNo: inv.recordNo, invoiceId: inv.invoiceId, poOnRecord: inv.poOnRecord, assignedPo: inv.assignedPo, reassigned: inv.reassigned})})'>${inv.reassigned ? 'Edit' : 'Reassign'}</button>
+        <button class="btn-sm" onclick='openReassignModal(${JSON.stringify({recordNo: inv.recordNo, invoiceId: inv.invoiceId, poOnRecord: inv.poOnRecord, assignedPo: inv.assignedPo, reassigned: inv.reassigned, amount: inv.amount})})'>${inv.reassigned ? 'Edit' : 'Reassign'}</button>
         <button class="btn-sm" onclick="previewEdi('${inv.recordNo}','${escHtml(inv.assignedPo || inv.poOnRecord || '')}')" title="Preview the EDI 810 that would be sent (dry run)">Preview EDI</button>
         <button class="btn-sm" style="background:var(--navy);color:#fff" onclick="previewEdi('${inv.recordNo}','${escHtml(inv.assignedPo || inv.poOnRecord || '')}')" title="Preview then transmit">Transmit</button>
       </td>
@@ -4746,6 +4747,29 @@ function openReassignModal(inv) {
   datalist.innerHTML = _poLedger.map(r => `<option value="${escHtml(r.poNumber)}">`).join('');
   document.getElementById('reassign-clear-btn').style.display = inv.reassigned ? '' : 'none';
   document.getElementById('reassign-po-modal').style.display = 'flex';
+  reassignRecompute();
+}
+
+// Live capacity preview for the Assign/Reassign modal — same idea as the roll
+// modal. Shows the target PO's Amazon-available and warns (but allows) when the
+// invoice doesn't fit. Added after AST-002121 ($314k) was assigned to a PO that
+// was 100% consumed and paid, silently inflating ORH3's pending.
+function reassignRecompute() {
+  const box = document.getElementById('reassign-po-capacity');
+  if (!box) return;
+  const po = document.getElementById('reassign-po-input').value.trim();
+  const amt = _reassignTarget && _reassignTarget.amount != null ? _reassignTarget.amount : null;
+  if (!po) { box.innerHTML = ''; return; }
+  const target = (_poLedger || []).find(r => r.poNumber === po);
+  if (!target) { box.innerHTML = `<span style="color:#d97706">⚠️ ${escHtml(po)} isn't in the ledger — capacity unknown.</span>`; return; }
+  const avail = target.available;
+  const srcTag = target.availableSource === 'amazon' ? 'Amazon live' : 'computed';
+  const closed = target.poStatus && target.poStatus !== 'OPEN_FOR_INVOICING';
+  if (closed) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⛔ ${escHtml(po)} is ${escHtml(target.poStatus)} on Amazon — submissions to it vanish.</span>`; return; }
+  if (avail == null) { box.innerHTML = `<span style="color:var(--gray-500)">${escHtml(po)} · site ${escHtml(target.siteCode || '?')} · remaining unknown.</span>`; return; }
+  if (avail <= 0) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⛔ ${escHtml(po)} has ${fmt$(avail)} remaining (${srcTag}) — fully consumed.</span>`; return; }
+  if (amt != null && amt > avail) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⚠️ Invoice ${fmt$(amt)} vs ${fmt$(avail)} remaining (${srcTag}) — short by ${fmt$(amt - avail)}.</span>`; return; }
+  box.innerHTML = `<span style="color:#16a34a">✓ ${escHtml(po)} · site ${escHtml(target.siteCode || '?')} · ${fmt$(avail)} remaining (${srcTag})${amt != null ? ` · fits ${fmt$(amt)}` : ''}.</span>`;
 }
 
 function closeReassignModal() {
@@ -4769,6 +4793,19 @@ async function saveReassignModal() {
   const note = document.getElementById('reassign-po-note').value.trim();
   const cErr = poAssignClientError(assignedPo, _reassignTarget.invoiceId);
   if (cErr) { alert(cErr); return; }
+  // Warn-but-allow on capacity (same policy as the roll modal): a $0-remaining
+  // or too-small PO gets an explicit confirm, not a silent accept.
+  const target = (_poLedger || []).find(r => r.poNumber === assignedPo);
+  if (target) {
+    const amt = _reassignTarget.amount != null ? _reassignTarget.amount : null;
+    if (target.poStatus && target.poStatus !== 'OPEN_FOR_INVOICING') {
+      if (!confirm(`${assignedPo} is ${target.poStatus} on Amazon — submissions to it vanish without an error. Assign anyway?`)) return;
+    } else if (target.available != null && target.available <= 0) {
+      if (!confirm(`${assignedPo} has ${fmt$(target.available)} remaining — fully consumed. Assign anyway?`)) return;
+    } else if (amt != null && target.available != null && amt > target.available) {
+      if (!confirm(`Invoice ${fmt$(amt)} vs ${fmt$(target.available)} remaining on ${assignedPo} (short ${fmt$(amt - target.available)}). Assign anyway?`)) return;
+    }
+  }
   try {
     await apiFetch('/api/po/reassign/' + encodeURIComponent(_reassignTarget.recordNo), {
       method: 'POST',
