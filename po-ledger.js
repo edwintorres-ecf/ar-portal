@@ -671,4 +671,53 @@ function getOrphanInvoices(invoices) {
   return orphans.sort((a, b) => (b.amount || 0) - (a.amount || 0));
 }
 
-module.exports = { getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices };
+/**
+ * Pending-by-Site grouping — the single source of truth shared by the on-screen
+ * report (renderPendingBySite mirrors this) and the Excel export. Two passes:
+ *  (1) capacity from the ledger (ceiling/consumed/available per site), with
+ *      per-PO pending ZEROED;
+ *  (2) pending recomputed from needs-upload, attributed to the INVOICE's own
+ *      site (override > valid ship-to > PO fallback — already resolved in
+ *      getNeedsUpload). This catches placeholder POs ("NEEDED KRB5") and
+ *      multi-site blanket POs the PO-site grouping mislabels.
+ * snowOnly filters ledger rows by serviceType==='snow' and pending invoices by
+ * their PO's serviceType — same rule as the screen toggle.
+ */
+function getPendingBySite(invoices, { snowOnly = false } = {}) {
+  const ledgerAll = getPoLedger(invoices);
+  const needsUpload = getNeedsUpload(invoices);
+  const ledgerRows = snowOnly ? ledgerAll.filter(r => r.serviceType === 'snow') : ledgerAll;
+  const ledgerByPo = {};
+  for (const r of ledgerAll) ledgerByPo[r.poNumber] = r;
+
+  const sites = {};
+  const ensureSite = (k) => (sites[k] = sites[k] || { site: k, count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [], poIndex: {} });
+
+  for (const r of ledgerRows) {
+    const s = ensureSite(r.siteCode || '(no site)');
+    s.consumed += r.consumed || 0;
+    if (r.ceilingAmount != null) { s.ceiling += r.ceilingAmount; s.anyCeiling = true; }
+    if (r.available != null) s.available = (s.available || 0) + r.available;
+    const row = { ...r, pendingUpload: 0, pendingUploadInvoiceCount: 0 };
+    s.poRows.push(row); s.poIndex[r.poNumber] = row;
+  }
+
+  for (const inv of needsUpload) {
+    const led = ledgerByPo[inv.assignedPo];
+    if (snowOnly && !(led && led.serviceType === 'snow')) continue;
+    const s = ensureSite(inv.siteCode || '(no site)');
+    s.count++; s.pending += inv.amount || 0;
+    let row = s.poIndex[inv.assignedPo];
+    if (!row) {
+      row = led
+        ? { ...led, pendingUpload: 0, pendingUploadInvoiceCount: 0 }
+        : { poNumber: inv.assignedPo, ceilingAmount: null, consumed: 0, available: null, poStatus: null, serviceType: null, isSnow: false, docUrl: null, docVersion: null, docRevised: false, pendingUpload: 0, pendingUploadInvoiceCount: 0, noRealPo: true };
+      s.poRows.push(row); s.poIndex[inv.assignedPo] = row;
+    }
+    row.pendingUpload += inv.amount || 0; row.pendingUploadInvoiceCount++;
+  }
+  for (const s of Object.values(sites)) delete s.poIndex;
+  return Object.values(sites);
+}
+
+module.exports = { getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };

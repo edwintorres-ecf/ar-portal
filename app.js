@@ -1713,29 +1713,25 @@ app.post('/api/po/:poNumber/service', requireAuth, requireRole('admin', 'manager
 app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
   try {
     const ExcelJS = require('exceljs');
-    const mode = req.query.mode || 'all';            // all | pending | spare
+    const mode = req.query.mode || 'all';            // all | pending | spare | unassigned
     const snowOnly = req.query.snow === '1';
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
-    let ledger = poLedger.getPoLedger(invoices);
-    if (snowOnly) ledger = ledger.filter(r => r.isSnow);
 
-    // Same grouping as the frontend report
-    const sites = {};
-    for (const r of ledger) {
-      const key = r.siteCode || 'Site unknown';
-      if (!sites[key]) sites[key] = { site: key, count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [] };
-      const s = sites[key];
-      s.count += r.pendingUploadInvoiceCount || 0;
-      s.pending += r.pendingUpload || 0;
-      s.consumed += r.consumed || 0;
-      if (r.ceilingAmount != null) { s.ceiling += r.ceilingAmount; s.anyCeiling = true; }
-      if (r.available != null) s.available = (s.available || 0) + r.available;
-      s.poRows.push(r);
-    }
-    let list = Object.values(sites);
+    // ONE grouping shared with the on-screen report (invoice-site attribution,
+    // serviceType snow filter, placeholder/no-real-PO rows, site overrides) —
+    // the export drifted when this logic lived in two places.
+    let list = poLedger.getPendingBySite(invoices, { snowOnly });
     if (mode === 'pending') list = list.filter(s => s.pending > 0);
     else if (mode === 'spare') list = list.filter(s => s.available != null && s.available > 0);
+    else if (mode === 'unassigned') {
+      list = list.filter(s => s.site === '(no site)');
+      for (const s of list) {
+        s.poRows = s.poRows.filter(r => r.poStatus === 'OPEN_FOR_INVOICING' || (r.available != null && r.available !== 0) || (r.pendingUpload || 0) > 0);
+        s.count = s.poRows.reduce((a, r) => a + (r.pendingUploadInvoiceCount || 0), 0);
+      }
+      list = list.filter(s => s.poRows.length);
+    }
     for (const s of list) s.poRows.sort((a, b) => (b.pendingUpload || 0) - (a.pendingUpload || 0) || (b.available || 0) - (a.available || 0));
     list.sort((a, b) => (b.pending - a.pending) || ((b.available ?? -Infinity) - (a.available ?? -Infinity)));
 
@@ -1773,7 +1769,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
       for (const r of s.poRows) {
         const remFrac = (r.available != null && r.ceilingAmount > 0) ? r.available / r.ceilingAmount : null;
         const row = ws.addRow([
-          '', r.poNumber + (r.isSnow ? ' ❄' : '') + (r.docRevised ? ` (v${r.docVersion})` : ''),
+          '', r.poNumber + (r.serviceType === 'snow' ? ' ❄' : '') + (r.noRealPo ? ' (no PO)' : '') + (r.docRevised ? ` (v${r.docVersion})` : ''),
           r.pendingUploadInvoiceCount || null,
           r.ceilingAmount, r.consumed || 0, r.pendingUpload || null,
           r.available, remFrac, '', '',
