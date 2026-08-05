@@ -4566,6 +4566,14 @@ function renderPoLedger() {
 }
 
 let _poNeedsUploadSiteFilter = '';
+let _poNeedsUploadSnowOnly = false;
+
+// Snow filter: an invoice is "snow" when its ASSIGNED PO's serviceType is snow
+// (manual service overrides honored) — same rule as the Pending by Site toggle.
+function togglePoNuSnow() {
+  _poNeedsUploadSnowOnly = !_poNeedsUploadSnowOnly;
+  renderPoNeedsUpload();
+}
 
 async function loadPoNeedsUpload() {
   const el = document.getElementById('po-needs-upload-content');
@@ -4679,9 +4687,13 @@ function renderPoNeedsUpload() {
     </div>`;
     return;
   }
-  const filtered = _poNeedsUploadSiteFilter
+  // Snow lookup once per render (assigned PO's serviceType, override-aware).
+  const snowByPo = {};
+  for (const r of (_poLedger || [])) snowByPo[r.poNumber] = r.serviceType === 'snow';
+  let filtered = _poNeedsUploadSiteFilter
     ? _poNeedsUpload.filter(inv => inv.siteCode === _poNeedsUploadSiteFilter)
     : _poNeedsUpload;
+  if (_poNeedsUploadSnowOnly) filtered = filtered.filter(inv => snowByPo[inv.assignedPo]);
   _poNeedsUploadFilteredIds = filtered.map(inv => inv.recordNo);
   _shownNeedsUpload = filtered;
   const allChecked = filtered.length && filtered.every(inv => _poNeedsUploadSelected.has(inv.recordNo));
@@ -4734,7 +4746,8 @@ function renderPoNeedsUpload() {
       <select onchange="setPoNeedsUploadSiteFilter(this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
         ${siteFilterOptions(_poNeedsUpload)}
       </select>
-      <span style="font-size:12px;color:var(--gray-500)">${filtered.length} invoice${filtered.length!==1?'s':''}</span>
+      <button class="cust-pill${_poNeedsUploadSnowOnly ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Only invoices whose assigned PO is a snow PO (manual service overrides honored)" onclick="togglePoNuSnow()">❄️ Snow only</button>
+      <span style="font-size:12px;color:var(--gray-500)">${filtered.length} invoice${filtered.length!==1?'s':''} · ${fmt$(filtered.reduce((s,x)=>s+(x.amount||0),0))}</span>
       ${exportBtn('exportNeedsUploadCsv')}
     </div>
     <div id="po-nu-bulk-bar" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;background:#f0f4f8;border:1px solid var(--gray-200);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px"></div>
