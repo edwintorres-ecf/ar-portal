@@ -54,6 +54,58 @@ function idemKey(recordNo, rule, daysOverdue) {
   return cyc == null ? `${recordNo}:${rule.id}` : `${recordNo}:${rule.id}:${cyc}`;
 }
 
+// Per-rule customer targeting: 'all' applies everywhere, 'only' restricts the
+// rule to the listed customers, 'except' applies to everyone but the listed.
+// (legacy exclude_customers is honored as an additional except-list.)
+function ruleTargetsCustomer(rule, customerId) {
+  const list = new Set(JSON.parse(rule.target_customers || '[]'));
+  const legacyExcl = new Set(JSON.parse(rule.exclude_customers || '[]'));
+  if (legacyExcl.has(customerId)) return false;
+  if (rule.target_mode === 'only') return list.has(customerId);
+  if (rule.target_mode === 'except') return !list.has(customerId);
+  return true;
+}
+
+// Live what-would-this-rule-hit-today calculator for the rule editor. Pure
+// read: cached invoices + contact readiness, no rows written. Amazon and
+// stop-service are reported, not silently dropped, so the editor can show WHY
+// the reachable number is smaller than the match number.
+function ruleImpact(f) {
+  const rule = {
+    trigger_days_past_due: parseInt(f.trigger_days_past_due, 10) || 0,
+    min_invoice_balance: parseFloat(f.min_invoice_balance) || 0,
+    billing_stream: f.billing_stream || 'all',
+    target_mode: f.target_mode || 'all',
+    target_customers: JSON.stringify(f.target_customers || []),
+    exclude_customers: null,
+  };
+  const invoices = sage.getCachedInvoices();
+  const byCustomer = new Map();
+  for (const inv of invoices) {
+    if (!inv.customerId || inv.totalDue <= 0) continue;
+    if (!ruleTargetsCustomer(rule, inv.customerId)) continue;
+    if (inv.daysOverdue < rule.trigger_days_past_due) continue;
+    if (inv.totalDue < rule.min_invoice_balance) continue;
+    if (rule.billing_stream !== 'all' && streamOf(inv.invoiceId) !== rule.billing_stream) continue;
+    if (!byCustomer.has(inv.customerId)) byCustomer.set(inv.customerId, []);
+    byCustomer.get(inv.customerId).push(inv);
+  }
+  const custAccounts = {};
+  for (const a of db.getAllCustomerAccounts()) custAccounts[a.customer_id] = a;
+  const out = { customers: 0, invoices: 0, totalDue: 0, reachable: 0, amazon: 0, stopService: 0, noContact: 0 };
+  for (const [customerId, invs] of byCustomer) {
+    out.customers++;
+    out.invoices += invs.length;
+    out.totalDue += invs.reduce((s, i) => s + i.totalDue, 0);
+    if (AMAZON_CUSTOMERS.has(customerId)) { out.amazon++; continue; }
+    const acct = custAccounts[customerId];
+    if (acct && acct.stop_service) { out.stopService++; continue; }
+    if (!dunningContacts(customerId).length) { out.noContact++; continue; }
+    out.reachable++;
+  }
+  return out;
+}
+
 function dunningContacts(customerId) {
   return db.listCustomerContacts(customerId)
     .filter(c => c.dunning_enabled && c.consent_email);
@@ -121,8 +173,7 @@ function generate({ triggeredBy } = {}) {
       // Highest-sequence rule (rules sorted DESC) with at least one raw match.
       let rule = null, matched = [];
       for (const r of rules) {
-        const excl = new Set(JSON.parse(r.exclude_customers || '[]'));
-        if (excl.has(customerId)) continue;
+        if (!ruleTargetsCustomer(r, customerId)) continue;
         matched = custInvoices.filter(i =>
           i.daysOverdue >= r.trigger_days_past_due &&
           i.totalDue >= (r.min_invoice_balance || 0) &&
@@ -271,4 +322,4 @@ function seedRules() {
   return defaults.length;
 }
 
-module.exports = { generate, execute, seedRules, armed, AMAZON_CUSTOMERS, streamOf, idemKey, cycleBucket };
+module.exports = { generate, execute, seedRules, armed, ruleImpact, ruleTargetsCustomer, AMAZON_CUSTOMERS, streamOf, idemKey, cycleBucket };

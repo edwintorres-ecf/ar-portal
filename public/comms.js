@@ -630,65 +630,309 @@ async function commsSetThreadStatus(id, status) {
   } catch (e) { alert('Update failed: ' + e.message); }
 }
 
-// ─── Dunning console (Deploy 7) ──────────────────────────────────────────────
-// Rules → Generate preview → review actions (skips show WHY) → Execute.
-// Execute is disabled until DUNNING_ARMED=1, and even then the comms allowlist
-// still gates every recipient while set.
+// ─── Dunning console (redesigned 2026-08-12) ─────────────────────────────────
+// Everything is data-driven: rules are created/edited/targeted in the editor
+// modal, never in code. Layout: stat tiles → escalation pipeline (rules as
+// stepper cards ordered by trigger day, click to edit) → run history.
+// Live impact preview shows what a rule would match against TODAY's invoices
+// before it is ever saved or activated.
+
+let _dunningCtx = null;   // { rules, templates, config, customers, editing }
+
+(function commsInjectDunningModal() {
+  const html = `
+<div id="dunning-rule-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)commsDunningCloseEditor()">
+  <div class="modal-box" style="width:680px;max-width:95vw;max-height:92vh;overflow-y:auto">
+    <h3 id="dunning-rule-title" style="margin-bottom:10px">Dunning rule</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="dr-name" placeholder="Rule name" style="flex:2;min-width:220px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:0 4px"><input type="checkbox" id="dr-active"> Active</label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="flex:1;min-width:130px;font-size:11.5px;color:var(--gray-500)">Triggers at (days past due)
+          <input id="dr-trigger" type="number" min="0" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px"></label>
+        <label style="flex:1;min-width:130px;font-size:11.5px;color:var(--gray-500)">Repeat every (days, blank = once)
+          <input id="dr-repeat" type="number" min="1" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px"></label>
+        <label style="flex:1;min-width:110px;font-size:11.5px;color:var(--gray-500)">Escalation order
+          <input id="dr-sequence" type="number" min="1" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="flex:1.4;min-width:170px;font-size:11.5px;color:var(--gray-500)">Email template
+          <select id="dr-template" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px"></select></label>
+        <label style="flex:1;min-width:130px;font-size:11.5px;color:var(--gray-500)">Billing stream
+          <select id="dr-stream" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px">
+            <option value="all">All (Sage + Omnia)</option>
+            <option value="sage">Sage only (ECI-)</option>
+            <option value="omnia">Omnia only (AST/ASTM/S-)</option>
+          </select></label>
+        <label style="flex:0.9;min-width:110px;font-size:11.5px;color:var(--gray-500)">Min invoice $
+          <input id="dr-minbal" type="number" min="0" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-top:3px"></label>
+      </div>
+
+      <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:6px">CUSTOMER TARGETING</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:5px"><input type="radio" name="dr-tmode" value="all" onchange="commsDunningTargetModeChanged()"> All customers</label>
+          <label style="display:flex;align-items:center;gap:5px"><input type="radio" name="dr-tmode" value="only" onchange="commsDunningTargetModeChanged()"> Only selected</label>
+          <label style="display:flex;align-items:center;gap:5px"><input type="radio" name="dr-tmode" value="except" onchange="commsDunningTargetModeChanged()"> All except selected</label>
+        </div>
+        <div id="dr-target-picker" style="display:none">
+          <div id="dr-target-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px"></div>
+          <input id="dr-target-search" placeholder="Search customers to add…" oninput="commsDunningRenderTargetList()"
+            style="width:100%;padding:7px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;margin-bottom:5px">
+          <div id="dr-target-list" style="max-height:150px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:8px"></div>
+        </div>
+      </div>
+
+      <div id="dr-impact" style="background:#f8fafc;border:1px solid var(--gray-100);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--gray-600)">
+        Impact preview loads as you edit…
+      </div>
+      <div style="font-size:11.5px;color:var(--gray-500)">Always excluded regardless of targeting: Amazon (EDI collections), stop-service customers, invoices with an open promise to pay, contacts not approved for dunning, and anything already sent this step.</div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:space-between;gap:8px;margin-top:12px">
+      <span id="dr-delete-wrap"></span>
+      <span style="display:flex;gap:8px">
+        <button class="btn-sm" style="background:#f1f5f9;border:none;padding:7px 14px;border-radius:8px;cursor:pointer" onclick="commsDunningCloseEditor()">Cancel</button>
+        <button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:7px 18px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsDunningSaveRule(this)">Save rule</button>
+      </span>
+    </div>
+  </div>
+</div>`;
+  if (document.body) document.body.insertAdjacentHTML('beforeend', html);
+  else document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('beforeend', html));
+})();
 
 async function commsLoadDunning() {
   const root = document.getElementById('comms-dunning-root');
   if (!root) return;
   root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
   try {
-    const [rules, runs, config, templates] = await Promise.all([
+    const [rules, runs, config, templates, customers, actionItems] = await Promise.all([
       apiFetch('/api/dunning/rules'),
       apiFetch('/api/dunning/runs'),
       apiFetch('/api/comms/config'),
       apiFetch('/api/comms/templates'),
+      apiFetch('/api/customers'),
+      apiFetch('/api/comms/action-items').catch(() => ({})),
     ]);
-    const isAdmin = commsUser() && commsUser().role === 'admin';
-    const isMgr = commsIsManager();
+    _dunningCtx = { rules, templates, config, customers, editing: null, targetSel: new Set() };
+
+    // Impact per rule, in parallel (small N)
+    const impacts = await Promise.all(rules.map(r => apiFetch('/api/dunning/rules/impact', {
+      method: 'POST',
+      body: JSON.stringify({
+        trigger_days_past_due: r.trigger_days_past_due, min_invoice_balance: r.min_invoice_balance,
+        billing_stream: r.billing_stream, target_mode: r.target_mode || 'all',
+        target_customers: JSON.parse(r.target_customers || '[]'),
+      }),
+    }).catch(() => null)));
+    rules.forEach((r, i) => r._impact = impacts[i]);
+
+    const activeRules = rules.filter(r => r.active);
+    const reachableNow = activeRules.length
+      ? activeRules.reduce((s, r) => Math.max(s, (r._impact && r._impact.reachable) || 0), 0) : 0;
+    const lastRun = runs[0];
+    const lastStats = lastRun && lastRun.stats_json ? JSON.parse(lastRun.stats_json) : null;
+
+    const tile = (num, label, sub) => `
+      <div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--gray-100);border-radius:12px;padding:14px 16px">
+        <div style="font-size:24px;font-weight:700;color:var(--navy);line-height:1.1">${num}</div>
+        <div style="font-size:12px;font-weight:600;color:var(--gray-600);margin-top:2px">${label}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--gray-500);margin-top:1px">${sub}</div>` : ''}
+      </div>`;
+
+    const sorted = [...rules].sort((a, b) => a.trigger_days_past_due - b.trigger_days_past_due || a.sequence - b.sequence);
+    const targetLabel = (r) => {
+      const n = JSON.parse(r.target_customers || '[]').length;
+      if (r.target_mode === 'only') return `🎯 ${n} customer${n === 1 ? '' : 's'} only`;
+      if (r.target_mode === 'except') return `🚫 all except ${n}`;
+      return '🌐 all customers';
+    };
+
     root.innerHTML = `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-        <span style="background:${config.dunningArmed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b91c1c'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${config.dunningArmed ? 'ARMED — live sends enabled' : 'UNARMED — preview only'}</span>
-        ${config.testMode ? '<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">TEST MODE — allowlist active</span>' : ''}
-        ${isMgr ? '<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsDunningGenerate(this)">▶ Generate preview run</button>' : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px">
+        ${tile(config.dunningArmed ? '🟢' : '🔒', config.dunningArmed ? 'Engine armed' : 'Engine unarmed', config.dunningArmed ? 'live sends enabled' : 'preview only — arming is the go-live step')}
+        ${tile(activeRules.length + '<span style="font-size:14px;color:var(--gray-400)">/' + rules.length + '</span>', 'Rules active', activeRules.length ? '' : 'activate rules to start matching')}
+        ${tile(String(reachableNow), 'Customers reachable now', 'match a rule + dunning-approved contact')}
+        ${tile(lastStats ? String(lastStats.digests || 0) : '—', 'Digests in last run', lastRun ? new Date((lastRun.started_at || '').replace(' ', 'T') + 'Z').toLocaleString() : 'no runs yet')}
+      </div>
+      ${config.testMode ? `<div style="background:#fef3c7;color:#92400e;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:600;margin-bottom:14px">🧪 TEST MODE — every send (including armed dunning runs) is restricted to the internal allowlist until it is cleared.</div>` : ''}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px">
+        <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em">Escalation pipeline</div>
+        ${commsIsManager() ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsDunningGenerate(this)">▶ Generate preview run</button>` : ''}
+      </div>
+      <div style="display:flex;gap:0;align-items:stretch;overflow-x:auto;padding-bottom:8px">
+        ${sorted.map((r, i) => `
+          ${i > 0 ? '<div style="align-self:center;color:var(--gray-300);font-size:18px;padding:0 2px">→</div>' : ''}
+          <div onclick="commsDunningOpenEditor(${r.id})" style="min-width:200px;max-width:230px;background:#fff;border:2px solid ${r.active ? 'var(--navy)' : 'var(--gray-200)'};border-radius:12px;padding:12px 14px;cursor:pointer;opacity:${r.active ? 1 : 0.62}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="background:${r.active ? 'var(--navy)' : 'var(--gray-200)'};color:${r.active ? '#fff' : 'var(--gray-600)'};padding:2px 9px;border-radius:9px;font-size:11px;font-weight:700">Day ${r.trigger_days_past_due}${r.repeat_every_days ? '+' : ''}</span>
+              <span style="font-size:10.5px;font-weight:700;color:${r.active ? '#15803d' : 'var(--gray-400)'}">${r.active ? '● ACTIVE' : '○ inactive'}</span>
+            </div>
+            <div style="font-weight:600;font-size:13px;line-height:1.25;margin-bottom:3px">${escHtml(r.name)}</div>
+            <div style="font-size:11px;color:var(--gray-500)">${escHtml(r.template_key)} · ${r.repeat_every_days ? 'every ' + r.repeat_every_days + 'd' : 'once'} · ${r.billing_stream === 'all' ? 'both streams' : r.billing_stream}</div>
+            <div style="font-size:11px;color:var(--gray-500);margin-top:2px">${targetLabel(r)}</div>
+            ${r._impact ? `<div style="border-top:1px solid var(--gray-100);margin-top:7px;padding-top:6px;font-size:11.5px;color:var(--gray-600)">
+              matches <strong>${r._impact.customers}</strong> cust · <strong>${r._impact.invoices}</strong> inv · <strong>$${Math.round(r._impact.totalDue).toLocaleString()}</strong>
+              <div style="color:${r._impact.reachable ? '#15803d' : 'var(--gray-400)'}">✉ ${r._impact.reachable} reachable now</div></div>` : ''}
+          </div>`).join('')}
+        ${commsIsManager() ? `
+          <div style="align-self:center;color:var(--gray-300);font-size:18px;padding:0 2px">${sorted.length ? '→' : ''}</div>
+          <div onclick="commsDunningOpenEditor(null)" style="min-width:130px;border:2px dashed var(--gray-200);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--gray-400);font-weight:600;font-size:13px;cursor:pointer;padding:12px">+ New rule</div>` : ''}
       </div>
 
-      <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Rules</div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
-        <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
-          <th style="padding:6px 10px">Active</th><th style="padding:6px 10px">Seq</th><th style="padding:6px 10px">Name</th>
-          <th style="padding:6px 10px">Trigger</th><th style="padding:6px 10px">Repeat</th><th style="padding:6px 10px">Template</th>
-          <th style="padding:6px 10px">Stream</th><th style="padding:6px 10px">Min $</th>
-        </tr></thead>
-        <tbody>${rules.map(r => `
-          <tr style="border-top:1px solid var(--gray-100)">
-            <td style="padding:7px 10px">${isAdmin
-              ? `<span style="cursor:pointer;font-size:16px" onclick="commsDunningToggleRule(${r.id}, ${r.active ? 0 : 1})">${r.active ? '🟢' : '⚪'}</span>`
-              : (r.active ? '🟢' : '⚪')}</td>
-            <td style="padding:7px 10px">${r.sequence}</td>
-            <td style="padding:7px 10px;font-weight:600">${escHtml(r.name)}</td>
-            <td style="padding:7px 10px">${r.trigger_days_past_due}d past due</td>
-            <td style="padding:7px 10px">${r.repeat_every_days ? 'every ' + r.repeat_every_days + 'd' : 'once'}</td>
-            <td style="padding:7px 10px"><code style="font-size:11.5px">${escHtml(r.template_key)}</code></td>
-            <td style="padding:7px 10px">${escHtml(r.billing_stream)}</td>
-            <td style="padding:7px 10px">$${r.min_invoice_balance || 0}</td>
-          </tr>`).join('')}</tbody>
-      </table>
-      <div style="font-size:11.5px;color:var(--gray-500);margin:-12px 0 16px">Amazon (C-00403, C-00566), stop-service customers, invoices with an open PTP, and contacts not approved for dunning are excluded automatically. Templates: ${templates.filter(t => t.kind === 'external').map(t => t.key).join(', ')}.</div>
-
-      <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Runs</div>
+      <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px">Run history</div>
       <div id="dunning-runs">${runs.length ? runs.map(r => `
-        <div style="border:1px solid var(--gray-200);border-radius:8px;padding:9px 12px;margin-bottom:6px;cursor:pointer" onclick="commsDunningOpenRun(${r.id})">
-          <strong>Run ${r.id}</strong> · ${escHtml(r.mode)} · ${escHtml(r.status)} · ${escHtml((r.started_at || '').slice(0, 16).replace('T', ' '))}
+        <div style="border:1px solid var(--gray-200);border-radius:10px;padding:10px 14px;margin-bottom:6px;cursor:pointer;background:#fff" onclick="commsDunningOpenRun(${r.id})">
+          <strong>Run ${r.id}</strong>
+          <span style="background:#f1f5f9;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;margin:0 4px">${escHtml(r.mode)}</span>
+          ${escHtml((r.started_at || '').slice(0, 16).replace('T', ' '))}
           <span style="font-size:12px;color:var(--gray-500)">by ${escHtml(r.triggered_by || '')}</span>
-          <span id="dunning-run-summary-${r.id}" style="font-size:12px;color:var(--gray-600)">${r.stats_json ? ' · ' + escHtml(commsDunningStatsLine(r.stats_json)) : ''}</span>
+          <span style="font-size:12px;color:var(--gray-600)">${r.stats_json ? ' · ' + escHtml(commsDunningStatsLine(r.stats_json)) : ''}</span>
         </div>`).join('') : '<div style="padding:14px;color:var(--gray-500);font-size:13px">No runs yet. Generate a preview to see exactly who would be emailed and why others are skipped.</div>'}</div>
       <div id="dunning-run-detail"></div>`;
   } catch (e) {
     root.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
+}
+
+// ─── Rule editor ─────────────────────────────────────────────────────────────
+function commsDunningOpenEditor(ruleId) {
+  if (!commsIsManager()) return;
+  const c = _dunningCtx;
+  const r = ruleId ? c.rules.find(x => x.id === ruleId) : null;
+  c.editing = r ? r.id : null;
+  c.targetSel = new Set(r ? JSON.parse(r.target_customers || '[]') : []);
+  document.getElementById('dunning-rule-modal').style.display = 'flex';
+  document.getElementById('dunning-rule-title').textContent = r ? '✎ ' + r.name : '+ New dunning rule';
+  document.getElementById('dr-name').value = r ? r.name : '';
+  document.getElementById('dr-active').checked = r ? !!r.active : false;
+  document.getElementById('dr-trigger').value = r ? r.trigger_days_past_due : 5;
+  document.getElementById('dr-repeat').value = r && r.repeat_every_days ? r.repeat_every_days : '';
+  document.getElementById('dr-sequence').value = r ? r.sequence : (Math.max(0, ...c.rules.map(x => x.sequence)) + 1);
+  document.getElementById('dr-minbal').value = r ? (r.min_invoice_balance || 0) : 50;
+  document.getElementById('dr-stream').value = r ? (r.billing_stream || 'all') : 'all';
+  const tsel = document.getElementById('dr-template');
+  tsel.innerHTML = c.templates.filter(t => t.kind === 'external' && t.active)
+    .map(t => `<option value="${escHtml(t.key)}">${escHtml(t.name || t.key)}</option>`).join('');
+  if (r) tsel.value = r.template_key;
+  const mode = r ? (r.target_mode || 'all') : 'all';
+  document.querySelectorAll('input[name="dr-tmode"]').forEach(x => { x.checked = x.value === mode; });
+  document.getElementById('dr-target-search').value = '';
+  document.getElementById('dr-delete-wrap').innerHTML = (r && commsUser() && commsUser().role === 'admin')
+    ? `<button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsDunningDeleteRule(${r.id})">Delete rule</button>` : '';
+  commsDunningTargetModeChanged();
+  // Recompute impact on any field edit
+  ['dr-trigger', 'dr-repeat', 'dr-minbal', 'dr-stream'].forEach(id => {
+    document.getElementById(id).oninput = commsDunningImpactDebounced;
+  });
+  commsDunningImpactDebounced();
+}
+
+function commsDunningCloseEditor() {
+  document.getElementById('dunning-rule-modal').style.display = 'none';
+  if (_dunningCtx) _dunningCtx.editing = null;
+}
+
+function commsDunningTargetMode() {
+  const el = document.querySelector('input[name="dr-tmode"]:checked');
+  return el ? el.value : 'all';
+}
+
+function commsDunningTargetModeChanged() {
+  document.getElementById('dr-target-picker').style.display = commsDunningTargetMode() === 'all' ? 'none' : '';
+  commsDunningRenderTargetChips();
+  commsDunningRenderTargetList();
+  commsDunningImpactDebounced();
+}
+
+function commsDunningRenderTargetChips() {
+  const c = _dunningCtx;
+  const wrap = document.getElementById('dr-target-chips');
+  const nameOf = (id) => (c.customers.find(x => x.id === id) || {}).name || id;
+  wrap.innerHTML = [...c.targetSel].map(id => `
+    <span style="background:#eff6ff;color:#1d4ed8;padding:3px 9px;border-radius:10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px">
+      ${escHtml(nameOf(id))}
+      <span style="cursor:pointer;font-weight:700" onclick="_dunningCtx.targetSel.delete('${escHtml(id)}');commsDunningRenderTargetChips();commsDunningRenderTargetList();commsDunningImpactDebounced()">✕</span>
+    </span>`).join('') || '<span style="font-size:11.5px;color:var(--gray-400)">no customers selected yet</span>';
+}
+
+function commsDunningRenderTargetList() {
+  const c = _dunningCtx;
+  const list = document.getElementById('dr-target-list');
+  const q = (document.getElementById('dr-target-search').value || '').toLowerCase();
+  const rows = c.customers
+    .filter(x => !c.targetSel.has(x.id) && (!q || x.name.toLowerCase().includes(q) || x.id.toLowerCase().includes(q)))
+    .slice(0, 40);
+  list.innerHTML = rows.length ? rows.map(x => `
+    <div style="padding:6px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--gray-100)"
+      onclick="_dunningCtx.targetSel.add('${escHtml(x.id)}');commsDunningRenderTargetChips();commsDunningRenderTargetList();commsDunningImpactDebounced()">
+      ${escHtml(x.name)} <span style="color:var(--gray-400)">${escHtml(x.id)}</span>
+    </div>`).join('')
+    : '<div style="padding:10px;font-size:12px;color:var(--gray-400)">no matches</div>';
+}
+
+let _dunningImpactTimer = null;
+function commsDunningImpactDebounced() {
+  clearTimeout(_dunningImpactTimer);
+  _dunningImpactTimer = setTimeout(commsDunningImpact, 350);
+}
+
+async function commsDunningImpact() {
+  const el = document.getElementById('dr-impact');
+  try {
+    const im = await apiFetch('/api/dunning/rules/impact', {
+      method: 'POST',
+      body: JSON.stringify({
+        trigger_days_past_due: document.getElementById('dr-trigger').value,
+        min_invoice_balance: document.getElementById('dr-minbal').value,
+        billing_stream: document.getElementById('dr-stream').value,
+        target_mode: commsDunningTargetMode(),
+        target_customers: [..._dunningCtx.targetSel],
+      }),
+    });
+    el.innerHTML = `As of today this rule matches <strong>${im.customers}</strong> customer(s) · <strong>${im.invoices}</strong> invoice(s) · <strong>$${Math.round(im.totalDue).toLocaleString()}</strong>.
+      <span style="color:${im.reachable ? '#15803d' : '#b45309'};font-weight:600">✉ ${im.reachable} would actually be emailed</span>
+      <span style="color:var(--gray-500)">(${[im.amazon ? im.amazon + ' Amazon' : '', im.stopService ? im.stopService + ' stop-service' : '', im.noContact ? im.noContact + ' without an approved contact' : ''].filter(Boolean).join(', ') || 'no holdouts'})</span>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`;
+  }
+}
+
+async function commsDunningSaveRule(btn) {
+  const c = _dunningCtx;
+  const body = {
+    id: c.editing || undefined,
+    name: document.getElementById('dr-name').value.trim(),
+    active: document.getElementById('dr-active').checked ? 1 : 0,
+    sequence: parseInt(document.getElementById('dr-sequence').value, 10) || 1,
+    trigger_days_past_due: parseInt(document.getElementById('dr-trigger').value, 10) || 0,
+    repeat_every_days: document.getElementById('dr-repeat').value ? parseInt(document.getElementById('dr-repeat').value, 10) : null,
+    template_key: document.getElementById('dr-template').value,
+    billing_stream: document.getElementById('dr-stream').value,
+    min_invoice_balance: parseFloat(document.getElementById('dr-minbal').value) || 0,
+    target_mode: commsDunningTargetMode(),
+    target_customers: [...c.targetSel],
+  };
+  if (!body.name) { alert('Give the rule a name.'); return; }
+  btn.disabled = true;
+  try {
+    await apiFetch('/api/dunning/rules', { method: 'POST', body: JSON.stringify(body) });
+    commsDunningCloseEditor();
+    commsLoadDunning();
+  } catch (e) { alert('Save failed: ' + e.message); }
+  btn.disabled = false;
+}
+
+async function commsDunningDeleteRule(id) {
+  if (!confirm('Delete this rule? Run history is kept; only the rule definition is removed.')) return;
+  try {
+    await apiFetch(`/api/dunning/rules/${id}`, { method: 'DELETE' });
+    commsDunningCloseEditor();
+    commsLoadDunning();
+  } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 function commsDunningStatsLine(statsJson) {
@@ -697,14 +941,6 @@ function commsDunningStatsLine(statsJson) {
     const skips = Object.entries(s.skipped || {}).map(([k, v]) => `${k}:${v}`).join(' ');
     return `${s.digests || 0} digests / ${s.eligible || 0} invoices${skips ? ' · skipped ' + skips : ''}`;
   } catch (e) { return ''; }
-}
-
-async function commsDunningToggleRule(id, active) {
-  if (active && !confirm('Activate this dunning rule? It will start matching invoices in preview runs (and live runs once armed).')) return;
-  try {
-    await apiFetch('/api/dunning/rules', { method: 'POST', body: JSON.stringify({ id, active }) });
-    commsLoadDunning();
-  } catch (e) { alert('Update failed: ' + e.message); }
 }
 
 async function commsDunningGenerate(btn) {
@@ -727,14 +963,14 @@ async function commsDunningOpenRun(runId) {
     const sendable = actions.filter(a => ['preview', 'approved'].includes(a.status));
     const reasonLabel = {
       amazon: 'Amazon — EDI collections', stop_service: 'Stop service', open_ptp: 'Open promise to pay',
-      no_contact: 'No dunning-approved contact', recent_send: `Emailed within gap window`, idempotent: 'Already sent this step', manual: 'Manually skipped',
+      no_contact: 'No dunning-approved contact', recent_send: 'Emailed within gap window', idempotent: 'Already sent this step', manual: 'Manually skipped',
     };
     el.innerHTML = `
       <div style="border-top:2px solid var(--gray-200);margin-top:14px;padding-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
           <strong>Run ${runId} — ${sendable.length} digest(s) ready, ${actions.length - sendable.length} skipped</strong>
           ${commsIsManager() && sendable.length ? `
-            <button class="btn-sm" style="background:${config.dunningArmed ? 'var(--navy)' : '#e2e8f0'};color:${config.dunningArmed ? '#fff' : '#94a3b8'};border:none;padding:6px 14px;border-radius:6px;cursor:${config.dunningArmed ? 'pointer' : 'not-allowed'};font-weight:600"
+            <button class="btn-sm" style="background:${config.dunningArmed ? 'var(--navy)' : '#e2e8f0'};color:${config.dunningArmed ? '#fff' : '#94a3b8'};border:none;padding:6px 14px;border-radius:8px;cursor:${config.dunningArmed ? 'pointer' : 'not-allowed'};font-weight:600"
               ${config.dunningArmed ? `onclick="commsDunningExecute(${runId}, this)"` : 'title="Requires DUNNING_ARMED=1 in .env (the go-live step)"'}>
               🚀 Execute run${config.dunningArmed ? '' : ' (unarmed)'}</button>` : ''}
         </div>
@@ -742,12 +978,12 @@ async function commsDunningOpenRun(runId) {
           const rns = JSON.parse(a.record_nos || '[]');
           const badge = a.status === 'preview' ? '#dbeafe;color:#1d4ed8' : a.status === 'sent' ? '#dcfce7;color:#15803d'
             : a.status === 'failed' ? '#fee2e2;color:#b91c1c' : '#f1f5f9;color:#64748b';
-          return `<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          return `<div style="border:1px solid var(--gray-200);border-radius:10px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#fff">
             <span><strong>${escHtml(a.customer_id)}</strong> · ${rns.length} invoice(s) <span style="font-size:11.5px;color:var(--gray-500)">${escHtml(rns.slice(0, 6).join(', '))}${rns.length > 6 ? '…' : ''}</span></span>
             <span style="display:flex;gap:6px;align-items:center">
               <span style="background:${badge};padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700">${escHtml(a.status)}</span>
               ${a.skip_reason ? `<span style="font-size:11.5px;color:var(--gray-500)">${escHtml(reasonLabel[a.skip_reason] || a.skip_reason)}</span>` : ''}
-              ${a.status === 'preview' && commsIsManager() ? `<button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsDunningSkipAction(${a.id}, ${runId})">Skip</button>` : ''}
+              ${a.status === 'preview' && commsIsManager() ? `<button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 9px;border-radius:6px;cursor:pointer;font-size:11px" onclick="commsDunningSkipAction(${a.id}, ${runId})">Skip</button>` : ''}
             </span>
           </div>`;
         }).join('')}

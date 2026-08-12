@@ -438,6 +438,13 @@ function initCommsSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_ds_record ON dunning_sent(record_no);
   `);
+
+  // Per-rule customer TARGETING (2026-08-12, Edwin): JSON array of customer
+  // ids. Combined with target_mode: 'all' (ignore list), 'only' (rule applies
+  // ONLY to listed customers), 'except' (applies to everyone BUT the listed).
+  // exclude_customers is retired in favor of mode 'except' but kept readable.
+  try { db.exec("ALTER TABLE dunning_rules ADD COLUMN target_mode TEXT DEFAULT 'all'"); } catch (e) {}
+  try { db.exec("ALTER TABLE dunning_rules ADD COLUMN target_customers TEXT DEFAULT NULL"); } catch (e) {}
 }
 
 // Pre-populate the existing hardcoded region definitions on first run so
@@ -1035,7 +1042,7 @@ function upsertDunningRule(id, f) {
   const d = getDb();
   if (id) {
     const sets = [], vals = [];
-    for (const k of ['name', 'active', 'sequence', 'trigger_days_past_due', 'repeat_every_days', 'template_key', 'billing_stream', 'min_invoice_balance', 'exclude_customers']) {
+    for (const k of ['name', 'active', 'sequence', 'trigger_days_past_due', 'repeat_every_days', 'template_key', 'billing_stream', 'min_invoice_balance', 'exclude_customers', 'target_mode', 'target_customers']) {
       if (f[k] !== undefined) { sets.push(`${k}=?`); vals.push(f[k]); }
     }
     if (!sets.length) return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(id);
@@ -1045,11 +1052,16 @@ function upsertDunningRule(id, f) {
     return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(id);
   }
   const r = d.prepare(`
-    INSERT INTO dunning_rules (name, active, sequence, trigger_days_past_due, repeat_every_days, template_key, billing_stream, min_invoice_balance, exclude_customers)
-    VALUES (?,?,?,?,?,?,?,?,?)
+    INSERT INTO dunning_rules (name, active, sequence, trigger_days_past_due, repeat_every_days, template_key, billing_stream, min_invoice_balance, exclude_customers, target_mode, target_customers)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)
   `).run(f.name, f.active ? 1 : 0, f.sequence, f.trigger_days_past_due, f.repeat_every_days ?? null,
-    f.template_key, f.billing_stream || 'all', f.min_invoice_balance ?? 0, f.exclude_customers ?? null);
+    f.template_key, f.billing_stream || 'all', f.min_invoice_balance ?? 0, f.exclude_customers ?? null,
+    f.target_mode || 'all', f.target_customers ?? null);
   return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(r.lastInsertRowid);
+}
+
+function deleteDunningRule(id) {
+  getDb().prepare('DELETE FROM dunning_rules WHERE id=?').run(id);
 }
 
 function createDunningRun(mode, triggeredBy) {
@@ -1515,6 +1527,7 @@ module.exports = {
   getMessagesForInvoice,
   listDunningRules,
   upsertDunningRule,
+  deleteDunningRule,
   createDunningRun,
   finishDunningRun,
   getDunningRun,

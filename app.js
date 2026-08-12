@@ -2448,9 +2448,9 @@ app.get('/api/dunning/rules', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/dunning/rules', requireAuth, requireRole('admin'), (req, res) => {
+app.post('/api/dunning/rules', requireAuth, requireRole('admin', 'manager'), (req, res) => {
   try {
-    const f = req.body || {};
+    const f = { ...req.body };
     if (!f.id && (!f.name || !f.template_key || f.trigger_days_past_due == null || f.sequence == null)) {
       return res.status(400).json({ error: 'name, sequence, trigger_days_past_due, template_key required' });
     }
@@ -2460,10 +2460,35 @@ app.post('/api/dunning/rules', requireAuth, requireRole('admin'), (req, res) => 
     if (f.billing_stream && !['all', 'sage', 'omnia'].includes(f.billing_stream)) {
       return res.status(400).json({ error: 'billing_stream must be all|sage|omnia' });
     }
+    if (f.target_mode && !['all', 'only', 'except'].includes(f.target_mode)) {
+      return res.status(400).json({ error: 'target_mode must be all|only|except' });
+    }
+    if (Array.isArray(f.target_customers)) f.target_customers = JSON.stringify(f.target_customers);
+    if (f.target_mode === 'only' && (!f.target_customers || f.target_customers === '[]')) {
+      return res.status(400).json({ error: 'Targeting "only specific customers" needs at least one customer' });
+    }
     const rule = db.upsertDunningRule(f.id || null, f);
-    db.auditLog(req.session.user.email, 'dunning_rule_save', null, `${rule.id} ${rule.name} active=${rule.active}`);
+    db.auditLog(req.session.user.email, 'dunning_rule_save', null,
+      `${rule.id} ${rule.name} active=${rule.active} target=${rule.target_mode}${rule.target_customers && rule.target_customers !== '[]' ? ':' + JSON.parse(rule.target_customers).length : ''}`);
     res.json(rule);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/dunning/rules/:id', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const rule = db.listDunningRules().find(r => r.id === parseInt(req.params.id, 10));
+    if (!rule) return res.status(404).json({ error: 'Not found' });
+    db.deleteDunningRule(rule.id);
+    db.auditLog(req.session.user.email, 'dunning_rule_delete', null, `${rule.id} ${rule.name}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Live impact preview for the rule editor: what would these parameters match
+// against TODAY's cached invoices. Read-only.
+app.post('/api/dunning/rules/impact', requireAuth, (req, res) => {
+  try { res.json(dunning.ruleImpact(req.body || {})); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/dunning/generate', requireAuth, requireRole('admin', 'manager'), (req, res) => {
