@@ -550,6 +550,151 @@ async function commsSetThreadStatus(id, status) {
   } catch (e) { alert('Update failed: ' + e.message); }
 }
 
+// ─── Dunning console (Deploy 7) ──────────────────────────────────────────────
+// Rules → Generate preview → review actions (skips show WHY) → Execute.
+// Execute is disabled until DUNNING_ARMED=1, and even then the comms allowlist
+// still gates every recipient while set.
+
+async function commsLoadDunning() {
+  const root = document.getElementById('comms-dunning-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [rules, runs, config, templates] = await Promise.all([
+      apiFetch('/api/dunning/rules'),
+      apiFetch('/api/dunning/runs'),
+      apiFetch('/api/comms/config'),
+      apiFetch('/api/comms/templates'),
+    ]);
+    const isAdmin = window.currentUser && window.currentUser.role === 'admin';
+    const isMgr = commsIsManager();
+    root.innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <span style="background:${config.dunningArmed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b91c1c'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${config.dunningArmed ? 'ARMED — live sends enabled' : 'UNARMED — preview only'}</span>
+        ${config.testMode ? '<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">TEST MODE — allowlist active</span>' : ''}
+        ${isMgr ? '<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsDunningGenerate(this)">▶ Generate preview run</button>' : ''}
+      </div>
+
+      <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Rules</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+        <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
+          <th style="padding:6px 10px">Active</th><th style="padding:6px 10px">Seq</th><th style="padding:6px 10px">Name</th>
+          <th style="padding:6px 10px">Trigger</th><th style="padding:6px 10px">Repeat</th><th style="padding:6px 10px">Template</th>
+          <th style="padding:6px 10px">Stream</th><th style="padding:6px 10px">Min $</th>
+        </tr></thead>
+        <tbody>${rules.map(r => `
+          <tr style="border-top:1px solid var(--gray-100)">
+            <td style="padding:7px 10px">${isAdmin
+              ? `<span style="cursor:pointer;font-size:16px" onclick="commsDunningToggleRule(${r.id}, ${r.active ? 0 : 1})">${r.active ? '🟢' : '⚪'}</span>`
+              : (r.active ? '🟢' : '⚪')}</td>
+            <td style="padding:7px 10px">${r.sequence}</td>
+            <td style="padding:7px 10px;font-weight:600">${escHtml(r.name)}</td>
+            <td style="padding:7px 10px">${r.trigger_days_past_due}d past due</td>
+            <td style="padding:7px 10px">${r.repeat_every_days ? 'every ' + r.repeat_every_days + 'd' : 'once'}</td>
+            <td style="padding:7px 10px"><code style="font-size:11.5px">${escHtml(r.template_key)}</code></td>
+            <td style="padding:7px 10px">${escHtml(r.billing_stream)}</td>
+            <td style="padding:7px 10px">$${r.min_invoice_balance || 0}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+      <div style="font-size:11.5px;color:var(--gray-500);margin:-12px 0 16px">Amazon (C-00403, C-00566), stop-service customers, invoices with an open PTP, and contacts not approved for dunning are excluded automatically. Templates: ${templates.filter(t => t.kind === 'external').map(t => t.key).join(', ')}.</div>
+
+      <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Runs</div>
+      <div id="dunning-runs">${runs.length ? runs.map(r => `
+        <div style="border:1px solid var(--gray-200);border-radius:8px;padding:9px 12px;margin-bottom:6px;cursor:pointer" onclick="commsDunningOpenRun(${r.id})">
+          <strong>Run ${r.id}</strong> · ${escHtml(r.mode)} · ${escHtml(r.status)} · ${escHtml((r.started_at || '').slice(0, 16).replace('T', ' '))}
+          <span style="font-size:12px;color:var(--gray-500)">by ${escHtml(r.triggered_by || '')}</span>
+          <span id="dunning-run-summary-${r.id}" style="font-size:12px;color:var(--gray-600)">${r.stats_json ? ' · ' + escHtml(commsDunningStatsLine(r.stats_json)) : ''}</span>
+        </div>`).join('') : '<div style="padding:14px;color:var(--gray-500);font-size:13px">No runs yet. Generate a preview to see exactly who would be emailed and why others are skipped.</div>'}</div>
+      <div id="dunning-run-detail"></div>`;
+  } catch (e) {
+    root.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+function commsDunningStatsLine(statsJson) {
+  try {
+    const s = JSON.parse(statsJson);
+    const skips = Object.entries(s.skipped || {}).map(([k, v]) => `${k}:${v}`).join(' ');
+    return `${s.digests || 0} digests / ${s.eligible || 0} invoices${skips ? ' · skipped ' + skips : ''}`;
+  } catch (e) { return ''; }
+}
+
+async function commsDunningToggleRule(id, active) {
+  if (active && !confirm('Activate this dunning rule? It will start matching invoices in preview runs (and live runs once armed).')) return;
+  try {
+    await apiFetch('/api/dunning/rules', { method: 'POST', body: JSON.stringify({ id, active }) });
+    commsLoadDunning();
+  } catch (e) { alert('Update failed: ' + e.message); }
+}
+
+async function commsDunningGenerate(btn) {
+  btn.disabled = true; btn.textContent = '▶ Generating…';
+  try {
+    const r = await apiFetch('/api/dunning/generate', { method: 'POST' });
+    await commsLoadDunning();
+    if (r.runId) commsDunningOpenRun(r.runId);
+  } catch (e) { alert('Generate failed: ' + e.message); }
+}
+
+async function commsDunningOpenRun(runId) {
+  const el = document.getElementById('dunning-run-detail');
+  el.innerHTML = '<div style="padding:14px;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [actions, config] = await Promise.all([
+      apiFetch(`/api/dunning/runs/${runId}/actions`),
+      apiFetch('/api/comms/config'),
+    ]);
+    const sendable = actions.filter(a => ['preview', 'approved'].includes(a.status));
+    const reasonLabel = {
+      amazon: 'Amazon — EDI collections', stop_service: 'Stop service', open_ptp: 'Open promise to pay',
+      no_contact: 'No dunning-approved contact', recent_send: `Emailed within gap window`, idempotent: 'Already sent this step', manual: 'Manually skipped',
+    };
+    el.innerHTML = `
+      <div style="border-top:2px solid var(--gray-200);margin-top:14px;padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <strong>Run ${runId} — ${sendable.length} digest(s) ready, ${actions.length - sendable.length} skipped</strong>
+          ${commsIsManager() && sendable.length ? `
+            <button class="btn-sm" style="background:${config.dunningArmed ? 'var(--navy)' : '#e2e8f0'};color:${config.dunningArmed ? '#fff' : '#94a3b8'};border:none;padding:6px 14px;border-radius:6px;cursor:${config.dunningArmed ? 'pointer' : 'not-allowed'};font-weight:600"
+              ${config.dunningArmed ? `onclick="commsDunningExecute(${runId}, this)"` : 'title="Requires DUNNING_ARMED=1 in .env (the go-live step)"'}>
+              🚀 Execute run${config.dunningArmed ? '' : ' (unarmed)'}</button>` : ''}
+        </div>
+        ${actions.map(a => {
+          const rns = JSON.parse(a.record_nos || '[]');
+          const badge = a.status === 'preview' ? '#dbeafe;color:#1d4ed8' : a.status === 'sent' ? '#dcfce7;color:#15803d'
+            : a.status === 'failed' ? '#fee2e2;color:#b91c1c' : '#f1f5f9;color:#64748b';
+          return `<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <span><strong>${escHtml(a.customer_id)}</strong> · ${rns.length} invoice(s) <span style="font-size:11.5px;color:var(--gray-500)">${escHtml(rns.slice(0, 6).join(', '))}${rns.length > 6 ? '…' : ''}</span></span>
+            <span style="display:flex;gap:6px;align-items:center">
+              <span style="background:${badge};padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700">${escHtml(a.status)}</span>
+              ${a.skip_reason ? `<span style="font-size:11.5px;color:var(--gray-500)">${escHtml(reasonLabel[a.skip_reason] || a.skip_reason)}</span>` : ''}
+              ${a.status === 'preview' && commsIsManager() ? `<button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsDunningSkipAction(${a.id}, ${runId})">Skip</button>` : ''}
+            </span>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsDunningSkipAction(id, runId) {
+  try {
+    await apiFetch(`/api/dunning/actions/${id}/skip`, { method: 'POST' });
+    commsDunningOpenRun(runId);
+  } catch (e) { alert('Skip failed: ' + e.message); }
+}
+
+async function commsDunningExecute(runId, btn) {
+  if (!confirm('Execute this dunning run? Every digest listed as ready will be emailed through the comms service (allowlist still applies while set).')) return;
+  btn.disabled = true; btn.textContent = '🚀 Executing…';
+  try {
+    const r = await apiFetch(`/api/dunning/runs/${runId}/execute`, { method: 'POST' });
+    alert(`Run complete.\nSent: ${r.sent}\nFailed: ${r.failed}\nRe-skipped: ${r.reskipped}`);
+    commsDunningOpenRun(runId);
+  } catch (e) { alert('Execute failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🚀 Execute run';
+}
+
 // ─── Invoice drawer: primary-contact line ────────────────────────────────────
 // Called by openDrawer after renderDrawer; inserts a compact line showing who
 // an email about this invoice would go to (Deploy 3 hangs the composer here).

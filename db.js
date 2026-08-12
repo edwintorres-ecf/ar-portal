@@ -1025,6 +1025,84 @@ function getMessagesForInvoice(recordNo) {
   `).all(recordNo);
 }
 
+// ─── Dunning rules / runs / actions / idempotency ledger ────────────────────
+
+function listDunningRules() {
+  return getDb().prepare('SELECT * FROM dunning_rules ORDER BY sequence ASC').all();
+}
+
+function upsertDunningRule(id, f) {
+  const d = getDb();
+  if (id) {
+    const sets = [], vals = [];
+    for (const k of ['name', 'active', 'sequence', 'trigger_days_past_due', 'repeat_every_days', 'template_key', 'billing_stream', 'min_invoice_balance', 'exclude_customers']) {
+      if (f[k] !== undefined) { sets.push(`${k}=?`); vals.push(f[k]); }
+    }
+    if (!sets.length) return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(id);
+    sets.push("updated_at=datetime('now')");
+    vals.push(id);
+    d.prepare(`UPDATE dunning_rules SET ${sets.join(',')} WHERE id=?`).run(...vals);
+    return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(id);
+  }
+  const r = d.prepare(`
+    INSERT INTO dunning_rules (name, active, sequence, trigger_days_past_due, repeat_every_days, template_key, billing_stream, min_invoice_balance, exclude_customers)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `).run(f.name, f.active ? 1 : 0, f.sequence, f.trigger_days_past_due, f.repeat_every_days ?? null,
+    f.template_key, f.billing_stream || 'all', f.min_invoice_balance ?? 0, f.exclude_customers ?? null);
+  return d.prepare('SELECT * FROM dunning_rules WHERE id=?').get(r.lastInsertRowid);
+}
+
+function createDunningRun(mode, triggeredBy) {
+  const d = getDb();
+  const r = d.prepare('INSERT INTO dunning_runs (mode, triggered_by) VALUES (?,?)').run(mode, triggeredBy || null);
+  return d.prepare('SELECT * FROM dunning_runs WHERE id=?').get(r.lastInsertRowid);
+}
+
+function finishDunningRun(id, status, statsJson, error) {
+  getDb().prepare("UPDATE dunning_runs SET finished_at=datetime('now'), status=?, stats_json=?, error=? WHERE id=?")
+    .run(status, statsJson || null, error || null, id);
+}
+
+function getDunningRun(id) {
+  return getDb().prepare('SELECT * FROM dunning_runs WHERE id=?').get(id) || null;
+}
+
+function listDunningRuns(limit = 30) {
+  return getDb().prepare('SELECT * FROM dunning_runs ORDER BY id DESC LIMIT ?').all(limit);
+}
+
+function insertDunningAction(f) {
+  const d = getDb();
+  const r = d.prepare(`
+    INSERT INTO dunning_actions (run_id, rule_id, customer_id, record_nos, status, skip_reason, message_id)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(f.run_id, f.rule_id, f.customer_id, f.record_nos, f.status || 'preview', f.skip_reason || null, f.message_id || null);
+  return d.prepare('SELECT * FROM dunning_actions WHERE id=?').get(r.lastInsertRowid);
+}
+
+function listDunningActions(runId) {
+  return getDb().prepare('SELECT * FROM dunning_actions WHERE run_id=? ORDER BY status ASC, customer_id ASC').all(runId);
+}
+
+function updateDunningAction(id, f) {
+  const sets = [], vals = [];
+  for (const k of ['status', 'skip_reason', 'message_id']) {
+    if (f[k] !== undefined) { sets.push(`${k}=?`); vals.push(f[k]); }
+  }
+  if (!sets.length) return;
+  vals.push(id);
+  getDb().prepare(`UPDATE dunning_actions SET ${sets.join(',')} WHERE id=?`).run(...vals);
+}
+
+function dunningSentExists(idemKey) {
+  return !!getDb().prepare('SELECT 1 FROM dunning_sent WHERE idem_key=?').get(idemKey);
+}
+
+function recordDunningSent(idemKey, recordNo, ruleId, messageId) {
+  getDb().prepare('INSERT OR IGNORE INTO dunning_sent (idem_key, record_no, rule_id, message_id) VALUES (?,?,?,?)')
+    .run(idemKey, recordNo, ruleId, messageId || null);
+}
+
 // ─── Comms state (kv: delta links, run locks, cursors) ─────────────────────
 
 function getCommState(key) {
@@ -1435,6 +1513,17 @@ module.exports = {
   getMessagesForConversation,
   tagMessageInvoices,
   getMessagesForInvoice,
+  listDunningRules,
+  upsertDunningRule,
+  createDunningRun,
+  finishDunningRun,
+  getDunningRun,
+  listDunningRuns,
+  insertDunningAction,
+  listDunningActions,
+  updateDunningAction,
+  dunningSentExists,
+  recordDunningSent,
   preProvisionUser,
   getUserRole,
   upsertUserRole,

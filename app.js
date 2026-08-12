@@ -2364,6 +2364,64 @@ app.post('/api/comms/triage/:id/dismiss', requireAuth, requireRole('admin', 'man
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Dunning engine (dunning.js) ────────────────────────────────────────
+// Preview-first, armed-gated. Executing a run live requires DUNNING_ARMED=1 in
+// .env (Edwin's step) AND still passes every send through the comms allowlist.
+const dunning = require('./dunning');
+
+app.get('/api/dunning/rules', requireAuth, (req, res) => {
+  try { res.json(db.listDunningRules()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/dunning/rules', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const f = req.body || {};
+    if (!f.id && (!f.name || !f.template_key || f.trigger_days_past_due == null || f.sequence == null)) {
+      return res.status(400).json({ error: 'name, sequence, trigger_days_past_due, template_key required' });
+    }
+    if (f.template_key && !db.getTemplateByKey(f.template_key)) {
+      return res.status(400).json({ error: `Unknown template: ${f.template_key}` });
+    }
+    if (f.billing_stream && !['all', 'sage', 'omnia'].includes(f.billing_stream)) {
+      return res.status(400).json({ error: 'billing_stream must be all|sage|omnia' });
+    }
+    const rule = db.upsertDunningRule(f.id || null, f);
+    db.auditLog(req.session.user.email, 'dunning_rule_save', null, `${rule.id} ${rule.name} active=${rule.active}`);
+    res.json(rule);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/dunning/generate', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+  try { res.json(dunning.generate({ triggeredBy: req.session.user.email })); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/dunning/runs', requireAuth, (req, res) => {
+  try { res.json(db.listDunningRuns()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/dunning/runs/:id/actions', requireAuth, (req, res) => {
+  try { res.json(db.listDunningActions(parseInt(req.params.id, 10))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/dunning/actions/:id/skip', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+  try {
+    db.updateDunningAction(parseInt(req.params.id, 10), { status: 'skipped', skip_reason: 'manual' });
+    db.auditLog(req.session.user.email, 'dunning_skip', null, `action=${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/dunning/runs/:id/execute', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const result = await dunning.execute(parseInt(req.params.id, 10), { actorEmail: commsRealActor(req) });
+    res.json(result);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.post('/api/comms/conversations/:id/status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
   try {
     const { status, assignEmail } = req.body;
@@ -2938,6 +2996,23 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     .catch(e => console.warn(`[comms-inbound] poll error: ${e.message}`));
   setTimeout(doInboundPoll, 60 * 1000);
   setInterval(doInboundPoll, 2 * 60 * 1000);
+
+  // Dunning scheduler: weekdays 09:05 ET it GENERATES A PREVIEW run (never
+  // sends). Humans review and execute from the console; live sends are gated
+  // by DUNNING_ARMED and the comms allowlist. Seed rules ship inactive.
+  try { dunning.seedRules(); } catch (e) { console.warn(`[dunning] rule seed failed: ${e.message}`); }
+  setInterval(() => {
+    try {
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      if (now.getDay() === 0 || now.getDay() === 6) return;
+      if (now.getHours() !== 9 || now.getMinutes() > 30) return;
+      const today = now.toISOString().slice(0, 10);
+      if (db.getCommState('dunning_last_auto') === today) return;
+      db.setCommState('dunning_last_auto', today);
+      const r = dunning.generate({ triggeredBy: 'scheduler' });
+      console.log(`[dunning] scheduled preview run ${r.runId}: ${r.digests || 0} digests`);
+    } catch (e) { console.warn(`[dunning] scheduled preview failed: ${e.message}`); }
+  }, 15 * 60 * 1000);
 
   // Customer-contact sync from Intacct DISPLAYCONTACT — contacts change slowly;
   // startup pass (delayed 2 min so it never competes with the invoice

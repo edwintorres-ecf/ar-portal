@@ -512,6 +512,7 @@
       <div class="nav-group-menu">
         <div class="nav-drop-item" data-view="comms-mailbox" onclick="navGo('comms-mailbox')">📬 AR Mailbox</div>
         <div class="nav-drop-item" data-view="comms-triage" onclick="navGo('comms-triage')">🚨 Triage</div>
+        <div class="nav-drop-item" data-view="comms-dunning" onclick="navGo('comms-dunning')">🔁 Dunning</div>
       </div>
     </div>
 
@@ -858,6 +859,10 @@
 
 <div id="view-comms-triage" class="view">
   <div id="comms-triage-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+</div>
+
+<div id="view-comms-dunning" class="view">
+  <div id="comms-dunning-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
 </div>
 
 <div id="view-activity" class="view">
@@ -2234,7 +2239,7 @@ const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
   'customers': 'accounts', 'amazon': 'accounts',
   'reports': 'insights', 'activity': 'insights',
-  'comms-mailbox': 'comms', 'comms-triage': 'comms',
+  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms',
   'admin': 'admin',
 };
 
@@ -2269,6 +2274,7 @@ function switchView(name, el) {
   if (name === 'po-funds' && typeof loadPoFunds === 'function') { loadPoFunds(); }
   if (name === 'comms-mailbox' && typeof commsLoadMailbox === 'function') { commsLoadMailbox(); }
   if (name === 'comms-triage' && typeof commsLoadTriage === 'function') { commsLoadTriage(); }
+  if (name === 'comms-dunning' && typeof commsLoadDunning === 'function') { commsLoadDunning(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5548,6 +5554,6 @@ function openStatement(customerId) {
 
 
 </script>
-<script src="/comms.js?v=20260811c"></script>
+<script src="/comms.js?v=20260811d"></script>
 </body>
 </html>
