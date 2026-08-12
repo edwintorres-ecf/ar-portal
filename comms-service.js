@@ -456,10 +456,18 @@ async function sendMessage(opts) {
         } catch (e) { /* stale id — try to re-resolve below */ }
         if (anchor.internet_message_id) {
           try {
-            const q = encodeURIComponent(`internetMessageId eq '${anchor.internet_message_id}'`);
-            const found = await graph.gGet(`/users/${mb}/messages?$filter=${q}&$select=id&$top=1`);
-            const liveId = found.value && found.value[0] && found.value[0].id;
-            if (liveId && liveId !== anchor.graph_message_id) {
+            // A message sent moments ago is briefly in transit — not yet
+            // queryable in Sent Items — so poll for it for a few seconds
+            // before falling to an older anchor.
+            let liveId = null;
+            for (let attempt = 0; attempt < 4 && !liveId; attempt++) {
+              if (attempt) await new Promise(r => setTimeout(r, 1500));
+              const q = encodeURIComponent(`internetMessageId eq '${anchor.internet_message_id}'`);
+              const found = await graph.gGet(`/users/${mb}/messages?$filter=${q}&$select=id&$top=1`);
+              liveId = (found.value && found.value[0] && found.value[0].id) || null;
+              if (liveId === anchor.graph_message_id) liveId = null;   // same dead id — keep waiting
+            }
+            if (liveId) {
               try { db.getDb().prepare('UPDATE messages SET graph_message_id=? WHERE id=?').run(liveId, anchor.id); } catch (e2) { /* unique clash */ }
               replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(liveId)}/createReply`);
               break;
