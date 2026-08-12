@@ -2493,6 +2493,80 @@ app.post('/api/dunning/rules/impact', requireAuth, (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ─── API: Overview dashboard (emulates the reconciliation platform's home) ───
+// Service-center code from a location name by initials: "Baltimore Service
+// Center" -> BSC, "South Chicago Service Center" -> SCSC. Matches the temp
+// platform's chip codes for the common cases; unknowns render neutral.
+function scCodeFromLocation(name) {
+  const words = String(name || '').replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const code = words.map(w => w[0].toUpperCase()).join('');
+  return code.length >= 2 && code.length <= 4 ? code : null;
+}
+
+app.get('/api/overview', requireAuth, async (req, res) => {
+  try {
+    const user = req.session.user;
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, user);
+
+    const csMap = db.getAllCollectionStatuses();
+    const buckets = { '1-30': 0, '31-60': 0, '61-90': 0, '91-180': 0, '181+': 0 };
+    let totalAR = 0, pastDueAR = 0, pastDueCount = 0, oldest = 0, sentToLegal = 0;
+    const custs = new Map();
+    const locs = new Set();
+    const userScs = new Set();
+
+    for (const inv of invoices) {
+      totalAR += inv.totalDue;
+      if (inv.locationId) locs.add(inv.locationId);
+      const sc = scCodeFromLocation(inv.locationName);
+      if (sc) userScs.add(sc);
+      const d = inv.daysOverdue || 0;
+      if (d > oldest) oldest = d;
+      const cs = csMap[inv.recordNo];
+      if (cs && cs.status === 'Sent to Legal') sentToLegal += inv.totalDue;
+      if (d >= 1) {
+        pastDueAR += inv.totalDue;
+        pastDueCount++;
+        if (d <= 30) buckets['1-30'] += inv.totalDue;
+        else if (d <= 60) buckets['31-60'] += inv.totalDue;
+        else if (d <= 90) buckets['61-90'] += inv.totalDue;
+        else if (d <= 180) buckets['91-180'] += inv.totalDue;
+        else buckets['181+'] += inv.totalDue;
+      }
+      let c = custs.get(inv.customerId);
+      if (!c) { c = { id: inv.customerId, name: inv.customerName, invoices: 0, pastDue: 0, oldest: 0, scs: new Set() }; custs.set(inv.customerId, c); }
+      c.invoices++;
+      if (d >= 1) c.pastDue += inv.totalDue;
+      if (d > c.oldest) c.oldest = d;
+      if (sc) c.scs.add(sc);
+    }
+
+    const top10 = [...custs.values()]
+      .filter(c => c.pastDue > 0)
+      .sort((a, b) => b.pastDue - a.pastDue)
+      .slice(0, 10)
+      .map(c => ({ ...c, scs: [...c.scs].sort().slice(0, 10) }));
+
+    res.json({
+      role: user.role,
+      serviceCenters: [...userScs].sort(),
+      totalAR, openInvoices: invoices.length,
+      pastDueAR, pastDueCount,
+      currentAR: totalAR - pastDueAR,
+      customers: custs.size, locations: locs.size,
+      oldestDays: oldest,
+      buckets,
+      sentToLegal,
+      pctPastDue: totalAR > 0 ? Math.round((pastDueAR / totalAR) * 100) : 0,
+      top10,
+      sageCacheAgeMin: Math.round((sage.getCacheAge() || 0) / 60000),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Collection status (emulation of the reconciliation platform) ───────
 // Assigned collector sets the status; AR staff can change/update after.
 const COLLECTION_STATUSES = ['Open', 'In Progress', 'HOF Support Required', 'Resubmit Requested',

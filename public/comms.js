@@ -482,6 +482,96 @@ function commsUpdateTriageBadge(count) {
   else b.style.display = 'none';
 }
 
+// ─── Overview dashboard (Phase 2 — their home screen, live data) ─────────────
+
+function commsAgePillClass(days) {
+  if (days <= 30) return 'age-low';
+  if (days <= 60) return 'age-mid';
+  if (days <= 90) return 'age-high';
+  return 'age-severe';
+}
+
+function commsScChips(codes) {
+  const KNOWN = ['ASC','BSC','BTSC','CTSC','FC','HSC','HTSC','SCSC','SSC','TSC'];
+  return (codes || []).map(c =>
+    `<span class="sc-chip ${KNOWN.includes(c) ? 'sc-' + c : 'sc-unknown'}">${escHtml(c)}</span>`).join(' ');
+}
+
+async function commsLoadOverview() {
+  const root = document.getElementById('overview-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const o = await apiFetch('/api/overview');
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const tile = (label, value, sub, accent) => `
+      <div style="flex:1;min-width:200px;background:#fff;border:1px solid var(--line,#e7e1d4);${accent ? 'border-left:4px solid ' + accent + ';' : ''}border-radius:14px;padding:16px 18px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:#6b6458;text-transform:uppercase">${label}</div>
+        <div style="font-size:26px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums">${value}</div>
+        <div style="font-size:12px;color:#6b6458;margin-top:2px">${sub}</div>
+      </div>`;
+    const maxBucket = Math.max(1, ...Object.values(o.buckets));
+    const barColor = { '1-30': '#e8b93c', '31-60': '#e0862f', '61-90': '#d64530', '91-180': '#a02020', '181+': '#7a1a1a' };
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 2px">AR Dashboard</h1>
+      <div style="font-size:12.5px;color:#6b6458;margin-bottom:16px">Role: ${escHtml(o.role)} · Service centers: ${commsScChips(o.serviceCenters)}</div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        ${tile('Total AR', fmt$(o.totalAR), o.openInvoices.toLocaleString() + ' open invoices', '#3763a0')}
+        ${tile('Past Due AR', fmt$(o.pastDueAR), o.pastDueCount.toLocaleString() + ' past due invoices', '#b32020')}
+        ${tile('Current AR', fmt$(o.currentAR), 'Not currently past due', '#3f7238')}
+        ${tile('Customers', o.customers.toLocaleString(), o.locations.toLocaleString() + ' locations', null)}
+        ${tile('Oldest Still Open', o.oldestDays + 'd', 'days past due', null)}
+      </div>
+
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+        <div style="flex:1.4;min-width:380px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 20px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <div style="font-size:16px;font-weight:700">Aging Breakdown</div>
+            <div style="font-size:11.5px;color:#6b6458">Remaining past-due dollars by bucket</div>
+          </div>
+          ${Object.entries(o.buckets).map(([k, v]) => `
+            <div style="margin-bottom:11px">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
+                <span>${k} days</span><span style="font-variant-numeric:tabular-nums">${fmt$(v)}</span>
+              </div>
+              <div style="height:7px;background:#f1ede3;border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:${Math.max(1, Math.round((v / maxBucket) * 100))}%;background:${barColor[k]};border-radius:4px"></div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div style="flex:1;min-width:280px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 20px">
+          <div style="font-size:16px;font-weight:700;margin-bottom:12px">Quick Stats</div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid #f1ede3"><span style="color:#6b6458">Total AR (visible)</span><span style="font-variant-numeric:tabular-nums;font-weight:600">${fmt$(o.totalAR)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid #f1ede3"><span style="color:#6b6458">Sent to legal</span><span style="font-variant-numeric:tabular-nums;font-weight:600">${fmt$(o.sentToLegal)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;padding:7px 0"><span style="color:#6b6458">% past due</span><span style="font-variant-numeric:tabular-nums;font-weight:600">${o.pctPastDue}%</span></div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 20px">
+        <div style="font-size:16px;font-weight:700">Top 10 past-due customers</div>
+        <div style="font-size:11.5px;color:#6b6458;margin-bottom:10px">Ranked by remaining past-due balance</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+            <th style="padding:7px 10px">Customer</th><th style="padding:7px 10px">SC</th>
+            <th style="padding:7px 10px;text-align:right">Invoices</th><th style="padding:7px 10px">Oldest</th>
+            <th style="padding:7px 10px;text-align:right">Past Due Balance</th>
+          </tr></thead>
+          <tbody>${o.top10.map(c => `
+            <tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="filterByCustomer('${escHtml(c.id)}')">
+              <td style="padding:9px 10px"><div style="font-weight:600">${escHtml(c.name)}</div><div style="font-size:11px;color:#6b6458">${escHtml(c.id)}</div></td>
+              <td style="padding:9px 10px">${commsScChips(c.scs)}</td>
+              <td style="padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums">${c.invoices.toLocaleString()}</td>
+              <td style="padding:9px 10px"><span class="age-pill ${commsAgePillClass(c.oldest)}">${c.oldest}d</span></td>
+              <td style="padding:9px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">${fmt$(c.pastDue)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
 // ─── Collection status (drawer control; collector sets, AR updates) ──────────
 
 let _csVocab = null;
@@ -595,6 +685,12 @@ async function commsUpdateFooter() {
     if (el && c.sageCacheAgeMin != null) el.textContent = ` · Sage synced ${c.sageCacheAgeMin}m ago`;
   } catch (e) { /* quiet */ }
 }
+
+// First paint: the overview is the landing view; load it once the shell is up.
+setTimeout(() => {
+  const v = document.getElementById('view-overview');
+  if (v && v.classList.contains('active')) commsLoadOverview();
+}, 900);
 
 // Badge refresher: the Comms nav badge is the "you have action items" signal
 // on every screen — replies awaiting response + triage, with a breakdown in
