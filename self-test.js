@@ -57,11 +57,25 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (exceptions.length) throw new Error(`${exceptions.length} transmitted invoice(s) missing from Payee past grace: ${exceptions.slice(0, 5).map(x => x.invoiceId).join(', ')}`);
     return duplicates.length ? `no vanished submissions (${duplicates.length} duplicate-send records on watch)` : 'clean';
   });
-  // 6. Smoke test (routes + modules + headless render)
+  // 6. Comms platform: inbound poller alive, no failed sends, dunning clean
+  check('comms-platform', () => {
+    if (!process.env.AR_MAILBOX) return 'AR_MAILBOX unset — comms checks skipped';
+    const last = db.getCommState('inbound_last_poll');
+    if (!last) throw new Error('inbound poller has never run');
+    const ageMin = (Date.now() - Date.parse(last)) / 60000;
+    if (ageMin > 30) throw new Error(`inbound poll ${ageMin.toFixed(0)}m ago (poller wedged?)`);
+    const failed = db.get("SELECT COUNT(*) AS c FROM messages WHERE status='failed' AND created_at > datetime('now','-24 hours')").c;
+    if (failed) throw new Error(`${failed} failed outbound message(s) in 24h`);
+    const badRuns = db.get("SELECT COUNT(*) AS c FROM dunning_runs WHERE (status='running' AND started_at < datetime('now','-2 hours')) OR (error IS NOT NULL AND started_at > datetime('now','-24 hours'))").c;
+    if (badRuns) throw new Error(`${badRuns} stuck/errored dunning run(s)`);
+    const triage = db.get("SELECT COUNT(*) AS c FROM conversations WHERE status='triage'").c;
+    return `poll ${ageMin.toFixed(0)}m ago, 0 failed sends, dunning clean${triage ? `, ${triage} in triage` : ''}`;
+  });
+  // 7. Smoke test (routes + modules + headless render)
   check('smoke-test', () => {
     execSync('node ' + __dirname + '/smoke-test.js', { timeout: 180000 });
   });
-  // 7. Disk space
+  // 8. Disk space
   check('disk-space', () => {
     const pct = parseInt(sh("df --output=pcent / | tail -1").replace('%', ''), 10);
     if (pct > 90) throw new Error(`root filesystem at ${pct}%`);

@@ -560,8 +560,8 @@ async function commsLoadCustomerPage() {
       </div>`;
     // Attachments block reuses the shared loader, retargeted at this container
     const att = document.getElementById('custpage-attachments');
-    att.innerHTML = '<div id="contacts-attachments" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:4px 16px 12px"></div>';
-    commsLoadAttachments(c.id);
+    att.innerHTML = '<div id="custpage-attachments-inner" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:4px 16px 12px"></div>';
+    commsLoadAttachments(c.id, 'custpage-attachments-inner');
   } catch (e) {
     root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
@@ -977,8 +977,8 @@ async function commsSetCollectionStatus(recordNo, status, sel) {
 
 // ─── Customer attachments (in the customer hub modal) ────────────────────────
 
-async function commsLoadAttachments(customerId) {
-  const wrap = document.getElementById('contacts-attachments');
+async function commsLoadAttachments(customerId, containerId) {
+  const wrap = document.getElementById(containerId || 'contacts-attachments');
   if (!wrap) return;
   try {
     const files = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/attachments`);
@@ -1019,7 +1019,7 @@ async function commsUploadAttachment(customerId, btn) {
       method: 'POST',
       body: JSON.stringify({ filename: file.name, contentType: file.type, dataBase64 }),
     });
-    commsLoadAttachments(customerId);
+    commsLoadAttachments(customerId, document.getElementById('custpage-attachments-inner') ? 'custpage-attachments-inner' : undefined);
   } catch (e) { alert('Upload failed: ' + e.message); }
   btn.disabled = false; btn.textContent = 'Upload';
 }
@@ -1028,7 +1028,7 @@ async function commsRemoveAttachment(id, customerId) {
   if (!confirm('Remove this attachment from the list? The file is archived, not destroyed.')) return;
   try {
     await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
-    commsLoadAttachments(customerId);
+    commsLoadAttachments(customerId, document.getElementById('custpage-attachments-inner') ? 'custpage-attachments-inner' : undefined);
   } catch (e) { alert('Failed: ' + e.message); }
 }
 

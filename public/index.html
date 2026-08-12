@@ -553,7 +553,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       </div>
     </div>
 
-    <div class="nav-tab" data-view="po-funds" onclick="navGo('po-funds')">💵 PO Funds</div>
+    <div class="nav-tab" data-view="po-funds" onclick="navGo('po-funds')">🟠 Amazon PO Manager</div>
 
     <div class="nav-group" data-group="comms">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'comms')">Comms<span class="caret">▾</span><span id="triage-badge" style="display:none;background:#dc2626;color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:5px"></span></div>
@@ -822,7 +822,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 <div id="view-po-funds" class="view">
   <div style="padding:20px 24px;max-width:1300px;margin:0 auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0;">💵 PO Funds</h2>
+      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0;">💵 Amazon PO Manager</h2>
       <div style="display:flex;align-items:center;gap:12px;">
         <span id="po-funds-count" style="font-size:12px;color:var(--gray-500);"></span>
         <button class="btn-create-invoice" id="btn-add-po" style="display:none" onclick="openPoForm()">+ Add PO</button>
@@ -1778,7 +1778,7 @@ function renderDrawer(data) {
         ${payeeStatus.entryDate ? `<div class="detail-item"><label>Entry Date</label><span>${escHtml(payeeStatus.entryDate)}</span></div>` : ''}
         ${payeeStatus.amount != null ? `<div class="detail-item"><label>Payee Amount</label><span>${fmt$(payeeStatus.amount)}</span></div>` : ''}
       </div>
-      ${['Insufficient PO Funds Hold','Pending Goods Receipt Hold','Rejected'].includes(payeeStatus.status) ? `
+      ${['Insufficient Amazon PO Manager Hold','Pending Goods Receipt Hold','Rejected'].includes(payeeStatus.status) ? `
       <div style="margin-top:10px;padding:10px 12px;background:${payeeStatus.statusMeta.bg};border-radius:6px;font-size:13px;color:${payeeStatus.statusMeta.color};font-weight:600">
         ${payeeStatus.statusMeta.icon} This invoice is on hold in Amazon Payee Central. Action may be required.
       </div>` : ''}
@@ -2054,7 +2054,7 @@ function matchesAiFilter(inv) {
   if (f.hasPTP === true && !inv.ptpActive) return false;
   if (f.hasPTP === false && inv.ptpActive) return false;
   if (f.stopService && !inv.stopService) return false;
-  if (f.onHold) { const ps = payeeIndex[toPayeeId(inv.invoiceId || '')]; const HOLD = ['Insufficient PO Funds Hold','Pending Goods Receipt Hold','Rejected']; if (!ps || !HOLD.includes(ps.status)) return false; }
+  if (f.onHold) { const ps = payeeIndex[toPayeeId(inv.invoiceId || '')]; const HOLD = ['Insufficient Amazon PO Manager Hold','Pending Goods Receipt Hold','Rejected']; if (!ps || !HOLD.includes(ps.status)) return false; }
   return true;
 }
 
@@ -2176,7 +2176,7 @@ function renderPayeeRowBadge(sageInvoiceId) {
   if (!key || !payeeIndex[key]) return '';
   const p = payeeIndex[key];
   // Only show badges for actionable statuses
-  const HOLD_STATUSES = ['Insufficient PO Funds Hold','Pending Goods Receipt Hold','Rejected'];
+  const HOLD_STATUSES = ['Insufficient Amazon PO Manager Hold','Pending Goods Receipt Hold','Rejected'];
   if (!HOLD_STATUSES.includes(p.status)) return '';
   const m = p.statusMeta;
   return `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;background:${m.bg};color:${m.color};white-space:nowrap">${m.icon} ${m.label}</span>`;
@@ -3723,7 +3723,7 @@ async function toggleWatch(recordNo, invoiceId, customerName, currentlyWatched) 
   } catch (e) { alert('Error: ' + e.message); }
 }
 
-// ─── PO Funds ──────────────────────────────────────────────────────────────
+// ─── Amazon PO Manager ──────────────────────────────────────────────────────────────
 let _poLedger = [];
 let _poUploaded = [];
 let _poNeedsUpload = [];
@@ -5124,7 +5124,7 @@ function renderEdiPreflight(recordNo) {
   else checks.push(['bad', `PO ${escHtml(row.assignedPo || '—')} is NOT in Amazon's open-PO list — submissions to it vanish without an error (the Jul 17 failure mode)`]);
   // Funds
   if (row.poZeroFunds) checks.push(['bad', `PO has $0 remaining value — the submission will be dropped or held with no funds to pay it`]);
-  else if (row.wouldOverage) checks.push(['warn', `Invoice ${fmt$(row.amount)} exceeds the PO's ${row.poAvailable != null ? fmt$(row.poAvailable) : 'unknown'} headroom — expect Insufficient PO Funds Hold`]);
+  else if (row.wouldOverage) checks.push(['warn', `Invoice ${fmt$(row.amount)} exceeds the PO's ${row.poAvailable != null ? fmt$(row.poAvailable) : 'unknown'} headroom — expect Insufficient Amazon PO Manager Hold`]);
   else if (row.poAvailable != null) checks.push(['ok', `PO headroom ${fmt$(row.poAvailable)} covers this ${fmt$(row.amount)} invoice`]);
   else checks.push(['warn', 'PO ceiling untracked — funds coverage unknown']);
   // Duplicate risk
@@ -5636,6 +5636,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812i"></script>
+<script src="/comms.js?v=20260812j"></script>
 </body>
 </html>
