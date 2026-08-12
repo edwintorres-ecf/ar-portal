@@ -165,6 +165,9 @@ async function runInboundPoll({ notify } = {}) {
     for (const m of await deltaPage('inbox', 'inbound_delta_inbox')) {
       if (!m.id || m['@removed']) continue;
       if (db.getMessageByGraphId(m.id)) { stats.skipped++; continue; }
+      // Graph message ids are FOLDER-SCOPED and change when an item moves; the
+      // RFC internetMessageId is the immutable identity. Never ingest twice.
+      if (m.internetMessageId && db.getMessageByInternetMessageId(m.internetMessageId)) { stats.skipped++; continue; }
       const sender = graph.normEmail(m.from?.emailAddress?.address);
       if (!sender) { stats.skipped++; continue; }
       stats.inbox++;
@@ -213,8 +216,17 @@ async function runInboundPoll({ notify } = {}) {
     for (const m of await deltaPage('sentitems', 'inbound_delta_sent')) {
       if (!m.id || m['@removed']) continue;
       if (db.getMessageByGraphId(m.id)) { stats.skipped++; continue; }
-      // Our own portal sends are already recorded by graph_message_id; an
-      // unrecorded sent item = a human (or another tool) sending as invoices@.
+      // A portal send is recorded under its DRAFT id, but Exchange moves the
+      // item to Sent Items under a NEW id — match on the immutable RFC
+      // internetMessageId and refresh our stored graph id to the live one.
+      const prior = m.internetMessageId ? db.getMessageByInternetMessageId(m.internetMessageId) : null;
+      if (prior) {
+        if (prior.graph_message_id !== m.id) {
+          try { db.getDb().prepare('UPDATE messages SET graph_message_id=? WHERE id=?').run(m.id, prior.id); } catch (e) { /* unique clash — leave as is */ }
+        }
+        stats.skipped++; continue;
+      }
+      // An unrecorded sent item = a human (or another tool) sending as invoices@.
       let conv = m.conversationId ? db.getConversationByGraphId(m.conversationId) : null;
       if (!conv) {
         const tok = (m.subject || '').match(comms.TOKEN_RE);
