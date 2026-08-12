@@ -837,6 +837,26 @@ async function commsMyWorkV2() {
 // Take over the legacy loader so the existing nav dispatch just works.
 loadMyWork = commsMyWorkV2;
 
+// ─── Training (in-app, written for the team moving off ECF AR Recon) ─────────
+function commsLoadTraining() {
+  const root = document.getElementById('training-root');
+  if (!root) return;
+  const card = (title, body) => `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 20px;margin-bottom:12px"><div style="font-weight:700;font-size:15px;margin-bottom:6px">${title}</div><div style="font-size:13px;line-height:1.55;color:#3d3830">${body}</div></div>`;
+  root.innerHTML = `
+    <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">Training</h1>
+    <div style="font-size:12.5px;color:#6b6458;margin-bottom:16px">For the team moving from ECF AR (reconciliation) to this portal. Same screens, live data.</div>
+    ${card('Signing in', 'Go to <strong>ar.eastcoastfacilities.com</strong> and sign in with your ECF Microsoft account, the same email and password you use for Outlook. There is no separate portal password to set or remember.')}
+    ${card('What changed from the old platform', '<strong>No more daily reconcile.</strong> The footer used to say "Last Reconciled" because data was imported by hand. Here it says <strong>Live data</strong>: invoices, balances, and payments come straight from Sage Intacct all day. The Reconcile screen has no equivalent because it is no longer needed. Payments show automatically in the Payment column of Invoices.')}
+    ${card('Your daily screens', '<strong>Dashboard</strong> is home: totals, aging, top past-due customers. <strong>Client Data → Invoices</strong> is the full grid, same columns and quick filters you know (Open, In Progress, Promised, Sent to Legal…). <strong>Operations → My Work</strong> is your assigned queue with the latest note on each invoice. Click any row to open the invoice drawer: notes, promises to pay, status, PDF, and email history in one place.')}
+    ${card('Collection statuses', 'The assigned collector sets the status from the invoice drawer (the dropdown next to the status chip); AR staff can update it afterward. Every change is recorded with who and when. "Sent to Legal" totals appear on the Dashboard Quick Stats.')}
+    ${card('Customers', 'Click any customer name anywhere to open their page: past-due summary, per-service-center breakdown, attachments, and all open invoices. From there you can email the customer, manage contacts, or print a statement.')}
+    ${card('Email, the big one', 'This portal sends and receives <strong>real email</strong> from invoices@eastcoastfacilities.com. Instead of writing a note that says "emailed David about payment," you email David from the invoice or customer page, with the invoice PDF or statement attached, and his reply lands back on the same thread automatically. Find conversations under <strong>Comms → AR Mailbox</strong>; anything awaiting your reply is tagged <span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">NEEDS REPLY</span>. Unrecognized inbound mail goes to <strong>Comms → Triage</strong> for filing.')}
+    ${card('Notes and @mentions', 'Notes work like before: open the invoice drawer and write. Type @ to mention a teammate; they get a bell notification and an email. Notes are internal only and never reach customers.')}
+    ${card('Amazon', 'Amazon collections stay in the <strong>🟠 Amazon PO Manager</strong>: PO funds, EDI transmission, Payee Central status. Amazon is excluded from email dunning automatically. Use the "Amazon View" quick filter on Invoices to see only Amazon rows.')}
+    ${card('For managers: automation', '<strong>Comms → Dunning</strong> runs reminder sequences: rules by days past due, previewed before anything sends, with per-customer targeting. <strong>Comms → Statements</strong> emails monthly statements on a schedule. Customers only receive automated email when their contact is explicitly approved for it, and both engines are armed by administrators.')}
+  `;
+}
+
 // ─── Invite user (Admin) ─────────────────────────────────────────────────────
 async function commsInviteUser() {
   const email = prompt('Invite who? (@eastcoastfacilities.com email)');

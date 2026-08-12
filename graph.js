@@ -48,8 +48,27 @@ function normEmail(s) {
   return String(s || '').trim().toLowerCase();
 }
 
+// Application-level mailbox restriction (chosen over an Exchange
+// ApplicationAccessPolicy because the app registration is shared with other
+// systems): any /users/<mailbox>/ call through this client must target an
+// approved mailbox. Guards against portal bugs reaching other mailboxes;
+// does NOT protect against stolen app credentials used outside this code.
+function assertMailboxAllowed(url) {
+  const m = /\/users\/([^\/?]+)/i.exec(url);
+  if (!m) return;
+  const target = normEmail(decodeURIComponent(m[1]));
+  if (!target.includes('@')) return;   // object ids, not addresses
+  const allowed = new Set([
+    normEmail(process.env.AR_MAILBOX || ''),
+    'arclerk@eastcoastfacilities.com',
+    ...(process.env.GRAPH_MAILBOX_ALLOWLIST || '').split(',').map(normEmail),
+  ].filter(Boolean));
+  if (!allowed.has(target)) throw new Error(`graph.js mailbox guard: ${target} is not an approved mailbox`);
+}
+
 async function gFetch(method, pathOrUrl, body, extraHeaders) {
   const url = /^https:/i.test(pathOrUrl) ? pathOrUrl : GRAPH + pathOrUrl;
+  assertMailboxAllowed(url);
   const doFetch = async () => fetch(url, {
     method,
     headers: {
