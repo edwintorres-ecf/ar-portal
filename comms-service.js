@@ -424,10 +424,49 @@ async function sendMessage(opts) {
   }
 
   // Draft-then-send; on failure record a failed message and clean the draft up.
+  //
+  // Replies use Graph createReply on the LAST message of the thread so
+  // Exchange writes real In-Reply-To/References headers and keeps the quoted
+  // history — a plain new draft with an "RE:" subject gets a fresh
+  // conversationId and does NOT stack in the recipient's mail client
+  // (found live 2026-08-12: portal replies arrived as separate emails).
   let draft = null;
   try {
-    draft = await graph.gPost(`/users/${mb}/messages`, draftPayload);
-    await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(draft.id)}/send`);
+    let replyAnchor = null;
+    if (conversationId) {
+      const prior = db.getMessagesForConversation(conv.id).filter(m => m.graph_message_id);
+      replyAnchor = prior.length ? prior[prior.length - 1] : null;
+    }
+    if (replyAnchor) {
+      let replyDraft = null;
+      try {
+        replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(replyAnchor.graph_message_id)}/createReply`);
+      } catch (e) {
+        // Anchor's graph id can go stale (folder-scoped ids); fall back to a
+        // fresh draft rather than failing the send.
+        replyDraft = null;
+      }
+      if (replyDraft) {
+        const full = await graph.gGet(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}?$select=id,body,internetMessageId,conversationId`);
+        await graph.gPatch(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}`, {
+          subject: subjectFinal,
+          toRecipients: draftPayload.toRecipients,
+          ...(draftPayload.ccRecipients ? { ccRecipients: draftPayload.ccRecipients } : {}),
+          replyTo: draftPayload.replyTo,
+          // Our content on top, Exchange's quoted history preserved below.
+          body: { contentType: 'HTML', content: rendered.body + '<br>' + ((full.body && full.body.content) || '') },
+        });
+        for (const att of (draftPayload.attachments || [])) {
+          await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}/attachments`, att);
+        }
+        draft = { id: replyDraft.id, internetMessageId: full.internetMessageId, conversationId: full.conversationId };
+        await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}/send`);
+      }
+    }
+    if (!draft) {
+      draft = await graph.gPost(`/users/${mb}/messages`, draftPayload);
+      await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(draft.id)}/send`);
+    }
   } catch (e) {
     if (draft && draft.id) {
       await graph.gDelete(`/users/${mb}/messages/${encodeURIComponent(draft.id)}`).catch(() => {});
