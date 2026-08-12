@@ -26,7 +26,10 @@ function commsIsManager() {
     <div id="contacts-modal-form"></div>
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:space-between;align-items:center">
       <span id="contacts-sync-wrap"></span>
-      <button class="btn-sm" style="background:#f1f5f9;border:none;padding:6px 14px;border-radius:6px;cursor:pointer" onclick="commsCloseContacts()">Close</button>
+      <span style="display:flex;gap:8px">
+        <button class="btn-sm" id="contacts-email-btn" style="background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;display:none" onclick="commsComposeFromContacts()">✉️ Email customer</button>
+        <button class="btn-sm" style="background:#f1f5f9;border:none;padding:6px 14px;border-radius:6px;cursor:pointer" onclick="commsCloseContacts()">Close</button>
+      </span>
     </div>
   </div>
 </div>`;
@@ -49,6 +52,8 @@ async function commsOpenContacts(customerId, customerName) {
   document.getElementById('contacts-modal-banner').innerHTML = COMMS_AMAZON.includes(customerId)
     ? `<div style="background:#fef9c3;color:#854d0e;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:10px">EDI collections — this customer is excluded from dunning automation. Contacts here are reference-only.</div>`
     : '';
+  const emailBtnEl = document.getElementById('contacts-email-btn');
+  if (emailBtnEl) emailBtnEl.style.display = commsCanEdit() ? '' : 'none';
   document.getElementById('contacts-sync-wrap').innerHTML = commsIsManager()
     ? `<button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsSyncContacts(this)">⟳ Sync from Sage</button>
        <span style="font-size:11px;color:var(--gray-500);margin-left:6px">seeds from Intacct; never touches manual edits</span>`
@@ -176,6 +181,14 @@ async function commsDeactivateContact(id, email) {
   } catch (e) { alert('Failed: ' + e.message); }
 }
 
+function commsComposeFromContacts() {
+  const customerId = _contactsCustomerId, customerName = _contactsCustomerName;
+  commsCloseContacts();
+  // Customer-level compose: no invoice tags; statement attached by default so
+  // the balance detail rides along.
+  commsOpenComposer({ customerId, customerName, recordNos: [], defaultAttach: true });
+}
+
 async function commsSyncContacts(btn) {
   btn.disabled = true; btn.textContent = '⟳ Syncing…';
   try {
@@ -184,6 +197,181 @@ async function commsSyncContacts(btn) {
     await commsReloadContacts();
   } catch (e) { alert('Sync failed: ' + e.message); }
   btn.disabled = false; btn.textContent = '⟳ Sync from Sage';
+}
+
+// ─── Composer (Deploy 4) ─────────────────────────────────────────────────────
+// Human compose path. Template picker fills the editable subject/body with the
+// TEMPLATE SOURCE (tokens visible); if the user leaves it untouched the send
+// carries templateKey so the version is recorded on the snapshot; any edit
+// switches to raw mode. Preview always resolves server-side; Send goes through
+// the same /api/comms/send the dunning engine will use.
+
+let _composerCtx = null;   // { customerId, customerName, recordNos, contacts, templates, dirty, templateKey }
+
+(function commsInjectComposer() {
+  const html = `
+<div id="composer-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)commsCloseComposer()">
+  <div class="modal-box" style="width:860px;max-width:96vw;max-height:92vh;overflow-y:auto">
+    <h3 id="composer-title" style="margin-bottom:2px">✉️ Email customer</h3>
+    <div id="composer-sub" style="font-size:12px;color:var(--gray-500);margin-bottom:8px"></div>
+    <div id="composer-testmode"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div id="composer-to-wrap" style="font-size:13px"></div>
+      <input id="composer-cc" placeholder="CC (comma-separated, optional)" style="padding:7px 9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="composer-template" onchange="commsApplyTemplate()" style="padding:7px 9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px"></select>
+        <label style="font-size:12.5px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="composer-attach-stmt"> Attach statement</label>
+        <button class="btn-sm" id="composer-ai-btn" style="background:#f5f3ff;color:#6d28d9;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600;display:none" onclick="commsAiPrefill(this)">✨ Draft with AI</button>
+      </div>
+      <input id="composer-subject" placeholder="Subject" oninput="_composerCtx&&(_composerCtx.dirty=true)" style="padding:7px 9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-weight:600">
+      <textarea id="composer-body" rows="10" oninput="_composerCtx&&(_composerCtx.dirty=true)" style="padding:9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit;line-height:1.45"></textarea>
+      <div style="font-size:11px;color:var(--gray-500)">Tokens like {{invoice_id}}, {{balance}}, {{invoice_table}}, {{signature}} resolve at send. The signature and the shared From address (invoices@) are added automatically.</div>
+      <div id="composer-preview" style="display:none;border:1px solid var(--gray-200);border-radius:8px;padding:14px;background:#fafafa;font-size:13px"></div>
+      <div id="composer-status" style="font-size:12.5px"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn-sm" style="background:#f1f5f9;border:none;padding:7px 14px;border-radius:6px;cursor:pointer" onclick="commsCloseComposer()">Cancel</button>
+      <button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsPreview()">👁 Preview</button>
+      <button class="btn-sm" id="composer-send-btn" style="background:var(--navy);color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsSend(this)">Send</button>
+    </div>
+  </div>
+</div>`;
+  if (document.body) document.body.insertAdjacentHTML('beforeend', html);
+  else document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('beforeend', html));
+})();
+
+async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach }) {
+  if (!commsCanEdit()) { alert('Your role cannot send customer email.'); return; }
+  const [contacts, templates, config] = await Promise.all([
+    apiFetch(`/api/customers/${encodeURIComponent(customerId)}/contacts`),
+    apiFetch('/api/comms/templates'),
+    apiFetch('/api/comms/config'),
+  ]);
+  _composerCtx = { customerId, customerName, recordNos: recordNos || [], contacts, templates, dirty: false, templateKey: null };
+  document.getElementById('composer-modal').style.display = 'flex';
+  document.getElementById('composer-title').textContent = '✉️ Email ' + (customerName || customerId);
+  document.getElementById('composer-sub').textContent = invoiceId
+    ? `Invoice ${invoiceId} · sends from ${config.mailbox || 'invoices@'}`
+    : `Sends from ${config.mailbox || 'invoices@'}`;
+  document.getElementById('composer-testmode').innerHTML = config.testMode
+    ? `<div style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:8px">TEST MODE: sends are restricted to the internal allowlist. Customers cannot receive email until Edwin clears COMMS_ALLOWLIST.</div>`
+    : '';
+  document.getElementById('composer-to-wrap').innerHTML = contacts.length
+    ? 'To: ' + contacts.map(c => `<label style="margin-right:12px;display:inline-flex;align-items:center;gap:4px">
+        <input type="checkbox" class="composer-to" value="${escHtml(c.email)}" ${c.is_primary ? 'checked' : ''}>
+        ${escHtml(c.name || c.email)}${c.is_primary ? ' ⭐' : ''}${c.consent_email ? '' : ' <span style="color:#b91c1c;font-size:10px">(consent off)</span>'}</label>`).join('')
+      + ` <input id="composer-to-extra" placeholder="add address…" style="padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;width:180px">`
+    : `To: <input id="composer-to-extra" placeholder="recipient@company.com" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;width:260px">
+       <span style="color:var(--gray-500);font-size:11.5px">(no contacts on file — <a href="#" onclick="commsCloseComposer();commsOpenContacts('${escHtml(customerId)}','${escHtml(customerName || '')}');return false">add one</a>)</span>`;
+  const tsel = document.getElementById('composer-template');
+  tsel.innerHTML = '<option value="">Custom (blank)</option>' +
+    templates.filter(t => t.kind === 'external' && t.active).map(t => `<option value="${escHtml(t.key)}">${escHtml(t.name || t.key)}</option>`).join('');
+  tsel.value = '';
+  document.getElementById('composer-subject').value = '';
+  document.getElementById('composer-body').value = '';
+  document.getElementById('composer-cc').value = '';
+  document.getElementById('composer-attach-stmt').checked = !!defaultAttach;
+  document.getElementById('composer-preview').style.display = 'none';
+  document.getElementById('composer-status').innerHTML = '';
+  document.getElementById('composer-ai-btn').style.display =
+    (window._aiAvailable && _composerCtx.recordNos.length === 1) ? '' : 'none';
+}
+
+function commsCloseComposer() {
+  document.getElementById('composer-modal').style.display = 'none';
+  _composerCtx = null;
+}
+
+function commsApplyTemplate() {
+  if (!_composerCtx) return;
+  const key = document.getElementById('composer-template').value;
+  _composerCtx.templateKey = key || null;
+  _composerCtx.dirty = false;
+  if (!key) { return; }
+  const t = _composerCtx.templates.find(x => x.key === key);
+  if (t && t.version_row) {
+    document.getElementById('composer-subject').value = t.version_row.subject;
+    // Show the body source with tags stripped to editable text; tokens stay.
+    document.getElementById('composer-body').value = t.version_row.body_html
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*/gi, '\n\n').replace(/<[^>]+>/g, '').trim();
+  }
+}
+
+function commsComposerPayload() {
+  const c = _composerCtx;
+  const to = [...document.querySelectorAll('.composer-to:checked')].map(x => x.value);
+  const extra = (document.getElementById('composer-to-extra') || {}).value || '';
+  for (const e of extra.split(/[;,]+/)) if (e.trim()) to.push(e.trim());
+  const cc = (document.getElementById('composer-cc').value || '').split(/[;,]+/).map(s => s.trim()).filter(Boolean);
+  const useTemplate = c.templateKey && !c.dirty;
+  const bodyText = document.getElementById('composer-body').value;
+  return {
+    customerId: c.customerId,
+    toEmails: to, ccEmails: cc,
+    recordNos: c.recordNos,
+    attachStatement: document.getElementById('composer-attach-stmt').checked,
+    ...(useTemplate
+      ? { templateKey: c.templateKey }
+      : {
+          rawSubject: document.getElementById('composer-subject').value,
+          // Paragraphs on blank lines; tokens like {{balance}} pass through
+          // escHtml untouched and resolve server-side.
+          rawBody: bodyText.split(/\n{2,}/).map(p => '<p>' + escHtml(p).replace(/\n/g, '<br>') + '</p>').join('\n'),
+        }),
+  };
+}
+
+async function commsPreview() {
+  if (!_composerCtx) return;
+  const box = document.getElementById('composer-preview');
+  box.style.display = 'block';
+  box.innerHTML = '<span style="color:var(--gray-500)">Rendering…</span>';
+  try {
+    const p = await apiFetch('/api/comms/preview', { method: 'POST', body: JSON.stringify(commsComposerPayload()) });
+    box.innerHTML = `
+      <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">From: ${escHtml(p.from)} · To: ${p.to.map(escHtml).join(', ')}${p.cc.length ? ' · CC: ' + p.cc.map(escHtml).join(', ') : ''}</div>
+      <div style="font-weight:700;margin-bottom:8px">${escHtml(p.subject)}</div>
+      <div style="border-top:1px solid var(--gray-200);padding-top:10px">${p.bodyHtml}</div>`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`;
+  }
+}
+
+async function commsSend(btn) {
+  if (!_composerCtx) return;
+  const payload = commsComposerPayload();
+  if (!payload.toEmails.length) { alert('Pick at least one recipient.'); return; }
+  if (!confirm(`Send to ${payload.toEmails.join(', ')}?`)) return;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const status = document.getElementById('composer-status');
+  try {
+    const r = await apiFetch('/api/comms/send', { method: 'POST', body: JSON.stringify(payload) });
+    status.innerHTML = `<span style="color:#15803d;font-weight:600">✓ Sent: ${escHtml(r.subject)}</span>`;
+    setTimeout(commsCloseComposer, 1600);
+  } catch (e) {
+    status.innerHTML = `<span style="color:var(--red)">✗ ${escHtml(e.message)}</span>`;
+  }
+  btn.disabled = false; btn.textContent = 'Send';
+}
+
+async function commsAiPrefill(btn) {
+  const c = _composerCtx;
+  if (!c || c.recordNos.length !== 1) return;
+  btn.disabled = true; btn.textContent = '✨ Drafting…';
+  try {
+    const r = await apiFetch(`/api/ai/draft-email/${encodeURIComponent(c.recordNos[0])}`, { method: 'POST', body: JSON.stringify({}) });
+    const draft = r.draft || '';
+    const m = draft.match(/^\s*Subject:\s*(.+)\n+([\s\S]*)$/i);
+    document.getElementById('composer-template').value = '';
+    c.templateKey = null; c.dirty = true;
+    if (m) {
+      document.getElementById('composer-subject').value = m[1].trim();
+      document.getElementById('composer-body').value = m[2].trim() + '\n\n{{signature}}';
+    } else {
+      document.getElementById('composer-body').value = draft.trim() + '\n\n{{signature}}';
+    }
+  } catch (e) { alert('AI draft failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '✨ Draft with AI';
 }
 
 // ─── Invoice drawer: primary-contact line ────────────────────────────────────
@@ -200,11 +388,14 @@ async function commsDecorateDrawer(data) {
     const line = document.createElement('div');
     line.id = 'drawer-contact-line';
     line.style.cssText = 'padding:8px 12px;background:#f8fafc;border:1px solid var(--gray-100);border-radius:8px;margin-bottom:10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+    const emailBtn = commsCanEdit()
+      ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600" onclick='commsOpenComposer({customerId:"${escHtml(inv.customerId)}",customerName:"${escHtml(inv.customerName || '')}",recordNos:["${escHtml(inv.recordNo)}"],invoiceId:"${escHtml(inv.invoiceId || inv.recordNo)}"})'>✉️ Email</button>`
+      : '';
     line.innerHTML = primary
       ? `<span>👤 <strong>${escHtml(primary.name || primary.email)}</strong>${primary.name ? ` · <span style="font-family:monospace;font-size:11.5px">${escHtml(primary.email)}</span>` : ''}${primary.phone ? ' · ' + escHtml(primary.phone) : ''}</span>
-         <button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsOpenContacts('${escHtml(inv.customerId)}','${escHtml(inv.customerName || '')}')">Manage</button>`
+         <span style="display:flex;gap:6px">${emailBtn}<button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsOpenContacts('${escHtml(inv.customerId)}','${escHtml(inv.customerName || '')}')">Manage</button></span>`
       : `<span style="color:var(--gray-500)">No customer contacts on file</span>
-         <button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsOpenContacts('${escHtml(inv.customerId)}','${escHtml(inv.customerName || '')}')">${commsCanEdit() ? '+ Add' : 'View'}</button>`;
+         <span style="display:flex;gap:6px">${emailBtn}<button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsOpenContacts('${escHtml(inv.customerId)}','${escHtml(inv.customerName || '')}')">${commsCanEdit() ? '+ Add' : 'View'}</button></span>`;
     const old = document.getElementById('drawer-contact-line');
     if (old) old.remove();
     body.insertBefore(line, body.firstChild);
