@@ -439,6 +439,21 @@ function initCommsSchema() {
     CREATE INDEX IF NOT EXISTS idx_ds_record ON dunning_sent(record_no);
   `);
 
+  // Scheduled statement delivery (2026-08-12, Edwin): per-customer opt-in.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS statement_schedules (
+      customer_id TEXT PRIMARY KEY,
+      enabled INTEGER DEFAULT 1,
+      day_of_month INTEGER DEFAULT 1,    -- sends on/after this day (1-28)
+      contact_ids TEXT,                  -- JSON array; NULL = primary contact
+      min_balance REAL DEFAULT 0.01,     -- skip when total due is below this
+      last_sent_period TEXT,             -- 'YYYY-MM' idempotency per month
+      created_by TEXT, updated_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // Per-rule customer TARGETING (2026-08-12, Edwin): JSON array of customer
   // ids. Combined with target_mode: 'all' (ignore list), 'only' (rule applies
   // ONLY to listed customers), 'except' (applies to everyone BUT the listed).
@@ -1064,6 +1079,35 @@ function deleteDunningRule(id) {
   getDb().prepare('DELETE FROM dunning_rules WHERE id=?').run(id);
 }
 
+// ─── Statement schedules ────────────────────────────────────────────────────
+
+function listStatementSchedules() {
+  return getDb().prepare('SELECT * FROM statement_schedules ORDER BY customer_id').all();
+}
+
+function getStatementSchedule(customerId) {
+  return getDb().prepare('SELECT * FROM statement_schedules WHERE customer_id=?').get(customerId) || null;
+}
+
+function upsertStatementSchedule(customerId, f, updatedBy) {
+  const d = getDb();
+  d.prepare(`
+    INSERT INTO statement_schedules (customer_id, enabled, day_of_month, contact_ids, min_balance, created_by, updated_by)
+    VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(customer_id) DO UPDATE SET
+      enabled=excluded.enabled, day_of_month=excluded.day_of_month,
+      contact_ids=excluded.contact_ids, min_balance=excluded.min_balance,
+      updated_by=excluded.updated_by, updated_at=datetime('now')
+  `).run(customerId, f.enabled ? 1 : 0, Math.min(28, Math.max(1, parseInt(f.day_of_month, 10) || 1)),
+    f.contact_ids ?? null, f.min_balance ?? 0.01, updatedBy || null, updatedBy || null);
+  return getStatementSchedule(customerId);
+}
+
+function setStatementSent(customerId, period) {
+  getDb().prepare("UPDATE statement_schedules SET last_sent_period=?, updated_at=datetime('now') WHERE customer_id=?")
+    .run(period, customerId);
+}
+
 function createDunningRun(mode, triggeredBy) {
   const d = getDb();
   const r = d.prepare('INSERT INTO dunning_runs (mode, triggered_by) VALUES (?,?)').run(mode, triggeredBy || null);
@@ -1528,6 +1572,10 @@ module.exports = {
   listDunningRules,
   upsertDunningRule,
   deleteDunningRule,
+  listStatementSchedules,
+  getStatementSchedule,
+  upsertStatementSchedule,
+  setStatementSent,
   createDunningRun,
   finishDunningRun,
   getDunningRun,

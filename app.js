@@ -2491,6 +2491,36 @@ app.post('/api/dunning/rules/impact', requireAuth, (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ─── API: Scheduled statement delivery (statements.js) ───────────────────────
+const statements = require('./statements');
+
+app.get('/api/statements/schedules', requireAuth, (req, res) => {
+  try {
+    res.json({
+      armed: statements.armed(),
+      schedules: db.listStatementSchedules(),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/statements/schedules/:customerId', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const { enabled, day_of_month, contact_ids, min_balance } = req.body || {};
+    const f = { enabled: enabled === undefined ? 1 : (enabled ? 1 : 0), day_of_month, min_balance };
+    if (contact_ids !== undefined) f.contact_ids = Array.isArray(contact_ids) && contact_ids.length ? JSON.stringify(contact_ids) : null;
+    const s = db.upsertStatementSchedule(req.params.customerId, f, req.session.user.email);
+    db.auditLog(req.session.user.email, 'comm_stmt_schedule', null,
+      `${req.params.customerId} enabled=${s.enabled} day=${s.day_of_month}`);
+    res.json(s);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/statements/run', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    res.json(await statements.runStatementSchedules({ triggeredBy: commsRealActor(req), force: !!req.body.force }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.post('/api/dunning/generate', requireAuth, requireRole('admin', 'manager'), (req, res) => {
   try { res.json(dunning.generate({ triggeredBy: req.session.user.email })); }
   catch (e) { res.status(400).json({ error: e.message }); }
@@ -3095,6 +3125,21 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     .catch(e => console.warn(`[comms-inbound] poll error: ${e.message}`));
   setTimeout(doInboundPoll, 60 * 1000);
   setInterval(doInboundPoll, 2 * 60 * 1000);
+
+  // Statement scheduler: daily ~08:15 ET pass over the per-customer opt-in
+  // schedules. Unarmed (STATEMENTS_ARMED unset) it only logs would-sends.
+  setInterval(() => {
+    try {
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      if (now.getHours() !== 8 || now.getMinutes() > 45) return;
+      const today = now.toISOString().slice(0, 10);
+      if (db.getCommState('statements_last_auto') === today) return;
+      db.setCommState('statements_last_auto', today);
+      statements.runStatementSchedules({ triggeredBy: 'scheduler' })
+        .then(s => { if (s.sent || s.wouldSend || s.failed) console.log(`[statements] run: ${s.sent} sent, ${s.wouldSend} would-send, ${s.failed} failed`); })
+        .catch(e => console.warn(`[statements] scheduled run failed: ${e.message}`));
+    } catch (e) { console.warn(`[statements] scheduler error: ${e.message}`); }
+  }, 15 * 60 * 1000);
 
   // Dunning scheduler: weekdays 09:05 ET it GENERATES A PREVIEW run (never
   // sends). Humans review and execute from the console; live sends are gated

@@ -472,6 +472,25 @@
   .mention-ac-email { font-size: 11px; color: var(--gray-500); }
   .note-body-highlighted .mention-tag { color: var(--blue); font-weight: 600; }
 </style>
+<style id="ui-polish-2026">
+/* Global polish layer (2026-08-12): visual refinement only — no layout changes.
+   Hover/transition/focus/scrollbar/shadow upgrades applied portal-wide. */
+.view table tbody tr { transition: background .12s ease; }
+.view table tbody tr:hover { background: #f8fafc; }
+button, .btn-sm { transition: filter .12s ease, transform .06s ease; }
+button:hover, .btn-sm:hover { filter: brightness(1.05); }
+button:active, .btn-sm:active { transform: translateY(0.5px); }
+:focus-visible { outline: 2px solid rgba(30,58,95,.35); outline-offset: 2px; border-radius: 4px; }
+.modal-box { box-shadow: 0 24px 60px rgba(15,23,42,.22); border-radius: 14px; }
+.modal-overlay { backdrop-filter: blur(2.5px); }
+input, select, textarea { transition: border-color .12s ease, box-shadow .12s ease; }
+input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; box-shadow: 0 0 0 3px rgba(30,58,95,.08); }
+.nav-tab, .nav-drop-item { transition: background .12s ease, color .12s ease; }
+::-webkit-scrollbar { height: 10px; width: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>
 </head>
 <body>
 
@@ -513,6 +532,7 @@
         <div class="nav-drop-item" data-view="comms-mailbox" onclick="navGo('comms-mailbox')">📬 AR Mailbox</div>
         <div class="nav-drop-item" data-view="comms-triage" onclick="navGo('comms-triage')">🚨 Triage</div>
         <div class="nav-drop-item" data-view="comms-dunning" onclick="navGo('comms-dunning')">🔁 Dunning</div>
+        <div class="nav-drop-item" data-view="comms-statements" onclick="navGo('comms-statements')">📄 Statements</div>
       </div>
     </div>
 
@@ -863,6 +883,10 @@
 
 <div id="view-comms-dunning" class="view">
   <div id="comms-dunning-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+</div>
+
+<div id="view-comms-statements" class="view">
+  <div id="comms-statements-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
 </div>
 
 <div id="view-activity" class="view">
@@ -2239,7 +2263,7 @@ const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
   'customers': 'accounts', 'amazon': 'accounts',
   'reports': 'insights', 'activity': 'insights',
-  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms',
+  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms',
   'admin': 'admin',
 };
 
@@ -2275,6 +2299,7 @@ function switchView(name, el) {
   if (name === 'comms-mailbox' && typeof commsLoadMailbox === 'function') { commsLoadMailbox(); }
   if (name === 'comms-triage' && typeof commsLoadTriage === 'function') { commsLoadTriage(); }
   if (name === 'comms-dunning' && typeof commsLoadDunning === 'function') { commsLoadDunning(); }
+  if (name === 'comms-statements' && typeof commsLoadStatements === 'function') { commsLoadStatements(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5557,6 +5582,6 @@ function openStatement(customerId) {
 
 
 </script>
-<script src="/comms.js?v=20260812c"></script>
+<script src="/comms.js?v=20260812d"></script>
 </body>
 </html>

@@ -1011,6 +1011,89 @@ async function commsDunningExecute(runId, btn) {
   btn.disabled = false; btn.textContent = '🚀 Execute run';
 }
 
+// ─── Scheduled statements (2026-08-12) ───────────────────────────────────────
+// Per-customer opt-in monthly statement delivery. Engine in statements.js;
+// unarmed runs report would-sends without sending.
+
+async function commsLoadStatements() {
+  const root = document.getElementById('comms-statements-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [{ armed, schedules }, customers] = await Promise.all([
+      apiFetch('/api/statements/schedules'),
+      apiFetch('/api/customers'),
+    ]);
+    window._commsCustomers = customers;
+    const nameOf = (id) => (customers.find(x => x.id === id) || {}).name || id;
+    root.innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 14px">
+        <span style="background:${armed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b91c1c'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${armed ? '🟢 ARMED — statements send automatically' : '🔒 UNARMED — schedules only log would-sends'}</span>
+        ${commsIsManager() ? `<button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsStatementsRunNow(this)">▶ Run now (test)</button>` : ''}
+      </div>
+      <div style="font-size:12.5px;color:var(--gray-600);margin-bottom:12px">Each enabled customer gets their statement (PDF attached, all open invoices) emailed once a month on/after the chosen day, to the primary contact unless specific contacts are chosen in their Contacts panel. Zero balances and Amazon are skipped automatically.</div>
+      ${commsCanEdit() ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--gray-100);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+        <select id="stmt-add-cust" style="flex:2;min-width:220px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px">
+          <option value="">Add customer to statement schedule…</option>
+          ${customers.filter(c => !schedules.some(s => s.customer_id === c.id)).map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)} (${escHtml(c.id)})</option>`).join('')}
+        </select>
+        <label style="font-size:12px;color:var(--gray-500)">on day <input id="stmt-add-day" type="number" min="1" max="28" value="1" style="width:60px;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px"></label>
+        <button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsStatementsAdd()">+ Schedule</button>
+      </div>` : ''}
+      ${schedules.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--gray-100);border-radius:12px;overflow:hidden">
+        <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase;background:#f8fafc">
+          <th style="padding:8px 12px">Enabled</th><th style="padding:8px 12px">Customer</th><th style="padding:8px 12px">Sends on day</th>
+          <th style="padding:8px 12px">Recipients</th><th style="padding:8px 12px">Last sent</th><th style="padding:8px 12px"></th>
+        </tr></thead>
+        <tbody>${schedules.map(s => `
+          <tr style="border-top:1px solid var(--gray-100)">
+            <td style="padding:8px 12px">${commsCanEdit() ? `<span style="cursor:pointer;font-size:16px" onclick="commsStatementsToggle('${escHtml(s.customer_id)}', ${s.enabled ? 0 : 1}, ${s.day_of_month})">${s.enabled ? '🟢' : '⚪'}</span>` : (s.enabled ? '🟢' : '⚪')}</td>
+            <td style="padding:8px 12px"><strong>${escHtml(nameOf(s.customer_id))}</strong> <span style="color:var(--gray-400);font-size:11.5px">${escHtml(s.customer_id)}</span></td>
+            <td style="padding:8px 12px">${commsCanEdit() ? `<input type="number" min="1" max="28" value="${s.day_of_month}" style="width:56px;padding:5px;border:1px solid var(--gray-200);border-radius:6px;font-size:12.5px" onchange="commsStatementsToggle('${escHtml(s.customer_id)}', ${s.enabled}, this.value)">` : s.day_of_month}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--gray-600)">${s.contact_ids ? JSON.parse(s.contact_ids).length + ' selected' : 'primary contact'}
+              <button class="btn-sm" style="background:#f1f5f9;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px" onclick="commsOpenContacts('${escHtml(s.customer_id)}','${escHtml(nameOf(s.customer_id))}')">view</button></td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--gray-500)">${escHtml(s.last_sent_period || 'never')}</td>
+            <td style="padding:8px 12px"></td>
+          </tr>`).join('')}</tbody></table>`
+        : '<div style="padding:24px;text-align:center;color:var(--gray-500)">No statement schedules yet. Add a customer above to start automated delivery.</div>'}
+      <div id="stmt-run-result" style="margin-top:12px"></div>`;
+  } catch (e) {
+    root.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsStatementsAdd() {
+  const cust = document.getElementById('stmt-add-cust').value;
+  const day = document.getElementById('stmt-add-day').value;
+  if (!cust) { alert('Pick a customer.'); return; }
+  try {
+    await apiFetch(`/api/statements/schedules/${encodeURIComponent(cust)}`, { method: 'POST', body: JSON.stringify({ enabled: 1, day_of_month: day }) });
+    commsLoadStatements();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsStatementsToggle(customerId, enabled, day) {
+  try {
+    await apiFetch(`/api/statements/schedules/${encodeURIComponent(customerId)}`, { method: 'POST', body: JSON.stringify({ enabled, day_of_month: day }) });
+    commsLoadStatements();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsStatementsRunNow(btn) {
+  if (!confirm('Run the statement schedules now? Unarmed, this only reports who WOULD receive a statement. Armed, it sends (allowlist still applies).')) return;
+  btn.disabled = true; btn.textContent = '▶ Running…';
+  try {
+    const r = await apiFetch('/api/statements/run', { method: 'POST', body: JSON.stringify({ force: true }) });
+    document.getElementById('stmt-run-result').innerHTML = `
+      <div style="background:#f8fafc;border:1px solid var(--gray-100);border-radius:10px;padding:12px 14px;font-size:12.5px">
+        <strong>Run result (${escHtml(r.period)}):</strong> ${r.sent} sent · ${r.wouldSend} would-send · ${r.failed} failed · ${r.skipped} skipped
+        ${(r.results || []).filter(x => x.status !== 'skipped' || x.reason !== 'disabled').map(x => `<div style="margin-top:4px">${escHtml(x.customerId)} — <strong>${escHtml(x.status)}</strong> <span style="color:var(--gray-500)">${escHtml(x.reason || '')}</span></div>`).join('')}
+      </div>`;
+  } catch (e) { alert('Run failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '▶ Run now (test)';
+}
+
 // ─── Invoice drawer: primary-contact line ────────────────────────────────────
 // Called by openDrawer after renderDrawer; inserts a compact line showing who
 // an email about this invoice would go to (Deploy 3 hangs the composer here).
