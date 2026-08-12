@@ -1049,14 +1049,21 @@ async function sendGraphMail(toEmail, subject, contentText) {
   }
 }
 
-// Preference-gated notification. event ∈ 'mentions' | 'collector' | 'stop'.
+// Preference-gated notification. event ∈ 'mentions' | 'collector' | 'stop' | 'replies'.
+// 'replies' (a customer answered an assigned comms thread) bypasses the master
+// opt-out — it is operational work, silenced only by its own notify_replies
+// toggle. All other events still honor the master switch.
 async function notifyUser(toEmail, event, subject, contentText) {
   if (!toEmail) return;
   try {
     const p = db.getNotifyPrefs(toEmail);
-    const eventCol = { mentions: 'notify_mentions', collector: 'notify_collector', stop: 'notify_stop' }[event];
-    if (!p.notify_email) return;                      // master opt-out
-    if (eventCol && !p[eventCol]) return;             // per-event opt-out
+    if (event === 'replies') {
+      if (!p.notify_replies) return;
+    } else {
+      const eventCol = { mentions: 'notify_mentions', collector: 'notify_collector', stop: 'notify_stop' }[event];
+      if (!p.notify_email) return;                      // master opt-out
+      if (eventCol && !p[eventCol]) return;             // per-event opt-out
+    }
   } catch (e) { /* if prefs unreadable, default to sending */ }
   await sendGraphMail(toEmail, subject, contentText);
 }
@@ -2299,6 +2306,84 @@ app.get('/api/invoices/:recordNo/messages', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Comms triage (unmatched inbound mail) ──────────────────────────────
+app.get('/api/comms/triage', requireAuth, (req, res) => {
+  try {
+    const convs = db.listConversations({ status: 'triage', limit: 200 });
+    res.json(convs.map(c => {
+      const msgs = db.getMessagesForConversation(c.id);
+      const last = msgs[msgs.length - 1] || {};
+      return {
+        ...c,
+        lastFrom: last.from_email || '',
+        lastSubject: last.subject || c.subject || '',
+        lastSnippet: String(last.body_html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160),
+        lastAt: last.received_at || last.created_at || c.created_at,
+        messageCount: msgs.length,
+      };
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/comms/triage/:id/file', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const conv = db.getConversation(parseInt(req.params.id, 10));
+    if (!conv) return res.status(404).json({ error: 'Not found' });
+    const { customerId, assignEmail, createContact } = req.body;
+    if (!customerId) return res.status(400).json({ error: 'customerId required' });
+    let contactId = null;
+    if (createContact) {
+      // One-click "create contact from sender" while filing.
+      const msgs = db.getMessagesForConversation(conv.id);
+      const senderEmail = (msgs.find(m => m.direction === 'in') || {}).from_email;
+      if (senderEmail) {
+        try {
+          const c = db.addCustomerContact(customerId, { email: senderEmail, name: req.body.contactName || null }, user.email);
+          contactId = c.id;
+          db.auditLog(user.email, 'comm_contact_add', customerId, `${senderEmail} (from triage)`);
+        } catch (e) { /* already a contact — fine */ }
+      }
+    }
+    const d = db.getDb();
+    d.prepare("UPDATE conversations SET customer_id=?, contact_id=COALESCE(?, contact_id), assigned_email=?, status='open', updated_at=datetime('now') WHERE id=?")
+      .run(customerId, contactId, assignEmail ? String(assignEmail).trim().toLowerCase() : (conv.assigned_email || user.email.toLowerCase()), conv.id);
+    db.auditLog(user.email, 'comm_triage_file', null, `conv=${conv.id} -> ${customerId}${assignEmail ? ' assigned ' + assignEmail : ''}`);
+    res.json(db.getConversation(conv.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/comms/triage/:id/dismiss', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const conv = db.getConversation(parseInt(req.params.id, 10));
+    if (!conv) return res.status(404).json({ error: 'Not found' });
+    db.getDb().prepare("UPDATE conversations SET status='archived', updated_at=datetime('now') WHERE id=?").run(conv.id);
+    db.auditLog(user.email, 'comm_triage_dismiss', null, `conv=${conv.id} "${(conv.subject || '').slice(0, 80)}"`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/comms/conversations/:id/status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const { status, assignEmail } = req.body;
+    const conv = db.getConversation(parseInt(req.params.id, 10));
+    if (!conv) return res.status(404).json({ error: 'Not found' });
+    const sets = [], vals = [];
+    if (status) {
+      if (!['open', 'waiting', 'due', 'completed', 'archived'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+      sets.push('status=?'); vals.push(status);
+    }
+    if (assignEmail !== undefined) { sets.push('assigned_email=?'); vals.push(assignEmail ? String(assignEmail).trim().toLowerCase() : null); }
+    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    sets.push("updated_at=datetime('now')");
+    vals.push(conv.id);
+    db.getDb().prepare(`UPDATE conversations SET ${sets.join(',')} WHERE id=?`).run(...vals);
+    db.auditLog(req.session.user.email, status ? 'comm_status' : 'comm_assign', null, `conv=${conv.id} ${status || ''} ${assignEmail || ''}`.trim());
+    res.json(db.getConversation(conv.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: DSO + CEI ──────────────────────────────────────────────────────────
 app.get('/api/reports/dso-cei', requireAuth, async (req, res) => {
   try {
@@ -2844,6 +2929,15 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
 
   // Seed the default comms templates (idempotent — only creates missing keys).
   try { comms.seedTemplates(); } catch (e) { console.warn(`[comms] template seed failed: ${e.message}`); }
+
+  // Inbound mailbox poller — delta on invoices@ inbox + sent items every 2 min.
+  // Never moves or marks-read; categories only (humans share the mailbox in
+  // Outlook). Reply notifications go to the thread's assigned user.
+  const { runInboundPoll } = require('./comms-inbound');
+  const doInboundPoll = () => runInboundPoll({ notify: notifyUser })
+    .catch(e => console.warn(`[comms-inbound] poll error: ${e.message}`));
+  setTimeout(doInboundPoll, 60 * 1000);
+  setInterval(doInboundPoll, 2 * 60 * 1000);
 
   // Customer-contact sync from Intacct DISPLAYCONTACT — contacts change slowly;
   // startup pass (delayed 2 min so it never competes with the invoice

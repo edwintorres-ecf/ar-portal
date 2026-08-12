@@ -240,14 +240,14 @@ let _composerCtx = null;   // { customerId, customerName, recordNos, contacts, t
   else document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('beforeend', html));
 })();
 
-async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach }) {
+async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach, conversationId }) {
   if (!commsCanEdit()) { alert('Your role cannot send customer email.'); return; }
   const [contacts, templates, config] = await Promise.all([
     apiFetch(`/api/customers/${encodeURIComponent(customerId)}/contacts`),
     apiFetch('/api/comms/templates'),
     apiFetch('/api/comms/config'),
   ]);
-  _composerCtx = { customerId, customerName, recordNos: recordNos || [], contacts, templates, dirty: false, templateKey: null };
+  _composerCtx = { customerId, customerName, recordNos: recordNos || [], contacts, templates, dirty: false, templateKey: null, conversationId: conversationId || null };
   document.getElementById('composer-modal').style.display = 'flex';
   document.getElementById('composer-title').textContent = '✉️ Email ' + (customerName || customerId);
   document.getElementById('composer-sub').textContent = invoiceId
@@ -309,6 +309,7 @@ function commsComposerPayload() {
     customerId: c.customerId,
     toEmails: to, ccEmails: cc,
     recordNos: c.recordNos,
+    conversationId: c.conversationId || undefined,
     attachStatement: document.getElementById('composer-attach-stmt').checked,
     ...(useTemplate
       ? { templateKey: c.templateKey }
@@ -374,6 +375,181 @@ async function commsAiPrefill(btn) {
   btn.disabled = false; btn.textContent = '✨ Draft with AI';
 }
 
+// ─── Triage view (Deploy 5) ──────────────────────────────────────────────────
+
+async function commsLoadTriage() {
+  const root = document.getElementById('comms-triage-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [rows, customers] = await Promise.all([
+      apiFetch('/api/comms/triage'),
+      apiFetch('/api/customers'),
+    ]);
+    window._commsCustomers = customers;
+    commsUpdateTriageBadge(rows.length);
+    if (!rows.length) {
+      root.innerHTML = '<div style="padding:36px;text-align:center;color:var(--gray-500)">🎉 Triage is empty. Unmatched inbound mail to the AR mailbox lands here.</div>';
+      return;
+    }
+    root.innerHTML = `
+      <div style="font-size:13px;color:var(--gray-600);margin:4px 0 12px">Inbound mail the router could not safely match to a customer. File each thread or dismiss it; the router never guesses.</div>
+      ${rows.map(r => `
+      <div style="border:1px solid var(--gray-200);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="min-width:250px;flex:1">
+            <div style="font-weight:600;font-size:13.5px">${escHtml(r.lastSubject || '(no subject)')}</div>
+            <div style="font-size:12px;color:var(--gray-500);margin:2px 0">From <span style="font-family:monospace">${escHtml(r.lastFrom)}</span> · ${escHtml((r.lastAt || '').slice(0, 16).replace('T', ' '))} · ${r.messageCount} msg</div>
+            <div style="font-size:12.5px;color:var(--gray-600)">${escHtml(r.lastSnippet)}</div>
+          </div>
+          ${commsCanEdit() ? `
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="triage-cust-${r.id}" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;max-width:220px">
+              <option value="">File to customer…</option>
+              ${customers.map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)} (${escHtml(c.id)})</option>`).join('')}
+            </select>
+            <label style="font-size:11.5px;display:flex;align-items:center;gap:3px"><input type="checkbox" id="triage-cc-${r.id}" checked> save sender as contact</label>
+            <button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsFileTriage(${r.id})">File</button>
+            <button class="btn-sm" style="background:#f1f5f9;border:none;padding:5px 10px;border-radius:6px;cursor:pointer" onclick="commsDismissTriage(${r.id})">Dismiss</button>
+          </div>` : ''}
+        </div>
+      </div>`).join('')}`;
+  } catch (e) {
+    root.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsFileTriage(id) {
+  const customerId = document.getElementById(`triage-cust-${id}`).value;
+  if (!customerId) { alert('Pick a customer to file this thread to.'); return; }
+  try {
+    await apiFetch(`/api/comms/triage/${id}/file`, {
+      method: 'POST',
+      body: JSON.stringify({ customerId, createContact: document.getElementById(`triage-cc-${id}`).checked }),
+    });
+    commsLoadTriage();
+  } catch (e) { alert('File failed: ' + e.message); }
+}
+
+async function commsDismissTriage(id) {
+  if (!confirm('Dismiss this thread? It is archived, not deleted.')) return;
+  try {
+    await apiFetch(`/api/comms/triage/${id}/dismiss`, { method: 'POST' });
+    commsLoadTriage();
+  } catch (e) { alert('Dismiss failed: ' + e.message); }
+}
+
+function commsUpdateTriageBadge(count) {
+  const b = document.getElementById('triage-badge');
+  if (!b) return;
+  if (count > 0) { b.textContent = count; b.style.display = ''; }
+  else b.style.display = 'none';
+}
+
+// Badge refresher: light poll once the SPA is authenticated.
+(function commsBadgeLoop() {
+  const tick = async () => {
+    if (!window.currentUser) return;
+    try { commsUpdateTriageBadge((await apiFetch('/api/comms/triage')).length); } catch (e) { /* quiet */ }
+  };
+  setTimeout(tick, 5000);
+  setInterval(tick, 5 * 60 * 1000);
+})();
+
+// ─── Mailbox view (Deploy 6) ─────────────────────────────────────────────────
+// Filter chips over ONE canonical conversation store — chips are filters and
+// assignments, never copies.
+
+let _mailboxFilter = 'open';
+
+async function commsLoadMailbox() {
+  const root = document.getElementById('comms-mailbox-root');
+  if (!root) return;
+  const chips = [
+    ['open', 'Open'], ['waiting', 'Waiting'], ['due', 'Due'], ['triage', 'Triage'],
+    ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
+  ];
+  root.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px">
+      ${chips.map(([k, label]) => `<button class="btn-sm" style="border:none;padding:5px 12px;border-radius:14px;cursor:pointer;font-size:12px;font-weight:600;background:${_mailboxFilter === k ? 'var(--navy)' : '#f1f5f9'};color:${_mailboxFilter === k ? '#fff' : 'var(--gray-700)'}" onclick="_mailboxFilter='${k}';commsLoadMailbox()">${label}</button>`).join('')}
+    </div>
+    <div id="mailbox-list"><div style="padding:24px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+    <div id="mailbox-thread" style="display:none"></div>`;
+  try {
+    let q = '';
+    if (_mailboxFilter === 'mine') q = '?assigned=' + encodeURIComponent((window.currentUser?.email || '').toLowerCase());
+    else if (_mailboxFilter) q = '?status=' + _mailboxFilter;
+    const convs = await apiFetch('/api/comms/conversations' + q);
+    const list = document.getElementById('mailbox-list');
+    if (!convs.length) {
+      list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">No conversations here.</div>';
+      return;
+    }
+    const dirIcon = (c) => c.last_direction === 'in' ? '📩' : c.last_direction === 'out' ? '📤' : '·';
+    list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px"></th><th style="padding:6px 10px">Customer</th><th style="padding:6px 10px">Subject</th>
+        <th style="padding:6px 10px">Status</th><th style="padding:6px 10px">Assigned</th><th style="padding:6px 10px">Last activity</th>
+      </tr></thead>
+      <tbody>${convs.map(c => `
+        <tr style="border-top:1px solid var(--gray-100);cursor:pointer" onclick="commsOpenThread(${c.id})">
+          <td style="padding:8px 10px">${dirIcon(c)}</td>
+          <td style="padding:8px 10px">${escHtml(c.customer_id || '(unfiled)')}</td>
+          <td style="padding:8px 10px;font-weight:600">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}</td>
+          <td style="padding:8px 10px"><span style="background:#f1f5f9;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${escHtml(c.status)}</span></td>
+          <td style="padding:8px 10px;font-size:12px;color:var(--gray-600)">${escHtml((c.assigned_email || '').split('@')[0] || '—')}</td>
+          <td style="padding:8px 10px;font-size:12px;color:var(--gray-500)">${escHtml((c.last_message_at || c.created_at || '').slice(0, 16).replace('T', ' '))}</td>
+        </tr>`).join('')}</tbody></table>`;
+  } catch (e) {
+    document.getElementById('mailbox-list').innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsOpenThread(id) {
+  const listEl = document.getElementById('mailbox-list');
+  const threadEl = document.getElementById('mailbox-thread');
+  listEl.style.display = 'none';
+  threadEl.style.display = '';
+  threadEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const { conversation: c, messages } = await apiFetch(`/api/comms/conversations/${id}`);
+    const statuses = ['open', 'waiting', 'due', 'completed', 'archived'];
+    threadEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div>
+          <button class="btn-sm" style="background:#f1f5f9;border:none;padding:5px 12px;border-radius:6px;cursor:pointer" onclick="commsLoadMailbox()">← Back</button>
+          <strong style="margin-left:8px">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}</strong>
+          <span style="font-size:12px;color:var(--gray-500);margin-left:6px">${escHtml(c.customer_id || 'unfiled')}</span>
+        </div>
+        ${commsCanEdit() ? `
+        <div style="display:flex;gap:6px;align-items:center">
+          <select onchange="commsSetThreadStatus(${c.id}, this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
+            ${statuses.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          ${c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick='commsOpenComposer({customerId:"${escHtml(c.customer_id)}",customerName:"${escHtml(c.customer_id)}",recordNos:[],conversationId:${c.id}})'>↩ Reply</button>` : ''}
+        </div>` : ''}
+      </div>
+      ${messages.map(m => `
+      <div style="border:1px solid var(--gray-200);border-radius:10px;margin-bottom:8px;background:${m.direction === 'in' ? '#fff' : '#f8fafc'}">
+        <div style="padding:8px 12px;font-size:12px;color:var(--gray-600);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
+          <span>${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(m.direction === 'in' ? m.from_email : (m.corresponding_email || m.actor_email || m.from_email))}</strong>
+            ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">AUTO</span>' : ''}
+            ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">FAILED</span>' : ''}</span>
+          <span>${escHtml(((m.sent_at || m.received_at || m.created_at) || '').slice(0, 16).replace('T', ' '))}</span>
+        </div>
+        <div style="padding:4px 14px 12px;font-size:13px;border-top:1px solid var(--gray-100)">${m.body_html || escHtml(m.body_text || '')}</div>
+      </div>`).join('')}`;
+  } catch (e) {
+    threadEl.innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsSetThreadStatus(id, status) {
+  try {
+    await apiFetch(`/api/comms/conversations/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) });
+  } catch (e) { alert('Update failed: ' + e.message); }
+}
+
 // ─── Invoice drawer: primary-contact line ────────────────────────────────────
 // Called by openDrawer after renderDrawer; inserts a compact line showing who
 // an email about this invoice would go to (Deploy 3 hangs the composer here).
@@ -399,5 +575,27 @@ async function commsDecorateDrawer(data) {
     const old = document.getElementById('drawer-contact-line');
     if (old) old.remove();
     body.insertBefore(line, body.firstChild);
+
+    // Email history for this invoice (canonical messages store, tagged rows)
+    const msgs = await apiFetch(`/api/invoices/${encodeURIComponent(inv.recordNo)}/messages`);
+    const oldHist = document.getElementById('drawer-email-history');
+    if (oldHist) oldHist.remove();
+    if (msgs.length) {
+      const hist = document.createElement('div');
+      hist.id = 'drawer-email-history';
+      hist.style.cssText = 'border:1px solid var(--gray-100);border-radius:8px;margin-bottom:10px;font-size:12.5px;overflow:hidden';
+      hist.innerHTML = `<div style="padding:7px 12px;background:#f8fafc;font-weight:600;font-size:12px">✉️ Emails (${msgs.length})</div>` +
+        msgs.map(m => `
+        <div style="padding:6px 12px;border-top:1px solid var(--gray-100);cursor:pointer" onclick="this.querySelector('.deh-body').style.display = this.querySelector('.deh-body').style.display === 'none' ? '' : 'none'">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <span>${m.direction === 'in' ? '📩' : '📤'} ${escHtml((m.subject || '').replace(/\s*\[ECF#[^\]]+\]/, '').slice(0, 60))}
+              ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:0 5px;border-radius:6px;font-size:9.5px;font-weight:700">AUTO</span>' : ''}
+              ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:0 5px;border-radius:6px;font-size:9.5px;font-weight:700">FAILED</span>' : ''}</span>
+            <span style="color:var(--gray-500);font-size:11px">${escHtml(((m.sent_at || m.received_at || m.created_at) || '').slice(0, 10))}</span>
+          </div>
+          <div class="deh-body" style="display:none;padding:8px 2px 2px;font-size:12.5px">${m.body_html || escHtml(m.body_text || '')}</div>
+        </div>`).join('');
+      line.insertAdjacentElement('afterend', hist);
+    }
   } catch (e) { /* decoration only — never break the drawer */ }
 }

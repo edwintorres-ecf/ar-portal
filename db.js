@@ -507,6 +507,10 @@ function getNotifyPrefs(email) {
     notify_mentions:  u ? (u.notify_mentions == null ? 1 : u.notify_mentions) : 1,
     notify_collector: u ? (u.notify_collector == null ? 1 : u.notify_collector) : 1,
     notify_stop:      u ? (u.notify_stop == null ? 1 : u.notify_stop) : 1,
+    // Customer-reply notifications sit OUTSIDE the master opt-out: a reply on
+    // an assigned thread is operational work, not an FYI. Only its own toggle
+    // silences it.
+    notify_replies:   u ? (u.notify_replies == null ? 1 : u.notify_replies) : 1,
   };
 }
 
@@ -518,9 +522,10 @@ function updateNotifyPrefs(email, prefs) {
     notify_mentions:  prefs.notify_mentions  !== undefined ? (prefs.notify_mentions ? 1 : 0)  : cur.notify_mentions,
     notify_collector: prefs.notify_collector !== undefined ? (prefs.notify_collector ? 1 : 0) : cur.notify_collector,
     notify_stop:      prefs.notify_stop      !== undefined ? (prefs.notify_stop ? 1 : 0)      : cur.notify_stop,
+    notify_replies:   prefs.notify_replies   !== undefined ? (prefs.notify_replies ? 1 : 0)   : cur.notify_replies,
   };
-  db.prepare(`UPDATE user_roles SET notify_master=?, notify_mentions=?, notify_collector=?, notify_stop=?, updated_at=datetime('now') WHERE email=?`)
-    .run(next.notify_email, next.notify_mentions, next.notify_collector, next.notify_stop, email);
+  db.prepare(`UPDATE user_roles SET notify_master=?, notify_mentions=?, notify_collector=?, notify_stop=?, notify_replies=?, updated_at=datetime('now') WHERE email=?`)
+    .run(next.notify_email, next.notify_mentions, next.notify_collector, next.notify_stop, next.notify_replies, email);
   return next;
 }
 

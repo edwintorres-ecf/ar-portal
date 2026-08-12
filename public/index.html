@@ -507,6 +507,14 @@
 
     <div class="nav-tab" data-view="po-funds" onclick="navGo('po-funds')">💵 PO Funds</div>
 
+    <div class="nav-group" data-group="comms">
+      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'comms')">Comms<span class="caret">▾</span><span id="triage-badge" style="display:none;background:#dc2626;color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:5px"></span></div>
+      <div class="nav-group-menu">
+        <div class="nav-drop-item" data-view="comms-mailbox" onclick="navGo('comms-mailbox')">📬 AR Mailbox</div>
+        <div class="nav-drop-item" data-view="comms-triage" onclick="navGo('comms-triage')">🚨 Triage</div>
+      </div>
+    </div>
+
     <div class="nav-group" data-group="insights">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'insights')">Insights<span class="caret">▾</span></div>
       <div class="nav-group-menu">
@@ -844,6 +852,14 @@
 </div>
 
 <!-- ─── ACTIVITY LOG VIEW ─── -->
+<div id="view-comms-mailbox" class="view">
+  <div id="comms-mailbox-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+</div>
+
+<div id="view-comms-triage" class="view">
+  <div id="comms-triage-root" style="padding:4px 0"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+</div>
+
 <div id="view-activity" class="view">
   <div style="padding:20px 24px;max-width:1100px;margin:0 auto;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
@@ -2218,6 +2234,7 @@ const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
   'customers': 'accounts', 'amazon': 'accounts',
   'reports': 'insights', 'activity': 'insights',
+  'comms-mailbox': 'comms', 'comms-triage': 'comms',
   'admin': 'admin',
 };
 
@@ -2250,6 +2267,8 @@ function switchView(name, el) {
   if (name === 'reports') { loadReports(); }
   if (name === 'admin') { loadAdminUsers(); }
   if (name === 'po-funds' && typeof loadPoFunds === 'function') { loadPoFunds(); }
+  if (name === 'comms-mailbox' && typeof commsLoadMailbox === 'function') { commsLoadMailbox(); }
+  if (name === 'comms-triage' && typeof commsLoadTriage === 'function') { commsLoadTriage(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5529,6 +5548,6 @@ function openStatement(customerId) {
 
 
 </script>
-<script src="/comms.js?v=20260811b"></script>
+<script src="/comms.js?v=20260811c"></script>
 </body>
 </html>
