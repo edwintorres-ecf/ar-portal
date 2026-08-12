@@ -2587,6 +2587,38 @@ app.get('/api/overview', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Invite a user (pre-provision + invitation email) ───────────────────
+app.post('/api/admin/invite', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const { email, name, role, job_title } = req.body || {};
+    const norm = String(email || '').trim().toLowerCase();
+    if (!norm.endsWith('@eastcoastfacilities.com')) return res.status(400).json({ error: 'Must be an @eastcoastfacilities.com address' });
+    if (!['admin', 'manager', 'ar_specialist', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    db.preProvisionUser(norm, name || '', role, job_title || null);
+    const inviter = req.session.user;
+    await sendGraphMail(norm, 'You have been invited to the ECF AR Portal',
+`Hello${name ? ' ' + name.split(' ')[0] : ''},
+
+${inviter.name} has invited you to the ECF AR Portal, the live accounts receivable workspace.
+
+Sign in here with your ECF Microsoft account (this email address, your normal password):
+${portalBaseUrl()}
+
+Your access level: ${role.replace('_', ' ')}
+
+Where to start:
+- Dashboard: live AR totals and aging, updated straight from Sage
+- Invoices (Client Data menu): the full invoice grid with filters
+- My Work (Operations menu): invoices assigned to you
+
+No separate password is needed. Questions? Reply to ${inviter.email}.
+
+—ECF AR Portal`);
+    db.auditLog(inviter.email, 'user_invite', null, `${norm} as ${role}`);
+    res.json({ ok: true, email: norm, role });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Grid metadata (one call powering the emulated Invoices/My Work) ────
 app.get('/api/grid-meta', requireAuth, (req, res) => {
   try {

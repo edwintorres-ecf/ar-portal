@@ -837,6 +837,19 @@ async function commsMyWorkV2() {
 // Take over the legacy loader so the existing nav dispatch just works.
 loadMyWork = commsMyWorkV2;
 
+// ─── Invite user (Admin) ─────────────────────────────────────────────────────
+async function commsInviteUser() {
+  const email = prompt('Invite who? (@eastcoastfacilities.com email)');
+  if (!email) return;
+  const name = prompt('Their name (for the invitation):') || '';
+  const role = prompt('Role: admin, manager, ar_specialist, or viewer', 'ar_specialist');
+  if (!role) return;
+  try {
+    const r = await apiFetch('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email, name, role }) });
+    alert(`Invitation sent to ${r.email} (${r.role}). They sign in with their ECF Microsoft account — no separate password.`);
+  } catch (e) { alert('Invite failed: ' + e.message); }
+}
+
 // ─── Overview dashboard (Phase 2 — their home screen, live data) ─────────────
 
 function commsAgePillClass(days) {
