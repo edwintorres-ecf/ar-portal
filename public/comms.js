@@ -31,6 +31,7 @@ function commsIsManager() {
     <div id="contacts-modal-banner"></div>
     <div id="contacts-modal-list" style="margin-bottom:12px"></div>
     <div id="contacts-modal-form"></div>
+    <div id="contacts-attachments"></div>
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:space-between;align-items:center">
       <span id="contacts-sync-wrap"></span>
       <span style="display:flex;gap:8px">
@@ -66,6 +67,7 @@ async function commsOpenContacts(customerId, customerName) {
        <span style="font-size:11px;color:var(--gray-500);margin-left:6px">seeds from Intacct; never touches manual edits</span>`
     : '';
   await commsReloadContacts();
+  commsLoadAttachments(customerId);
 }
 
 function commsCloseContacts() {
@@ -480,6 +482,120 @@ function commsUpdateTriageBadge(count) {
   else b.style.display = 'none';
 }
 
+// ─── Collection status (drawer control; collector sets, AR updates) ──────────
+
+let _csVocab = null;
+async function commsCollectionVocab() {
+  if (!_csVocab) _csVocab = (await apiFetch('/api/collection-status')).statuses;
+  return _csVocab;
+}
+
+function commsCsClass(status) {
+  return 'cs-' + String(status || 'open').toLowerCase().replace(/[^a-z]+/g, '-');
+}
+
+async function commsDecorateDrawerStatus(inv) {
+  try {
+    const all = await apiFetch('/api/collection-status');
+    const vocab = all.statuses;
+    const cur = all.byRecord[inv.recordNo];
+    const line = document.getElementById('drawer-contact-line');
+    if (!line) return;
+    const old = document.getElementById('drawer-cs-line');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.id = 'drawer-cs-line';
+    el.style.cssText = 'padding:8px 12px;background:#faf8f3;border:1px solid #e7e1d4;border-radius:8px;margin-bottom:10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+    el.innerHTML = `
+      <span>Collection status: <span class="cs-chip ${commsCsClass(cur ? cur.status : 'Open')}">${escHtml(cur ? cur.status : 'Open')}</span>
+        ${cur ? `<span style="color:var(--gray-500);font-size:11px;margin-left:6px">set by ${escHtml((cur.set_by || '').split('@')[0])} · ${escHtml((cur.updated_at || '').slice(0, 10))}</span>` : ''}</span>
+      ${commsCanEdit() ? `<select style="padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px" onchange="commsSetCollectionStatus('${escHtml(inv.recordNo)}', this.value, this)">
+        <option value="">change…</option>
+        ${vocab.map(s => `<option value="${escHtml(s)}" ${cur && cur.status === s ? 'disabled' : ''}>${escHtml(s)}</option>`).join('')}
+      </select>` : ''}`;
+    line.insertAdjacentElement('afterend', el);
+  } catch (e) { /* decoration only */ }
+}
+
+async function commsSetCollectionStatus(recordNo, status, sel) {
+  if (!status) return;
+  try {
+    await apiFetch(`/api/invoice/${encodeURIComponent(recordNo)}/collection-status`, {
+      method: 'POST', body: JSON.stringify({ status }),
+    });
+    const chip = sel.closest('#drawer-cs-line').querySelector('.cs-chip');
+    chip.textContent = status;
+    chip.className = 'cs-chip ' + commsCsClass(status);
+    sel.value = '';
+  } catch (e) { alert('Status update failed: ' + e.message); }
+}
+
+// ─── Customer attachments (in the customer hub modal) ────────────────────────
+
+async function commsLoadAttachments(customerId) {
+  const wrap = document.getElementById('contacts-attachments');
+  if (!wrap) return;
+  try {
+    const files = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/attachments`);
+    wrap.innerHTML = `
+      <div style="border-top:1px solid var(--gray-100);margin-top:12px;padding-top:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:6px">ATTACHMENTS (${files.length})</div>
+        ${files.map(f => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12.5px;gap:8px">
+            <span>📎 <a href="/api/attachments/${f.id}/download" style="color:#1d4ed8;text-decoration:none">${escHtml(f.filename)}</a>
+              <span style="color:var(--gray-400);font-size:11px">${Math.round((f.size || 0) / 1024)}KB · ${escHtml((f.uploaded_by || '').split('@')[0])} · ${escHtml((f.uploaded_at || '').slice(0, 10))}</span></span>
+            ${commsCanEdit() ? `<button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsRemoveAttachment(${f.id}, '${escHtml(customerId)}')">✕</button>` : ''}
+          </div>`).join('') || '<div style="font-size:12px;color:var(--gray-400);padding:4px 0">No files yet.</div>'}
+        ${commsCanEdit() ? `
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <input type="file" id="contacts-att-file" style="font-size:12px">
+            <button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px" onclick="commsUploadAttachment('${escHtml(customerId)}', this)">Upload</button>
+          </div>` : ''}
+      </div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div style="font-size:12px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function commsUploadAttachment(customerId, btn) {
+  const input = document.getElementById('contacts-att-file');
+  const file = input.files && input.files[0];
+  if (!file) { alert('Choose a file first.'); return; }
+  if (file.size > 15 * 1024 * 1024) { alert('15MB max.'); return; }
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const dataBase64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1]);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify({ filename: file.name, contentType: file.type, dataBase64 }),
+    });
+    commsLoadAttachments(customerId);
+  } catch (e) { alert('Upload failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'Upload';
+}
+
+async function commsRemoveAttachment(id, customerId) {
+  if (!confirm('Remove this attachment from the list? The file is archived, not destroyed.')) return;
+  try {
+    await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
+    commsLoadAttachments(customerId);
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ─── Live-data footer (replaces their "Last Reconciled" line) ────────────────
+async function commsUpdateFooter() {
+  try {
+    const c = await apiFetch('/api/comms/config');
+    const el = document.getElementById('live-footer-age');
+    if (el && c.sageCacheAgeMin != null) el.textContent = ` · Sage synced ${c.sageCacheAgeMin}m ago`;
+  } catch (e) { /* quiet */ }
+}
+
 // Badge refresher: the Comms nav badge is the "you have action items" signal
 // on every screen — replies awaiting response + triage, with a breakdown in
 // the tooltip. Polls once authenticated, then every 2 minutes.
@@ -499,8 +615,9 @@ function commsUpdateTriageBadge(count) {
       }
     } catch (e) { /* quiet */ }
   };
-  setTimeout(tick, 5000);
-  setInterval(tick, 2 * 60 * 1000);
+  const tickAll = () => { tick(); commsUpdateFooter(); };
+  setTimeout(tickAll, 5000);
+  setInterval(tickAll, 2 * 60 * 1000);
 })();
 
 // ─── Mailbox view (Deploy 6) ─────────────────────────────────────────────────
@@ -1119,6 +1236,7 @@ async function commsDecorateDrawer(data) {
     const old = document.getElementById('drawer-contact-line');
     if (old) old.remove();
     body.insertBefore(line, body.firstChild);
+    commsDecorateDrawerStatus(inv);
 
     // Email history for this invoice (canonical messages store, tagged rows)
     const msgs = await apiFetch(`/api/invoices/${encodeURIComponent(inv.recordNo)}/messages`);

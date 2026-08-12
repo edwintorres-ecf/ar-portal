@@ -454,6 +454,32 @@ function initCommsSchema() {
     );
   `);
 
+  // Collection-status workflow (2026-08-12, emulating the reconciliation
+  // platform's vocabulary): assigned collector sets it, AR staff can update.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS invoice_collection_status (
+      record_no TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      status TEXT NOT NULL,
+      note TEXT,
+      set_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      size INTEGER,
+      content_type TEXT,
+      uploaded_by TEXT,
+      uploaded_at TEXT DEFAULT (datetime('now')),
+      deleted INTEGER DEFAULT 0
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ca_att_cust ON customer_attachments(customer_id)');
+
   // Per-rule customer TARGETING (2026-08-12, Edwin): JSON array of customer
   // ids. Combined with target_mode: 'all' (ignore list), 'only' (rule applies
   // ONLY to listed customers), 'except' (applies to everyone BUT the listed).
@@ -1079,6 +1105,46 @@ function deleteDunningRule(id) {
   getDb().prepare('DELETE FROM dunning_rules WHERE id=?').run(id);
 }
 
+// ─── Collection status (collector sets, AR updates) ─────────────────────────
+
+function getAllCollectionStatuses() {
+  const map = {};
+  for (const r of getDb().prepare('SELECT * FROM invoice_collection_status').all()) map[r.record_no] = r;
+  return map;
+}
+
+function setCollectionStatus(recordNo, invoiceId, status, note, setBy) {
+  getDb().prepare(`
+    INSERT INTO invoice_collection_status (record_no, invoice_id, status, note, set_by, updated_at)
+    VALUES (?,?,?,?,?,datetime('now'))
+    ON CONFLICT(record_no) DO UPDATE SET
+      status=excluded.status, note=excluded.note, set_by=excluded.set_by, updated_at=datetime('now')
+  `).run(recordNo, invoiceId || null, status, note || null, setBy || null);
+  return getDb().prepare('SELECT * FROM invoice_collection_status WHERE record_no=?').get(recordNo);
+}
+
+// ─── Customer attachments (files on disk, metadata here; soft delete only) ──
+
+function listCustomerAttachments(customerId) {
+  return getDb().prepare('SELECT id, customer_id, filename, size, content_type, uploaded_by, uploaded_at FROM customer_attachments WHERE customer_id=? AND deleted=0 ORDER BY uploaded_at DESC').all(customerId);
+}
+
+function getCustomerAttachment(id) {
+  return getDb().prepare('SELECT * FROM customer_attachments WHERE id=?').get(id) || null;
+}
+
+function addCustomerAttachment(customerId, filename, storedPath, size, contentType, uploadedBy) {
+  const r = getDb().prepare(`
+    INSERT INTO customer_attachments (customer_id, filename, stored_path, size, content_type, uploaded_by)
+    VALUES (?,?,?,?,?,?)
+  `).run(customerId, filename, storedPath, size, contentType || null, uploadedBy || null);
+  return getCustomerAttachment(r.lastInsertRowid);
+}
+
+function softDeleteCustomerAttachment(id) {
+  getDb().prepare('UPDATE customer_attachments SET deleted=1 WHERE id=?').run(id);
+}
+
 // ─── Statement schedules ────────────────────────────────────────────────────
 
 function listStatementSchedules() {
@@ -1576,6 +1642,12 @@ module.exports = {
   getStatementSchedule,
   upsertStatementSchedule,
   setStatementSent,
+  getAllCollectionStatuses,
+  setCollectionStatus,
+  listCustomerAttachments,
+  getCustomerAttachment,
+  addCustomerAttachment,
+  softDeleteCustomerAttachment,
   createDunningRun,
   finishDunningRun,
   getDunningRun,

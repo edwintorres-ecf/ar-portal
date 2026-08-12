@@ -2252,6 +2252,8 @@ app.get('/api/comms/config', requireAuth, (req, res) => {
     testMode: comms.allowlist().length > 0,
     allowlistSize: comms.allowlist().length,
     dunningArmed: process.env.DUNNING_ARMED === '1',
+    statementsArmed: process.env.STATEMENTS_ARMED === '1',
+    sageCacheAgeMin: Math.round((sage.getCacheAge() || 0) / 60000),
   });
 });
 
@@ -2489,6 +2491,76 @@ app.delete('/api/dunning/rules/:id', requireAuth, requireRole('admin'), (req, re
 app.post('/api/dunning/rules/impact', requireAuth, (req, res) => {
   try { res.json(dunning.ruleImpact(req.body || {})); }
   catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─── API: Collection status (emulation of the reconciliation platform) ───────
+// Assigned collector sets the status; AR staff can change/update after.
+const COLLECTION_STATUSES = ['Open', 'In Progress', 'HOF Support Required', 'Resubmit Requested',
+  'Resubmitted', 'Promised', 'Sent to Legal', 'Disputed', 'Written Off'];
+
+app.get('/api/collection-status', requireAuth, (req, res) => {
+  try { res.json({ statuses: COLLECTION_STATUSES, byRecord: db.getAllCollectionStatuses() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/invoice/:recordNo/collection-status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const { status, note } = req.body || {};
+    if (!COLLECTION_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const inv = sage.getCachedInvoices().find(i => i.recordNo === req.params.recordNo);
+    const row = db.setCollectionStatus(req.params.recordNo, inv ? inv.invoiceId : null, status, note, req.session.user.email);
+    db.auditLog(req.session.user.email, 'collection_status', req.params.recordNo, `${status}${note ? ' — ' + note.slice(0, 120) : ''}`);
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── API: Customer attachments (files under uploads/customers/, soft delete) ─
+const UPLOADS_DIR = path.join(__dirname, 'uploads', 'customers');
+
+app.get('/api/customers/:customerId/attachments', requireAuth, (req, res) => {
+  try { res.json(db.listCustomerAttachments(req.params.customerId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// JSON body {filename, contentType, dataBase64} — avoids a multipart dependency.
+app.post('/api/customers/:customerId/attachments', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const { filename, contentType, dataBase64 } = req.body || {};
+    if (!filename || !dataBase64) return res.status(400).json({ error: 'filename and dataBase64 required' });
+    const buf = Buffer.from(dataBase64, 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'Empty file' });
+    if (buf.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'File too large (15MB max)' });
+    const safeName = String(filename).replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120);
+    const custDir = path.join(UPLOADS_DIR, String(req.params.customerId).replace(/[^A-Za-z0-9_-]/g, '_'));
+    fs.mkdirSync(custDir, { recursive: true });
+    const storedPath = path.join(custDir, `${Date.now()}-${safeName}`);
+    fs.writeFileSync(storedPath, buf);
+    const row = db.addCustomerAttachment(req.params.customerId, safeName, storedPath, buf.length, contentType || null, req.session.user.email);
+    db.auditLog(req.session.user.email, 'attachment_upload', req.params.customerId, `${safeName} (${buf.length}b)`);
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/attachments/:id/download', requireAuth, (req, res) => {
+  try {
+    const a = db.getCustomerAttachment(parseInt(req.params.id, 10));
+    if (!a || a.deleted || !fs.existsSync(a.stored_path)) return res.status(404).json({ error: 'Not found' });
+    res.setHeader('Content-Type', a.content_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${a.filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    fs.createReadStream(a.stored_path).pipe(res);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/attachments/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const a = db.getCustomerAttachment(parseInt(req.params.id, 10));
+    if (!a) return res.status(404).json({ error: 'Not found' });
+    db.softDeleteCustomerAttachment(a.id);   // file stays on disk — archive, never destroy
+    db.auditLog(req.session.user.email, 'attachment_remove', a.customer_id, a.filename);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── API: Scheduled statement delivery (statements.js) ───────────────────────

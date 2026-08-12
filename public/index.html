@@ -515,6 +515,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 </style>
+<link rel="stylesheet" href="/styles.css?v=20260812a">
 </head>
 <body>
 
@@ -531,7 +532,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     <div class="nav-tab active" data-view="dashboard" onclick="navGo('dashboard')">Dashboard</div>
 
     <div class="nav-group" data-group="collections">
-      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'collections')">Collections<span class="caret">▾</span></div>
+      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'collections')">Operations<span class="caret">▾</span></div>
       <div class="nav-group-menu">
         <div class="nav-drop-item" data-view="my-work" onclick="navGo('my-work')">📥 My Work</div>
         <div class="nav-drop-item" data-view="ptp-board" onclick="navGo('ptp-board')">💰 Promises</div>
@@ -541,7 +542,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     </div>
 
     <div class="nav-group" data-group="accounts">
-      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'accounts')">Accounts<span class="caret">▾</span></div>
+      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'accounts')">Client Data<span class="caret">▾</span></div>
       <div class="nav-group-menu">
         <div class="nav-drop-item" data-view="customers" onclick="navGo('customers')">👥 All Customers</div>
         <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">🟠 Amazon AR</div>
@@ -5606,6 +5607,7 @@ function openStatement(customerId) {
 
 
 </script>
-<script src="/comms.js?v=20260812d"></script>
+<div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
+<script src="/comms.js?v=20260812e"></script>
 </body>
 </html>
