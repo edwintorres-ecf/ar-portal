@@ -246,6 +246,29 @@ ${autoPrint ? '<script>window.onload = function() { window.print(); }</script>' 
 </html>`;
 }
 
+// ─── HTML → PDF (statement attachments) ──────────────────────────────────────
+// Customers get statements as PDF, never as an .html attachment (looks like
+// junk and many clients block it). Renders via the same playwright-core +
+// system Chromium the payee scrapers use. ~1-2s per render; sends are
+// infrequent so a fresh browser per call is fine.
+async function htmlToPdf(html) {
+  const { chromium } = require('playwright-core');
+  const browser = await chromium.launch({
+    executablePath: '/usr/bin/chromium-browser',
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load' });
+    return await page.pdf({
+      format: 'Letter', printBackground: true,
+      margin: { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' },
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
 // ─── Recipient guard ─────────────────────────────────────────────────────────
 // Dedupe + normalize; block contacts with consent revoked; enforce allowlist.
 function resolveRecipients(customerId, toEmails, ccEmails) {
@@ -376,13 +399,14 @@ async function sendMessage(opts) {
     const invoices = sage.getCachedInvoices().filter(i => i.customerId === customerId);
     if (invoices.length) {
       const html = buildStatementHtml(customerId, invoices, { autoPrint: false });
-      const name = `Statement-${customerId}-${new Date().toISOString().slice(0, 10)}.html`;
+      const pdf = await htmlToPdf(html);
+      const name = `Statement-${customerId}-${new Date().toISOString().slice(0, 10)}.pdf`;
       draftPayload.attachments = [{
         '@odata.type': '#microsoft.graph.fileAttachment',
-        name, contentType: 'text/html',
-        contentBytes: Buffer.from(html, 'utf8').toString('base64'),
+        name, contentType: 'application/pdf',
+        contentBytes: pdf.toString('base64'),
       }];
-      attachmentsMeta.push({ name, size: html.length, contentType: 'text/html' });
+      attachmentsMeta.push({ name, size: pdf.length, contentType: 'application/pdf' });
     }
   }
   // Caller-supplied binary attachments (e.g. invoice PDFs resolved at the
