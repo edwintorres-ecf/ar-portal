@@ -432,24 +432,26 @@ async function sendMessage(opts) {
   // (found live 2026-08-12: portal replies arrived as separate emails).
   let draft = null;
   try {
-    let replyAnchor = null;
+    let anchorPool = [];
     if (conversationId) {
       const prior = db.getMessagesForConversation(conv.id).filter(m => m.graph_message_id);
       // Anchor to the newest message that is IN the thread's canonical
       // Exchange conversation — anchoring to a stray (a pre-fix reply that
       // spawned its own conversationId) would propagate the broken thread.
       const canonical = prior.filter(m => !conv.graph_conversation_id || m.graph_conversation_id === conv.graph_conversation_id);
-      const pool = canonical.length ? canonical : prior;
-      replyAnchor = pool.length ? pool[pool.length - 1] : null;
+      anchorPool = (canonical.length ? canonical : prior).slice(-5).reverse();
     }
-    if (replyAnchor) {
+    if (anchorPool.length) {
+      // Graph ids are folder-scoped and die when a message moves (a just-sent
+      // reply's draft id is dead until the poller refreshes it) — so walk the
+      // pool newest-first and use the first anchor Exchange still accepts,
+      // instead of collapsing to an unthreaded fresh draft on one stale id.
       let replyDraft = null;
-      try {
-        replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(replyAnchor.graph_message_id)}/createReply`);
-      } catch (e) {
-        // Anchor's graph id can go stale (folder-scoped ids); fall back to a
-        // fresh draft rather than failing the send.
-        replyDraft = null;
+      for (const anchor of anchorPool) {
+        try {
+          replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(anchor.graph_message_id)}/createReply`);
+          break;
+        } catch (e) { /* stale id — try the next-older anchor */ }
       }
       if (replyDraft) {
         const full = await graph.gGet(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}?$select=id,body,internetMessageId,conversationId`);
