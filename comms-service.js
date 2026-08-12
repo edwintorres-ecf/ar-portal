@@ -444,14 +444,28 @@ async function sendMessage(opts) {
     if (anchorPool.length) {
       // Graph ids are folder-scoped and die when a message moves (a just-sent
       // reply's draft id is dead until the poller refreshes it) — so walk the
-      // pool newest-first and use the first anchor Exchange still accepts,
-      // instead of collapsing to an unthreaded fresh draft on one stale id.
+      // pool newest-first, and when an id is stale, resolve the LIVE id via
+      // the immutable RFC internetMessageId and retry before moving on. This
+      // matters most for a brand-new thread whose only anchor was sent
+      // seconds ago (found live 2026-08-12 in the cross-thread test).
       let replyDraft = null;
       for (const anchor of anchorPool) {
         try {
           replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(anchor.graph_message_id)}/createReply`);
           break;
-        } catch (e) { /* stale id — try the next-older anchor */ }
+        } catch (e) { /* stale id — try to re-resolve below */ }
+        if (anchor.internet_message_id) {
+          try {
+            const q = encodeURIComponent(`internetMessageId eq '${anchor.internet_message_id}'`);
+            const found = await graph.gGet(`/users/${mb}/messages?$filter=${q}&$select=id&$top=1`);
+            const liveId = found.value && found.value[0] && found.value[0].id;
+            if (liveId && liveId !== anchor.graph_message_id) {
+              try { db.getDb().prepare('UPDATE messages SET graph_message_id=? WHERE id=?').run(liveId, anchor.id); } catch (e2) { /* unique clash */ }
+              replyDraft = await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(liveId)}/createReply`);
+              break;
+            }
+          } catch (e) { /* resolution failed — next-older anchor */ }
+        }
       }
       if (replyDraft) {
         const full = await graph.gGet(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}?$select=id,body,internetMessageId,conversationId`);
