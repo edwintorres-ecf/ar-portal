@@ -59,7 +59,9 @@ echo "── [6/6] smoke test"
 if node smoke-test.js; then
   git add -A >/dev/null 2>&1 || true
   git commit -qm "deploy $TS: $*" >/dev/null 2>&1 || true
-  echo "✅ DEPLOY OK ($TS) — committed"
+  # Keep the offsite GitHub backup current (non-fatal if unreachable)
+  git push -q origin main 2>/dev/null && PUSHED=", pushed offsite" || PUSHED=" (offsite push FAILED - push manually)"
+  echo "✅ DEPLOY OK ($TS) — committed$PUSHED"
 else
   echo "⚠️  SMOKE FAILED — service is running the new code; investigate now or roll back:"
   echo "    git log --oneline -3   &&   git checkout HEAD~1 -- <file> && sudo systemctl restart ar-portal"
