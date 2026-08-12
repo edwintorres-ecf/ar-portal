@@ -520,7 +520,7 @@ async function commsLoadOverview() {
         ${tile('Total AR', fmt$(o.totalAR), o.openInvoices.toLocaleString() + ' open invoices', '#3763a0')}
         ${tile('Past Due AR', fmt$(o.pastDueAR), o.pastDueCount.toLocaleString() + ' past due invoices', '#b32020')}
         ${tile('Current AR', fmt$(o.currentAR), 'Not currently past due', '#3f7238')}
-        ${tile('Customers', o.customers.toLocaleString(), o.locations.toLocaleString() + ' locations', null)}
+        ${tile('Customers', o.customers.toLocaleString(), 'with open AR · ' + o.serviceCenters.length + ' service centers', null)}
         ${tile('Oldest Still Open', o.oldestDays + 'd', 'days past due', null)}
       </div>
 
