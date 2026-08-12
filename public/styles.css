@@ -127,3 +127,43 @@ header h1, .logo, .app-title, .brand { color: var(--ink) !important; }
   border-top: 1px solid var(--line); margin-top: 28px;
 }
 #live-footer strong { color: #3f7238; font-weight: 600; }
+
+/* ─── Dark mode (2026-08-12): selected steps from the same token system, not
+   an auto-invert. Toggled via <html data-theme="dark">, persisted client-side.
+   The [style*=] overrides exist because views carry inline card styling. ─── */
+[data-theme="dark"] body {
+  background: radial-gradient(circle at top left, #201d19 0%, #171512 45%, #100e0c 100%) fixed !important;
+  color: #ece7dd;
+}
+[data-theme="dark"] .nav-tab { background: #201d19 !important; color: #ece7dd !important; border-color: #35302a !important; }
+[data-theme="dark"] .nav-tab.active, [data-theme="dark"] .nav-tab:hover { border-color: #ece7dd !important; }
+[data-theme="dark"] .nav-group-menu { background: #201d19 !important; border-color: #35302a !important; }
+[data-theme="dark"] .nav-drop-item { color: #ece7dd !important; }
+[data-theme="dark"] .nav-drop-item:hover, [data-theme="dark"] .nav-drop-item.active { background: #2a2622 !important; }
+[data-theme="dark"] .kpi-card, [data-theme="dark"] .wf-card, [data-theme="dark"] .report-card,
+[data-theme="dark"] .modal-box, [data-theme="dark"] .ai-card, [data-theme="dark"] #drawer {
+  background: #201d19 !important; border-color: #35302a !important; color: #ece7dd;
+}
+[data-theme="dark"] .view table, [data-theme="dark"] .view table tbody tr:hover { background: #201d19 !important; }
+[data-theme="dark"] .view tbody tr:hover { background: #2a2622 !important; }
+[data-theme="dark"] .view thead th { background: #26221d !important; color: #b0a89a !important; border-color: #35302a !important; }
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+  background: #171512 !important; color: #ece7dd !important; border-color: #35302a !important;
+}
+[data-theme="dark"] [style*="background:#fff"], [data-theme="dark"] [style*="background: #fff"],
+[data-theme="dark"] [style*="background:#ffffff"] { background: #201d19 !important; }
+[data-theme="dark"] [style*="background:#faf8f3"], [data-theme="dark"] [style*="background:#f8fafc"],
+[data-theme="dark"] [style*="background:#f1f5f9"] { background: #26221d !important; color: #ece7dd !important; }
+[data-theme="dark"] [style*="border:1px solid var(--line"], [data-theme="dark"] [style*="#e7e1d4"] { border-color: #35302a !important; }
+[data-theme="dark"] [style*="color:#6b6458"], [data-theme="dark"] [style*="color:var(--gray-500)"],
+[data-theme="dark"] [style*="color:var(--gray-600)"] { color: #b0a89a !important; }
+[data-theme="dark"] [style*="border-top:1px solid #f1ede3"] { border-top-color: #35302a !important; }
+[data-theme="dark"] h1, [data-theme="dark"] strong { color: #ece7dd; }
+[data-theme="dark"] #live-footer { border-color: #35302a; color: #b0a89a; }
+#theme-toggle {
+  position: fixed; bottom: 18px; right: 18px; z-index: 500;
+  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line, #e7e1d4);
+  background: var(--card, #fff); cursor: pointer; font-size: 17px;
+  box-shadow: 0 4px 14px rgba(26,24,20,.14);
+}
+[data-theme="dark"] #theme-toggle { background: #201d19; border-color: #35302a; }

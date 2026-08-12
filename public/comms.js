@@ -912,6 +912,104 @@ async function commsInviteUser() {
   } catch (e) { alert('Invite failed: ' + e.message); }
 }
 
+// ─── Reports v2 (real charts from live data; legacy kept one click away) ─────
+const _legacyLoadReports = typeof loadReports === 'function' ? loadReports : null;
+
+function commsHBar(rows, { color = '#3763a0', money = true } = {}) {
+  // Horizontal bars: thin marks, direct labels, one measure, no dual axis.
+  const max = Math.max(1, ...rows.map(r => r.v));
+  const fmt = (n) => money ? '$' + Math.round(n).toLocaleString() : n.toLocaleString();
+  return rows.map(r => `
+    <div style="margin-bottom:10px" title="${escHtml(r.label)}: ${fmt(r.v)}">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">${escHtml(r.label)}</span>
+        <span style="font-variant-numeric:tabular-nums;font-weight:600">${fmt(r.v)}</span>
+      </div>
+      <div style="height:8px;background:rgba(128,120,100,.14);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.max(1, (r.v / max) * 100)}%;background:${r.color || color};border-radius:4px"></div>
+      </div>
+    </div>`).join('');
+}
+
+async function commsReportsV2() {
+  const view = document.getElementById('view-reports');
+  if (!view) return;
+  let host = document.getElementById('reports2-root');
+  if (!host) { view.innerHTML = '<div id="reports2-root" style="padding:4px 8px"></div>'; host = document.getElementById('reports2-root'); }
+  host.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [o, dso, fc, locs] = await Promise.all([
+      apiFetch('/api/overview'),
+      apiFetch('/api/reports/dso-cei').catch(() => null),
+      apiFetch('/api/reports/collection-forecast').catch(() => null),
+      apiFetch('/api/locations-view').catch(() => []),
+    ]);
+    const fmt$ = (n) => '$' + Math.round(n || 0).toLocaleString();
+    const card = (title, sub, inner) => `
+      <div style="flex:1;min-width:340px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 20px">
+        <div style="font-weight:700;font-size:15px">${title}</div>
+        <div style="font-size:11.5px;color:#6b6458;margin-bottom:12px">${sub}</div>${inner}
+      </div>`;
+    const sev = { '1-30': '#e8b93c', '31-60': '#e0862f', '61-90': '#d64530', '91-180': '#a02020', '181+': '#7a1a1a' };
+    const agingRows = Object.entries(o.buckets).map(([k, v]) => ({ label: k + ' days', v, color: sev[k] }));
+    const scRows = locs.filter(l => l.pastDue > 0).sort((a, b) => b.pastDue - a.pastDue)
+      .map(l => ({ label: (l.sc ? l.sc + ' · ' : '') + l.locationName, v: l.pastDue }));
+    const topRows = (o.top10 || []).map(t => ({ label: t.name, v: t.pastDue }));
+    let fcInner = '';
+    if (fc && fc.weekBuckets) {
+      const wb = Array.isArray(fc.weekBuckets) ? fc.weekBuckets
+        : Object.entries(fc.weekBuckets).map(([k, v]) => ({ label: k, amount: typeof v === 'number' ? v : (v.amount || 0) }));
+      const rows = wb.map(w => ({ label: w.label || w.week || w.name || '', v: w.amount || w.total || w.v || 0 })).filter(r => r.label);
+      if (rows.length) fcInner = commsHBar(rows, { color: '#3f7238' });
+    }
+    host.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:6px 0 12px">
+        <h1 style="font-size:26px;font-weight:700;margin:0">Reports</h1>
+        ${_legacyLoadReports ? '<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 14px;border-radius:8px;cursor:pointer" onclick="_legacyLoadReports()">Legacy reports</button>' : ''}
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        ${['Total AR|' + fmt$(o.totalAR) + '|' + o.openInvoices.toLocaleString() + ' invoices',
+           'Past due|' + fmt$(o.pastDueAR) + '|' + o.pctPastDue + '% of AR',
+           'Avg days outstanding|' + ((dso && dso.avgDaysOutstanding) != null ? dso.avgDaysOutstanding + 'd' : '—') + '|DSO proxy',
+           'Promised to pay|' + (fc ? fmt$(fc.ptpTotal) : '—') + '|' + (fc ? fc.ptpCount + ' open promises' : '')]
+          .map(x => { const [l, v, sub] = x.split('|'); return `
+          <div style="flex:1;min-width:170px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px">
+            <div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#6b6458;text-transform:uppercase">${l}</div>
+            <div style="font-size:23px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px">${v}</div>
+            <div style="font-size:11.5px;color:#6b6458">${sub}</div>
+          </div>`; }).join('')}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+        ${card('Past-due aging', 'Remaining past-due dollars by bucket', commsHBar(agingRows))}
+        ${card('Past due by service center', 'Where the exposure sits', commsHBar(scRows) || '<div style="font-size:12px;color:#6b6458">Nothing past due.</div>')}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${card('Top 10 past-due customers', 'Ranked by remaining past-due balance', commsHBar(topRows))}
+        ${fcInner ? card('Expected collections', 'Open promises to pay by week', fcInner) : ''}
+      </div>`;
+  } catch (e) {
+    host.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+loadReports = commsReportsV2;
+
+// ─── Theme toggle (light/dark, persisted) ────────────────────────────────────
+(function commsTheme() {
+  const saved = localStorage.getItem('arTheme');
+  if (saved === 'dark') document.documentElement.dataset.theme = 'dark';
+  const inject = () => {
+    if (document.getElementById('theme-toggle')) return;
+    document.body.insertAdjacentHTML('beforeend',
+      '<button id="theme-toggle" title="Light / dark mode" onclick="commsToggleTheme()">🌓</button>');
+  };
+  if (document.body) inject(); else document.addEventListener('DOMContentLoaded', inject);
+})();
+function commsToggleTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  if (dark) { delete document.documentElement.dataset.theme; localStorage.setItem('arTheme', 'light'); }
+  else { document.documentElement.dataset.theme = 'dark'; localStorage.setItem('arTheme', 'dark'); }
+}
+
 // ─── Unified notifications bell (mentions + needs-reply + triage) ────────────
 async function commsUnifiedBell() {
   try {
