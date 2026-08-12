@@ -1583,6 +1583,7 @@ async function openDrawer(recordNo, scrollToNotes = false) {
   try {
     const data = await apiFetch('/api/invoices/' + recordNo);
     renderDrawer(data);
+    if (window.commsDecorateDrawer) commsDecorateDrawer(data);
     if (scrollToNotes) {
       setTimeout(() => {
         const noteBox = document.getElementById('note-body');
@@ -3044,6 +3045,7 @@ function renderCustomers() {
           ${stopBtn}
           ${assignSel}
           <button class="btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none;padding:3px 8px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;" onclick="event.stopPropagation();openStatement('${c.id}')">📄 Statement</button>
+          <button class="btn-sm" style="background:#f0fdf4;color:#15803d;border:none;padding:3px 8px;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;" onclick="event.stopPropagation();commsOpenContacts('${c.id}','${escHtml(c.name)}')">👤 Contacts</button>
         </div>
       </td>
     </tr>`;
@@ -5527,5 +5529,6 @@ function openStatement(customerId) {
 
 
 </script>
+<script src="/comms.js"></script>
 </body>
 </html>

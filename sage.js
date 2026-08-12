@@ -722,6 +722,60 @@ async function getCustomers() {
   return allCustomers.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ─── Customer contact lookup (comms platform) ───────────────────────────────
+// DISPLAYCONTACT fields only come back via the modern <query>/<select> shape;
+// the legacy readByQuery above returns empty rows for dotted fields (verified
+// live 2026-08-11). Returns [{id, name, contactName, email1, email2, phone1}]
+// for every active customer. Read-only; used by the customer_contacts sync.
+async function getCustomerContacts() {
+  const pageSize = 1000;
+  let offset = 0;
+  const rows = [];
+  while (true) {
+    const xml = buildXml(`
+      <query>
+        <object>CUSTOMER</object>
+        <select>
+          <field>CUSTOMERID</field>
+          <field>NAME</field>
+          <field>STATUS</field>
+          <field>DISPLAYCONTACT.CONTACTNAME</field>
+          <field>DISPLAYCONTACT.EMAIL1</field>
+          <field>DISPLAYCONTACT.EMAIL2</field>
+          <field>DISPLAYCONTACT.PHONE1</field>
+        </select>
+        <filter><equalto><field>STATUS</field><value>active</value></equalto></filter>
+        <pagesize>${pageSize}</pagesize>
+        <offset>${offset}</offset>
+      </query>
+    `);
+    const resp = await sagePost(xml);
+    const status = extractTag(resp, 'status');
+    if (status !== 'success') {
+      const errMsg = extractTag(resp, 'description2') || extractTag(resp, 'description') || 'Unknown error';
+      throw new Error('Sage customer-contact query failed: ' + errMsg);
+    }
+    const matches = [...resp.matchAll(/<CUSTOMER>([\s\S]*?)<\/CUSTOMER>/g)];
+    for (const m of matches) {
+      const b = m[1];
+      const id = extractTag(b, 'CUSTOMERID') || '';
+      if (!id) continue;
+      rows.push({
+        id,
+        name: extractTag(b, 'NAME') || '',
+        contactName: extractTag(b, 'DISPLAYCONTACT.CONTACTNAME') || '',
+        email1: extractTag(b, 'DISPLAYCONTACT.EMAIL1') || '',
+        email2: extractTag(b, 'DISPLAYCONTACT.EMAIL2') || '',
+        phone1: extractTag(b, 'DISPLAYCONTACT.PHONE1') || '',
+      });
+    }
+    const numRemaining = parseInt((resp.match(/<data[^>]+numremaining="(\d+)"/i) || [])[1] || '0', 10);
+    if (!matches.length || numRemaining <= 0) break;
+    offset += pageSize;
+  }
+  return rows;
+}
+
 // ─── Item lookup ─────────────────────────────────────────────────────────────
 async function getItems() {
   const allItems = [];
@@ -995,6 +1049,7 @@ module.exports = {
   getCacheAge,
   computeAgingBucket,
   getCustomers,
+  getCustomerContacts,
   getItems,
   getLocations,
   createInvoice,

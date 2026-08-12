@@ -999,6 +999,15 @@ app.get('/api/reports/top-customers', requireAuth, async (req, res) => {
 
 
 
+// ─── Customer-contact sync (comms platform) ──────────────────────────────────
+async function runContactSync(triggeredBy) {
+  const rows = await sage.getCustomerContacts();
+  const summary = db.syncCustomerContactsFromSage(rows);
+  db.auditLog(triggeredBy || 'system', 'comm_contact_sync', null, JSON.stringify(summary));
+  console.log(`[contacts] sync: ${summary.inserted} inserted, ${summary.updated} updated, ${summary.skippedManual} manual-skipped across ${summary.customersWithContacts}/${summary.customers} customers`);
+  return summary;
+}
+
 // ─── Graph sendMail helpers ────────────────────────────────────────────────────
 function portalBaseUrl() {
   return process.env.REDIRECT_URI
@@ -2229,6 +2238,56 @@ app.get('/api/customer-accounts', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Customer contacts (comms platform) ─────────────────────────────────
+// Sync-seed from Intacct, manual-authoritative — see db.js customer_contacts.
+app.get('/api/customers/:customerId/contacts', requireAuth, (req, res) => {
+  try {
+    res.json(db.listCustomerContacts(req.params.customerId, req.query.all === '1'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/customers/:customerId/contacts', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes } = req.body;
+    const contact = db.addCustomerContact(req.params.customerId,
+      { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes }, user.email);
+    db.auditLog(user.email, 'comm_contact_add', req.params.customerId, `${contact.email}${name ? ' (' + name + ')' : ''}`);
+    res.json(contact);
+  } catch (e) {
+    const code = /invalid email|UNIQUE constraint/.test(e.message) ? 400 : 500;
+    res.status(code).json({ error: /UNIQUE constraint/.test(e.message) ? 'That email already exists for this customer' : e.message });
+  }
+});
+
+app.put('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const contact = db.updateCustomerContact(parseInt(req.params.id, 10), req.body, user.email);
+    db.auditLog(user.email, 'comm_contact_update', contact.customer_id, `${contact.email}: ${JSON.stringify(req.body).slice(0, 200)}`);
+    res.json(contact);
+  } catch (e) {
+    const code = /invalid email|not found/.test(e.message) ? 400 : 500;
+    res.status(code).json({ error: e.message });
+  }
+});
+
+app.delete('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const user = req.session.user;
+    const contact = db.updateCustomerContact(parseInt(req.params.id, 10), { is_active: 0, is_primary: 0 }, user.email);
+    db.auditLog(user.email, 'comm_contact_deactivate', contact.customer_id, contact.email);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/contacts/sync', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const summary = await runContactSync(req.session.user.email);
+    res.json(summary);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: DSO + CEI ──────────────────────────────────────────────────────────
 app.get('/api/reports/dso-cei', requireAuth, async (req, res) => {
   try {
@@ -2771,6 +2830,12 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     ai.warmup().then(() => console.log(`[ar-portal] AI warm: ${ai.MODEL_SMART} / ${ai.MODEL_FAST}`));
     setInterval(() => ai.warmup(), 100 * 60 * 1000);
   }).catch(() => {});
+
+  // Customer-contact sync from Intacct DISPLAYCONTACT — contacts change slowly;
+  // startup pass (delayed 2 min so it never competes with the invoice
+  // pre-warm) then every 24 hours. Manual rows are never touched (see db.js).
+  setTimeout(() => runContactSync('scheduler').catch(() => {}), 2 * 60 * 1000);
+  setInterval(() => runContactSync('scheduler').catch(() => {}), 24 * 60 * 60 * 1000);
 
   // SharePoint PO-document scan — read-only Graph list; docs change slowly, so
   // run at startup then every 6 hours.

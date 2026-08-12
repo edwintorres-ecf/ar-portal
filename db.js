@@ -749,6 +749,126 @@ function updateUserPhone(email, phone) {
   d.prepare("UPDATE user_roles SET phone=? WHERE email=?").run(phone || null, email);
 }
 
+// ─── Customer contacts (comms platform) ────────────────────────────────────
+// Sync-seed, manual-authoritative: Intacct DISPLAYCONTACT rows are suggestions
+// (source='intacct'); any human edit flips a row to source='manual' and the
+// sync never touches it again. Synced contacts arrive with consent_email=1 but
+// dunning_enabled=0 — a human must approve each contact for automated dunning.
+// Rows are never deleted, only is_active=0.
+
+const _normCEmail = (e) => String(e || '').trim().toLowerCase();
+const _validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+function listCustomerContacts(customerId, includeInactive = false) {
+  const d = getDb();
+  const sql = includeInactive
+    ? 'SELECT * FROM customer_contacts WHERE customer_id=? ORDER BY is_primary DESC, name ASC'
+    : 'SELECT * FROM customer_contacts WHERE customer_id=? AND is_active=1 ORDER BY is_primary DESC, name ASC';
+  return d.prepare(sql).all(customerId);
+}
+
+function getCustomerContact(id) {
+  return getDb().prepare('SELECT * FROM customer_contacts WHERE id=?').get(id) || null;
+}
+
+function addCustomerContact(customerId, fields, createdBy) {
+  const d = getDb();
+  const email = _normCEmail(fields.email);
+  if (!_validEmail(email)) throw new Error('invalid email');
+  d.prepare(`
+    INSERT INTO customer_contacts (customer_id, name, email, phone, title, source, is_primary, consent_email, dunning_enabled, notes, created_by, updated_by)
+    VALUES (?,?,?,?,?,'manual',?,?,?,?,?,?)
+  `).run(customerId, fields.name || null, email, fields.phone || null, fields.title || null,
+    fields.is_primary ? 1 : 0, fields.consent_email === 0 ? 0 : 1, fields.dunning_enabled ? 1 : 0,
+    fields.notes || null, createdBy || null, createdBy || null);
+  const row = d.prepare('SELECT * FROM customer_contacts WHERE customer_id=? AND email=?').get(customerId, email);
+  if (fields.is_primary) setContactPrimary(customerId, row.id);
+  return getCustomerContact(row.id);
+}
+
+// Any human update makes the row manual-authoritative (source='manual').
+function updateCustomerContact(id, fields, updatedBy) {
+  const d = getDb();
+  const existing = getCustomerContact(id);
+  if (!existing) throw new Error('contact not found');
+  const sets = ["source='manual'", "updated_at=datetime('now')"];
+  const vals = [];
+  if (fields.name !== undefined)  { sets.push('name=?');  vals.push(fields.name || null); }
+  if (fields.phone !== undefined) { sets.push('phone=?'); vals.push(fields.phone || null); }
+  if (fields.title !== undefined) { sets.push('title=?'); vals.push(fields.title || null); }
+  if (fields.notes !== undefined) { sets.push('notes=?'); vals.push(fields.notes || null); }
+  if (fields.email !== undefined) {
+    const email = _normCEmail(fields.email);
+    if (!_validEmail(email)) throw new Error('invalid email');
+    sets.push('email=?'); vals.push(email);
+  }
+  if (fields.consent_email !== undefined)   { sets.push('consent_email=?');   vals.push(fields.consent_email ? 1 : 0); }
+  if (fields.dunning_enabled !== undefined) { sets.push('dunning_enabled=?'); vals.push(fields.dunning_enabled ? 1 : 0); }
+  if (fields.is_active !== undefined)       { sets.push('is_active=?');       vals.push(fields.is_active ? 1 : 0); }
+  sets.push('updated_by=?'); vals.push(updatedBy || null);
+  vals.push(id);
+  d.prepare(`UPDATE customer_contacts SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  if (fields.is_primary) setContactPrimary(existing.customer_id, id);
+  else if (fields.is_primary === 0 || fields.is_primary === false) {
+    d.prepare('UPDATE customer_contacts SET is_primary=0 WHERE id=?').run(id);
+  }
+  return getCustomerContact(id);
+}
+
+function setContactPrimary(customerId, id) {
+  const d = getDb();
+  d.prepare('UPDATE customer_contacts SET is_primary=0 WHERE customer_id=?').run(customerId);
+  d.prepare("UPDATE customer_contacts SET is_primary=1, updated_at=datetime('now') WHERE id=?").run(id);
+}
+
+// Seed/refresh from Sage DISPLAYCONTACT rows: [{id, name, contactName, email1, email2, phone1}].
+// AP email fields often pack several addresses ("a@x.com; b@y.com") — split them.
+function syncCustomerContactsFromSage(rows) {
+  const d = getDb();
+  let inserted = 0, updated = 0, skippedManual = 0, customersWithContacts = 0;
+  const findStmt = d.prepare('SELECT * FROM customer_contacts WHERE customer_id=? AND email=?');
+  const primaryStmt = d.prepare('SELECT COUNT(*) AS c FROM customer_contacts WHERE customer_id=? AND is_primary=1 AND is_active=1');
+  const insStmt = d.prepare(`
+    INSERT INTO customer_contacts (customer_id, name, email, phone, title, source, is_primary, consent_email, dunning_enabled, created_by, updated_by)
+    VALUES (?,?,?,?,NULL,'intacct',?,1,0,'intacct-sync','intacct-sync')
+  `);
+  const updStmt = d.prepare(`
+    UPDATE customer_contacts SET name=?, phone=?, updated_by='intacct-sync', updated_at=datetime('now')
+    WHERE id=? AND source='intacct'
+  `);
+  for (const r of rows) {
+    const emails = [];
+    for (const [src, isFirstField] of [[r.email1, true], [r.email2, false]]) {
+      for (const part of String(src || '').split(/[;,]+/)) {
+        const e = _normCEmail(part);
+        if (_validEmail(e) && !emails.some(x => x.email === e)) emails.push({ email: e, firstField: isFirstField && emails.length === 0 });
+      }
+    }
+    if (!emails.length) continue;
+    customersWithContacts++;
+    for (const { email, firstField } of emails) {
+      const existing = findStmt.get(r.id, email);
+      // Name/phone belong to the DISPLAYCONTACT person — only meaningful on the
+      // first address of EMAIL1; extra split addresses get no name.
+      const name = firstField ? (r.contactName || null) : null;
+      const phone = firstField ? (r.phone1 || null) : null;
+      if (!existing) {
+        const hasPrimary = primaryStmt.get(r.id).c > 0;
+        insStmt.run(r.id, name, email, phone, firstField && !hasPrimary ? 1 : 0);
+        inserted++;
+      } else if (existing.source === 'intacct') {
+        if ((name && existing.name !== name) || (phone && existing.phone !== phone)) {
+          updStmt.run(name ?? existing.name, phone ?? existing.phone, existing.id);
+          updated++;
+        }
+      } else {
+        skippedManual++;
+      }
+    }
+  }
+  return { customers: rows.length, customersWithContacts, inserted, updated, skippedManual };
+}
+
 // ─── Comms state (kv: delta links, run locks, cursors) ─────────────────────
 
 function getCommState(key) {
@@ -1135,6 +1255,12 @@ module.exports = {
   updateUserPhone,
   getCommState,
   setCommState,
+  listCustomerContacts,
+  getCustomerContact,
+  addCustomerContact,
+  updateCustomerContact,
+  setContactPrimary,
+  syncCustomerContactsFromSage,
   preProvisionUser,
   getUserRole,
   upsertUserRole,
