@@ -7,11 +7,18 @@
 
 const COMMS_AMAZON = ['C-00403', 'C-00566'];
 
+// index.html declares `let currentUser` at top level, which lives in the
+// shared global lexical scope but is NOT a window property, so reading it via
+// the window object always yields undefined. Read the bare global instead.
+function commsUser() {
+  try { return (typeof currentUser !== 'undefined' && currentUser) || null; } catch (e) { return null; }
+}
+
 function commsCanEdit() {
-  return window.currentUser && ['admin', 'manager', 'ar_specialist'].includes(window.currentUser.role);
+  return commsUser() && ['admin', 'manager', 'ar_specialist'].includes(commsUser().role);
 }
 function commsIsManager() {
-  return window.currentUser && ['admin', 'manager'].includes(window.currentUser.role);
+  return commsUser() && ['admin', 'manager'].includes(commsUser().role);
 }
 
 // ─── Modal shell (injected once) ─────────────────────────────────────────────
@@ -240,7 +247,7 @@ let _composerCtx = null;   // { customerId, customerName, recordNos, contacts, t
   else document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('beforeend', html));
 })();
 
-async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach, conversationId }) {
+async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach, conversationId, replyToEmail, replySubject }) {
   if (!commsCanEdit()) { alert('Your role cannot send customer email.'); return; }
   const [contacts, templates, config] = await Promise.all([
     apiFetch(`/api/customers/${encodeURIComponent(customerId)}/contacts`),
@@ -248,6 +255,10 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
     apiFetch('/api/comms/config'),
   ]);
   _composerCtx = { customerId, customerName, recordNos: recordNos || [], contacts, templates, dirty: false, templateKey: null, conversationId: conversationId || null };
+  // In a reply, target the actual counterparty rather than the default
+  // primary-contact selection.
+  const replyNorm = (replyToEmail || '').trim().toLowerCase();
+  if (replyNorm) contacts.forEach(c => { c.is_primary = (c.email === replyNorm) ? 1 : 0; });
   document.getElementById('composer-modal').style.display = 'flex';
   document.getElementById('composer-title').textContent = '✉️ Email ' + (customerName || customerId);
   document.getElementById('composer-sub').textContent = invoiceId
@@ -267,7 +278,22 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
   tsel.innerHTML = '<option value="">Custom (blank)</option>' +
     templates.filter(t => t.kind === 'external' && t.active).map(t => `<option value="${escHtml(t.key)}">${escHtml(t.name || t.key)}</option>`).join('');
   tsel.value = '';
-  document.getElementById('composer-subject').value = '';
+  // Counterparty not in contacts (e.g. filed thread with an unsaved sender):
+  // pre-fill the free-entry recipient field so the reply still targets them.
+  if (replyNorm && !contacts.some(c => c.email === replyNorm)) {
+    const extra = document.getElementById('composer-to-extra');
+    if (extra) extra.value = replyNorm;
+  }
+  const subjEl = document.getElementById('composer-subject');
+  if (conversationId) {
+    subjEl.value = replySubject || 'RE: (thread subject)';
+    subjEl.disabled = true;
+    subjEl.title = 'Replies keep the thread subject so routing tokens survive';
+  } else {
+    subjEl.value = '';
+    subjEl.disabled = false;
+    subjEl.title = '';
+  }
   document.getElementById('composer-body').value = '';
   document.getElementById('composer-cc').value = '';
   document.getElementById('composer-attach-stmt').checked = !!defaultAttach;
@@ -446,27 +472,40 @@ function commsUpdateTriageBadge(count) {
   else b.style.display = 'none';
 }
 
-// Badge refresher: light poll once the SPA is authenticated.
+// Badge refresher: the Comms nav badge is the "you have action items" signal
+// on every screen — replies awaiting response + triage, with a breakdown in
+// the tooltip. Polls once authenticated, then every 2 minutes.
 (function commsBadgeLoop() {
   const tick = async () => {
-    if (!window.currentUser) return;
-    try { commsUpdateTriageBadge((await apiFetch('/api/comms/triage')).length); } catch (e) { /* quiet */ }
+    if (!commsUser()) return;
+    try {
+      const a = await apiFetch('/api/comms/action-items');
+      const total = (a.needsReplyTotal || 0) + (a.triage || 0);
+      const b = document.getElementById('triage-badge');
+      if (b) {
+        if (total > 0) {
+          b.textContent = total;
+          b.style.display = '';
+          b.title = `${a.needsReplyTotal} awaiting reply (${a.needsReplyMine} yours, ${a.needsReplyUnassigned} unassigned) · ${a.triage} in triage`;
+        } else b.style.display = 'none';
+      }
+    } catch (e) { /* quiet */ }
   };
   setTimeout(tick, 5000);
-  setInterval(tick, 5 * 60 * 1000);
+  setInterval(tick, 2 * 60 * 1000);
 })();
 
 // ─── Mailbox view (Deploy 6) ─────────────────────────────────────────────────
 // Filter chips over ONE canonical conversation store — chips are filters and
 // assignments, never copies.
 
-let _mailboxFilter = 'open';
+let _mailboxFilter = 'needs-reply';
 
 async function commsLoadMailbox() {
   const root = document.getElementById('comms-mailbox-root');
   if (!root) return;
   const chips = [
-    ['open', 'Open'], ['waiting', 'Waiting'], ['due', 'Due'], ['triage', 'Triage'],
+    ['needs-reply', '📩 Needs reply'], ['open', 'Open'], ['waiting', 'Waiting'], ['due', 'Due'], ['triage', 'Triage'],
     ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
   ];
   root.innerHTML = `
@@ -477,28 +516,34 @@ async function commsLoadMailbox() {
     <div id="mailbox-thread" style="display:none"></div>`;
   try {
     let q = '';
-    if (_mailboxFilter === 'mine') q = '?assigned=' + encodeURIComponent((window.currentUser?.email || '').toLowerCase());
+    if (_mailboxFilter === 'mine') q = '?assigned=' + encodeURIComponent((commsUser()?.email || '').toLowerCase());
+    else if (_mailboxFilter === 'needs-reply') q = '?needsReply=1';
     else if (_mailboxFilter) q = '?status=' + _mailboxFilter;
     const convs = await apiFetch('/api/comms/conversations' + q);
     const list = document.getElementById('mailbox-list');
     if (!convs.length) {
-      list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">No conversations here.</div>';
+      list.innerHTML = _mailboxFilter === 'needs-reply'
+        ? '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Nothing awaiting a reply. Customer responses land here the moment they arrive.</div>'
+        : '<div style="padding:30px;text-align:center;color:var(--gray-500)">No conversations here.</div>';
       return;
     }
     const dirIcon = (c) => c.last_direction === 'in' ? '📩' : c.last_direction === 'out' ? '📤' : '·';
     list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
         <th style="padding:6px 10px"></th><th style="padding:6px 10px">Customer</th><th style="padding:6px 10px">Subject</th>
-        <th style="padding:6px 10px">Status</th><th style="padding:6px 10px">Assigned</th><th style="padding:6px 10px">Last activity</th>
+        <th style="padding:6px 10px">Status</th><th style="padding:6px 10px">Assigned</th><th style="padding:6px 10px">Last activity</th><th style="padding:6px 10px"></th>
       </tr></thead>
       <tbody>${convs.map(c => `
         <tr style="border-top:1px solid var(--gray-100);cursor:pointer" onclick="commsOpenThread(${c.id})">
           <td style="padding:8px 10px">${dirIcon(c)}</td>
           <td style="padding:8px 10px">${escHtml(c.customer_id || '(unfiled)')}</td>
-          <td style="padding:8px 10px;font-weight:600">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}</td>
+          <td style="padding:8px 10px;font-weight:600">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}
+            ${c.status === 'open' && c.last_direction === 'in' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;margin-left:5px">NEEDS REPLY</span>' : ''}</td>
           <td style="padding:8px 10px"><span style="background:#f1f5f9;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${escHtml(c.status)}</span></td>
           <td style="padding:8px 10px;font-size:12px;color:var(--gray-600)">${escHtml((c.assigned_email || '').split('@')[0] || '—')}</td>
           <td style="padding:8px 10px;font-size:12px;color:var(--gray-500)">${escHtml((c.last_message_at || c.created_at || '').slice(0, 16).replace('T', ' '))}</td>
+          <td style="padding:8px 10px" onclick="event.stopPropagation()">
+            ${commsCanEdit() && c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600" onclick="commsReplyToConversation(${c.id})">↩ Reply</button>` : ''}</td>
         </tr>`).join('')}</tbody></table>`;
   } catch (e) {
     document.getElementById('mailbox-list').innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
@@ -526,7 +571,7 @@ async function commsOpenThread(id) {
           <select onchange="commsSetThreadStatus(${c.id}, this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
             ${statuses.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
-          ${c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick='commsOpenComposer({customerId:"${escHtml(c.customer_id)}",customerName:"${escHtml(c.customer_id)}",recordNos:[],conversationId:${c.id}})'>↩ Reply</button>` : ''}
+          ${c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsReplyToConversation(${c.id})">↩ Reply</button>` : ''}
         </div>` : ''}
       </div>
       ${messages.map(m => `
@@ -542,6 +587,30 @@ async function commsOpenThread(id) {
   } catch (e) {
     threadEl.innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
+}
+
+// Reply to a conversation from anywhere: works out who the counterparty is
+// (last inbound sender, else last outbound recipient) and opens the composer
+// into the same thread with them preselected.
+async function commsReplyToConversation(id) {
+  try {
+    const { conversation: c, messages } = await apiFetch(`/api/comms/conversations/${id}`);
+    if (!c.customer_id) { alert('File this thread to a customer first (Triage).'); return; }
+    let replyTo = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].direction === 'in' && messages[i].from_email) { replyTo = messages[i].from_email; break; }
+    }
+    if (!replyTo) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        try { const t = JSON.parse(messages[i].to_emails || '[]'); if (t.length) { replyTo = t[0]; break; } } catch (e) {}
+      }
+    }
+    await commsOpenComposer({
+      customerId: c.customer_id, customerName: c.customer_id, recordNos: [],
+      conversationId: c.id, replyToEmail: replyTo,
+      replySubject: /^re:/i.test(c.subject || '') ? c.subject : 'RE: ' + (c.subject || ''),
+    });
+  } catch (e) { alert('Could not open reply: ' + e.message); }
 }
 
 async function commsSetThreadStatus(id, status) {
@@ -566,7 +635,7 @@ async function commsLoadDunning() {
       apiFetch('/api/comms/config'),
       apiFetch('/api/comms/templates'),
     ]);
-    const isAdmin = window.currentUser && window.currentUser.role === 'admin';
+    const isAdmin = commsUser() && commsUser().role === 'admin';
     const isMgr = commsIsManager();
     root.innerHTML = `
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">

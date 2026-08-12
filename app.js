@@ -2284,12 +2284,43 @@ app.get('/api/comms/templates/:key/versions', requireAuth, (req, res) => {
 
 app.get('/api/comms/conversations', requireAuth, (req, res) => {
   try {
+    // needsReply=1: customer spoke last and the thread is open — the core
+    // "action item" state for a collector.
+    if (req.query.needsReply === '1') {
+      const rows = db.all(`
+        SELECT * FROM conversations
+        WHERE status='open' AND last_direction='in'
+        ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 200
+      `);
+      return res.json(rows);
+    }
     res.json(db.listConversations({
       customerId: req.query.customerId || undefined,
       status: req.query.status || undefined,
       assigned: req.query.assigned || undefined,
       limit: Math.min(parseInt(req.query.limit || '200', 10) || 200, 500),
     }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// One call the UI polls for the logged-in user's comms action items:
+// threads awaiting a reply (mine / unassigned / everyone's) + triage count.
+app.get('/api/comms/action-items', requireAuth, (req, res) => {
+  try {
+    const me = String(req.session.user.email || '').toLowerCase();
+    const needs = db.all(`
+      SELECT id, customer_id, subject, assigned_email, last_message_at
+      FROM conversations WHERE status='open' AND last_direction='in'
+      ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 100
+    `);
+    const triage = db.get(`SELECT COUNT(*) AS c FROM conversations WHERE status='triage'`).c;
+    res.json({
+      needsReplyMine: needs.filter(c => (c.assigned_email || '') === me).length,
+      needsReplyUnassigned: needs.filter(c => !c.assigned_email).length,
+      needsReplyTotal: needs.length,
+      triage,
+      items: needs.slice(0, 20),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

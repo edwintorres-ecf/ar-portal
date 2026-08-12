@@ -107,7 +107,7 @@ function buildFacts({ customerId, recordNos, contactName, correspondingEmail }) 
   <tbody>${tagged.map(i => `<tr>
     <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${escHtml(i.invoiceId || i.recordNo)}</td>
     <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${fmtDate(i.whenCreated)}</td>
-    <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${fmtDate(i.dueDate)}</td>
+    <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${fmtDate(i.whenDue || i.dueDate)}</td>
     <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:right">${i.daysOverdue > 0 ? i.daysOverdue : 'current'}</td>
     <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:right">${fmtMoney(i.totalDue)}</td>
   </tr>`).join('')}</tbody>
@@ -122,7 +122,7 @@ function buildFacts({ customerId, recordNos, contactName, correspondingEmail }) 
     contact_name: contactName || 'there',
     invoice_id: first ? (first.invoiceId || first.recordNo) : '',
     invoice_date: first ? fmtDate(first.whenCreated) : '',
-    due_date: first ? fmtDate(first.dueDate) : '',
+    due_date: first ? fmtDate(first.whenDue || first.dueDate) : '',
     balance: first ? fmtMoney(first.totalDue) : '',
     days_past_due: first ? String(first.daysOverdue || 0) : '',
     total_due: fmtMoney(totalDue),
@@ -176,7 +176,7 @@ function buildStatementHtml(customerId, custInvoices, { autoPrint = false } = {}
         <td>${escHtml(inv.invoiceId || inv.recordNo)}</td>
         <td>${escHtml(inv.locationName || inv.locationId || '')}</td>
         <td>${fmtDate(inv.whenCreated)}</td>
-        <td>${fmtDate(inv.dueDate)}</td>
+        <td>${fmtDate(inv.whenDue || inv.dueDate)}</td>
         <td style="color:${bucketColor(inv.bucket)};font-weight:600">${inv.bucket === 'current' ? 'Current' : (inv.bucket || '')}</td>
         <td style="text-align:right">${fmtMoney(inv.totalDue)}</td>
       </tr>`).join('');
