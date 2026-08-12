@@ -192,8 +192,9 @@ async function draftCollectionsEmail(ctx, tone = 'firm but professional') {
   const system = `You are an accounts-receivable collections specialist at East Coast Facilities. ` +
     `Write a ${tone} payment-reminder email. Use ONLY the facts provided; never invent PO numbers, ` +
     `dates, or amounts. Keep it under 170 words. Reference the invoice, amount, and how far past due it is, ` +
-    `and any broken promise to pay. End with: AR Dept, arclerk@eastcoastfacilities.com. ` +
-    `Output the email only, starting with a "Subject:" line.`;
+    `and any broken promise to pay. Do not include a signature block, sign-off name, or contact details; ` +
+    `a signature is appended automatically when the email is sent. Do not use em dashes. ` +
+    `No filler phrases. Output the email only, starting with a "Subject:" line.`;
   const { text } = await generate({
     model: MODEL_SMART, system, prompt: ctx, temperature: 0.3, num_predict: 420, timeoutMs: 90000,
   });

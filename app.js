@@ -2082,104 +2082,17 @@ app.get('/api/customer-statement/:customerId', requireAuth, async (req, res) => 
     }
 
     const custName = custInvoices[0].customerName || req.params.customerId;
-    const totalAR = custInvoices.reduce((s, i) => s + i.totalDue, 0);
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    const fmt = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-
-    const bucketColor = (b) => {
-      if (!b || b === 'current') return '#16a34a';
-      if (b === '1-30') return '#d97706';
-      if (b === '31-60') return '#ea580c';
-      return '#dc2626';
-    };
-
-    const rows = custInvoices.map(inv => `
-      <tr>
-        <td>${inv.invoiceId || inv.recordNo}</td>
-        <td>${inv.locationName || inv.locationId || '—'}</td>
-        <td>${fmtDate(inv.whenCreated)}</td>
-        <td>${fmtDate(inv.dueDate)}</td>
-        <td style="color:${bucketColor(inv.bucket)};font-weight:600">${inv.bucket === 'current' ? 'Current' : (inv.bucket || '—')}</td>
-        <td style="text-align:right">${fmt(inv.totalDue)}</td>
-      </tr>`).join('');
-
-    const buckets = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '91+': 0 };
-    for (const inv of custInvoices) {
-      const b = inv.bucket || 'current';
-      buckets[b] = (buckets[b] || 0) + inv.totalDue;
-    }
-
-    const agingRows = Object.entries(buckets)
-      .filter(([, v]) => v > 0)
-      .map(([k, v]) => `<tr><td>${k === 'current' ? 'Current' : k + ' days past due'}</td><td style="text-align:right;font-weight:600;color:${bucketColor(k)}">${fmt(v)}</td></tr>`)
-      .join('');
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Statement — ${custName}</title>
-<style>
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #1e293b; margin: 0; padding: 32px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; }
-  .header-left h1 { font-size: 22px; color: #1e3a5f; margin: 0 0 4px; }
-  .header-left p { margin: 2px 0; color: #64748b; font-size: 12px; }
-  .header-right { text-align: right; }
-  .header-right .total-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-  .header-right .total-amount { font-size: 28px; font-weight: 700; color: #1e3a5f; }
-  .section-title { font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; margin: 24px 0 10px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-  th { background: #f1f5f9; padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
-  td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
-  tr:last-child td { border-bottom: none; }
-  .aging-table { max-width: 360px; }
-  .aging-table td:last-child { color: #dc2626; }
-  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-  @media print { body { padding: 20px; } }
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="header-left">
-    <h1>East Coast Facilities Inc.</h1>
-    <p>Accounts Receivable Statement</p>
-    <p style="margin-top:16px;font-size:14px;font-weight:600;color:#1e3a5f">${custName}</p>
-    <p>Statement Date: ${today}</p>
-  </div>
-  <div class="header-right">
-    <div class="total-label">Total Outstanding</div>
-    <div class="total-amount">${fmt(totalAR)}</div>
-    <div style="font-size:12px;color:#64748b;margin-top:4px">${custInvoices.length} open invoice${custInvoices.length !== 1 ? 's' : ''}</div>
-  </div>
-</div>
-
-<div class="section-title">Aging Summary</div>
-<table class="aging-table">
-  <thead><tr><th>Aging Bucket</th><th style="text-align:right">Amount</th></tr></thead>
-  <tbody>${agingRows}<tr style="border-top:2px solid #e2e8f0;font-weight:700"><td>Total Outstanding</td><td style="text-align:right;color:#1e3a5f">${fmt(totalAR)}</td></tr></tbody>
-</table>
-
-<div class="section-title">Open Invoices</div>
-<table>
-  <thead><tr><th>Invoice #</th><th>Location</th><th>Invoice Date</th><th>Due Date</th><th>Aging</th><th style="text-align:right">Balance Due</th></tr></thead>
-  <tbody>${rows}</tbody>
-  <tfoot><tr style="font-weight:700;background:#f8fafc"><td colspan="5">Total</td><td style="text-align:right">${fmt(totalAR)}</td></tr></tfoot>
-</table>
-
-<div class="footer">
-  East Coast Facilities Inc. &nbsp;|&nbsp; Generated ${today} via ECF AR Portal &nbsp;|&nbsp; Please remit payment to your designated account representative
-</div>
-<script>window.onload = function() { window.print(); }</script>
-</body>
-</html>`;
+    // Rendering shared with the comms email-attachment path (comms-service
+    // buildStatementHtml); the route keeps its legacy print-on-open behavior.
+    const html = require('./comms-service').buildStatementHtml(req.params.customerId, custInvoices, { autoPrint: true });
 
     db.auditLog(user.email, 'generate_statement', req.params.customerId, custName);
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 
 // ─── API: Customer Account (stop_service + owner) ────────────────────────────
 app.get('/api/customer-account/:id', requireAuth, (req, res) => {
@@ -2286,6 +2199,104 @@ app.post('/api/contacts/sync', requireAuth, requireRole('admin', 'manager'), asy
     const summary = await runContactSync(req.session.user.email);
     res.json(summary);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── API: Comms — outbound customer email (comms-service.js) ─────────────────
+// The actor is ALWAYS the real logged-in user (req.session.realUser when an
+// admin is impersonating) — sends must never be attributed to the mask.
+const comms = require('./comms-service');
+
+function commsRealActor(req) {
+  return ((req.session.realUser || req.session.user) || {}).email || '';
+}
+
+// Whitelist the compose fields a client may supply; actor/actorType are set
+// server-side so a request body can never spoof automation identity.
+function commsPickBody(body) {
+  const { customerId, contactId, toEmails, ccEmails, recordNos,
+          templateKey, rawSubject, rawBody, attachStatement, conversationId, correspondingEmail } = body || {};
+  return { customerId, contactId, toEmails, ccEmails, recordNos,
+           templateKey, rawSubject, rawBody, attachStatement, conversationId, correspondingEmail };
+}
+
+app.get('/api/comms/config', requireAuth, (req, res) => {
+  let mailbox = null;
+  try { mailbox = require('./graph').mailbox(); } catch (e) { /* unset */ }
+  res.json({
+    mailbox,
+    testMode: comms.allowlist().length > 0,
+    allowlistSize: comms.allowlist().length,
+    dunningArmed: process.env.DUNNING_ARMED === '1',
+  });
+});
+
+app.post('/api/comms/preview', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    const actor = commsRealActor(req);
+    const p = commsPickBody(req.body);
+    res.json(comms.previewMessage({ ...p, correspondingEmail: p.correspondingEmail || actor }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/comms/send', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+  try {
+    const actor = commsRealActor(req);
+    const p = commsPickBody(req.body);
+    const result = await comms.sendMessage({
+      ...p,
+      actorEmail: actor,
+      actorType: 'human',
+      correspondingEmail: p.correspondingEmail || actor,
+    });
+    res.json(result);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/comms/templates', requireAuth, (req, res) => {
+  try { res.json(db.listTemplates()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/comms/templates', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { key, name, kind, subject, body_html } = req.body;
+    if (!key || !subject || !body_html) return res.status(400).json({ error: 'key, subject, body_html required' });
+    if (!/^[a-z0-9_]+$/.test(key)) return res.status(400).json({ error: 'key must be lowercase [a-z0-9_]' });
+    const tokens = comms.extractTokens(subject, body_html);   // throws on unknown tokens
+    const t = db.saveTemplateVersion(key, name, kind === 'internal' ? 'internal' : 'external',
+      subject, body_html, JSON.stringify(tokens), req.session.user.email);
+    db.auditLog(req.session.user.email, 'comm_template_save', null, `${key} v${t.current_version}`);
+    res.json(t);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/comms/templates/:key/versions', requireAuth, (req, res) => {
+  try { res.json(db.listTemplateVersions(req.params.key)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/comms/conversations', requireAuth, (req, res) => {
+  try {
+    res.json(db.listConversations({
+      customerId: req.query.customerId || undefined,
+      status: req.query.status || undefined,
+      assigned: req.query.assigned || undefined,
+      limit: Math.min(parseInt(req.query.limit || '200', 10) || 200, 500),
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/comms/conversations/:id', requireAuth, (req, res) => {
+  try {
+    const conversation = db.getConversation(parseInt(req.params.id, 10));
+    if (!conversation) return res.status(404).json({ error: 'Not found' });
+    res.json({ conversation, messages: db.getMessagesForConversation(conversation.id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/invoices/:recordNo/messages', requireAuth, (req, res) => {
+  try { res.json(db.getMessagesForInvoice(req.params.recordNo)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── API: DSO + CEI ──────────────────────────────────────────────────────────
@@ -2830,6 +2841,9 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     ai.warmup().then(() => console.log(`[ar-portal] AI warm: ${ai.MODEL_SMART} / ${ai.MODEL_FAST}`));
     setInterval(() => ai.warmup(), 100 * 60 * 1000);
   }).catch(() => {});
+
+  // Seed the default comms templates (idempotent — only creates missing keys).
+  try { comms.seedTemplates(); } catch (e) { console.warn(`[comms] template seed failed: ${e.message}`); }
 
   // Customer-contact sync from Intacct DISPLAYCONTACT — contacts change slowly;
   // startup pass (delayed 2 min so it never competes with the invoice

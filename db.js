@@ -869,6 +869,157 @@ function syncCustomerContactsFromSage(rows) {
   return { customers: rows.length, customersWithContacts, inserted, updated, skippedManual };
 }
 
+// ─── User lookup, case-insensitive ─────────────────────────────────────────
+// user_roles.email is mixed-case (Edwin.Torres@ etc.) and getUserRole is
+// exact-match; comms code stores lowercase and must not miss on case.
+function getUserRoleAnyCase(email) {
+  if (!email) return null;
+  return getDb().prepare('SELECT * FROM user_roles WHERE email = ? COLLATE NOCASE').get(String(email).trim()) || null;
+}
+
+// ─── Comm templates (versioned; saving always creates a new version) ────────
+
+function getTemplateByKey(key) {
+  const d = getDb();
+  const t = d.prepare('SELECT * FROM comm_templates WHERE key=?').get(key);
+  if (!t) return null;
+  t.version_row = d.prepare('SELECT * FROM comm_template_versions WHERE template_id=? AND version=?')
+    .get(t.id, t.current_version) || null;
+  return t;
+}
+
+function listTemplates() {
+  const d = getDb();
+  return d.prepare('SELECT * FROM comm_templates ORDER BY key').all().map(t => ({
+    ...t,
+    version_row: d.prepare('SELECT * FROM comm_template_versions WHERE template_id=? AND version=?').get(t.id, t.current_version) || null,
+  }));
+}
+
+function saveTemplateVersion(key, name, kind, subject, bodyHtml, tokensUsed, createdBy) {
+  const d = getDb();
+  let t = d.prepare('SELECT * FROM comm_templates WHERE key=?').get(key);
+  if (!t) {
+    d.prepare('INSERT INTO comm_templates (key, name, kind) VALUES (?,?,?)').run(key, name || key, kind || 'external');
+    t = d.prepare('SELECT * FROM comm_templates WHERE key=?').get(key);
+  } else if (name && name !== t.name) {
+    d.prepare("UPDATE comm_templates SET name=?, updated_at=datetime('now') WHERE id=?").run(name, t.id);
+  }
+  const version = (t.current_version || 0) + 1;
+  d.prepare(`
+    INSERT INTO comm_template_versions (template_id, version, subject, body_html, tokens_used, created_by)
+    VALUES (?,?,?,?,?,?)
+  `).run(t.id, version, subject, bodyHtml, tokensUsed || null, createdBy || null);
+  d.prepare("UPDATE comm_templates SET current_version=?, updated_at=datetime('now') WHERE id=?").run(version, t.id);
+  return getTemplateByKey(key);
+}
+
+function listTemplateVersions(key) {
+  const d = getDb();
+  const t = d.prepare('SELECT * FROM comm_templates WHERE key=?').get(key);
+  if (!t) return [];
+  return d.prepare('SELECT * FROM comm_template_versions WHERE template_id=? ORDER BY version DESC').all(t.id);
+}
+
+// ─── Conversations + messages ───────────────────────────────────────────────
+
+function createConversation({ customerId, contactId, mailbox, assignedEmail, subject, status }) {
+  const d = getDb();
+  const r = d.prepare(`
+    INSERT INTO conversations (customer_id, contact_id, mailbox, assigned_email, subject, status)
+    VALUES (?,?,?,?,?,?)
+  `).run(customerId || null, contactId || null, mailbox || null, assignedEmail || null, subject || null, status || 'open');
+  return d.prepare('SELECT * FROM conversations WHERE id=?').get(r.lastInsertRowid);
+}
+
+function setConversationSubject(id, subject, subjectToken) {
+  getDb().prepare("UPDATE conversations SET subject=?, subject_token=?, updated_at=datetime('now') WHERE id=?")
+    .run(subject, subjectToken || null, id);
+}
+
+function getConversation(id) {
+  return getDb().prepare('SELECT * FROM conversations WHERE id=?').get(id) || null;
+}
+
+function getConversationByGraphId(graphConversationId) {
+  if (!graphConversationId) return null;
+  return getDb().prepare('SELECT * FROM conversations WHERE graph_conversation_id=?').get(graphConversationId) || null;
+}
+
+function listConversations({ customerId, status, assigned, limit } = {}) {
+  const where = [], vals = [];
+  if (customerId) { where.push('customer_id=?'); vals.push(customerId); }
+  if (status)     { where.push('status=?');      vals.push(status); }
+  if (assigned)   { where.push('assigned_email=?'); vals.push(assigned); }
+  const sql = `SELECT * FROM conversations ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT ?`;
+  vals.push(limit || 200);
+  return getDb().prepare(sql).all(...vals);
+}
+
+function touchConversation(id, { lastDirection, status, graphConversationId, assignedEmail } = {}) {
+  const sets = ["last_message_at=datetime('now')", "updated_at=datetime('now')"];
+  const vals = [];
+  if (lastDirection) { sets.push('last_direction=?'); vals.push(lastDirection); }
+  if (status)        { sets.push('status=?');         vals.push(status); }
+  if (graphConversationId) { sets.push('graph_conversation_id=COALESCE(graph_conversation_id, ?)'); vals.push(graphConversationId); }
+  if (assignedEmail !== undefined) { sets.push('assigned_email=?'); vals.push(assignedEmail); }
+  vals.push(id);
+  getDb().prepare(`UPDATE conversations SET ${sets.join(',')} WHERE id=?`).run(...vals);
+}
+
+const MESSAGE_COLS = [
+  'conversation_id', 'direction', 'actor_type', 'actor_email', 'corresponding_email',
+  'from_email', 'to_emails', 'cc_emails', 'subject', 'body_text', 'body_html',
+  'template_id', 'template_version', 'token_values', 'signature_snapshot',
+  'graph_message_id', 'internet_message_id', 'in_reply_to', 'references_hdr',
+  'graph_conversation_id', 'sent_at', 'received_at', 'status', 'error',
+  'has_attachments', 'attachments_json', 'dunning_action_id',
+];
+
+function insertMessage(fields) {
+  const d = getDb();
+  const cols = MESSAGE_COLS.filter(c => fields[c] !== undefined);
+  const r = d.prepare(`INSERT INTO messages (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`)
+    .run(...cols.map(c => fields[c]));
+  return d.prepare('SELECT * FROM messages WHERE id=?').get(r.lastInsertRowid);
+}
+
+function getMessage(id) {
+  return getDb().prepare('SELECT * FROM messages WHERE id=?').get(id) || null;
+}
+
+function getMessageByGraphId(graphMessageId) {
+  if (!graphMessageId) return null;
+  return getDb().prepare('SELECT * FROM messages WHERE graph_message_id=?').get(graphMessageId) || null;
+}
+
+function getMessageByInternetMessageId(imid) {
+  if (!imid) return null;
+  return getDb().prepare('SELECT * FROM messages WHERE internet_message_id=?').get(imid) || null;
+}
+
+function getMessagesForConversation(conversationId) {
+  return getDb().prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY COALESCE(sent_at, received_at, created_at) ASC')
+    .all(conversationId);
+}
+
+function tagMessageInvoices(messageId, recordNos) {
+  if (!recordNos || !recordNos.length) return;
+  const d = getDb();
+  const stmt = d.prepare('INSERT OR IGNORE INTO message_invoices (message_id, record_no) VALUES (?,?)');
+  for (const rn of recordNos) if (rn) stmt.run(messageId, rn);
+}
+
+function getMessagesForInvoice(recordNo) {
+  return getDb().prepare(`
+    SELECT m.* FROM messages m
+    JOIN message_invoices mi ON mi.message_id = m.id
+    WHERE mi.record_no = ?
+    ORDER BY COALESCE(m.sent_at, m.received_at, m.created_at) ASC
+  `).all(recordNo);
+}
+
 // ─── Comms state (kv: delta links, run locks, cursors) ─────────────────────
 
 function getCommState(key) {
@@ -1261,6 +1412,24 @@ module.exports = {
   updateCustomerContact,
   setContactPrimary,
   syncCustomerContactsFromSage,
+  getUserRoleAnyCase,
+  getTemplateByKey,
+  listTemplates,
+  saveTemplateVersion,
+  listTemplateVersions,
+  createConversation,
+  setConversationSubject,
+  getConversation,
+  getConversationByGraphId,
+  listConversations,
+  touchConversation,
+  insertMessage,
+  getMessage,
+  getMessageByGraphId,
+  getMessageByInternetMessageId,
+  getMessagesForConversation,
+  tagMessageInvoices,
+  getMessagesForInvoice,
   preProvisionUser,
   getUserRole,
   upsertUserRole,
