@@ -3017,9 +3017,12 @@ function setCustFilter(f, el) {
 function renderCustomers() {
   const tbody = document.getElementById('cust-tbody');
   if (!tbody) return;
-  const filter = window._custFilter || 'all';
+  // _custFilter/_customers are top-level lets (shared lexical scope), NOT
+  // window properties — reading them via window silently yields undefined and
+  // rendered an eternally-empty customer list.
+  const filter = _custFilter || 'all';
   const search = (document.getElementById('cust-search')?.value || '').toLowerCase();
-  let data = (window._custSummary || []).filter(c => {
+  let data = (_customers || []).filter(c => {
     if (filter === 'past_due' && c.status !== 'past_due') return false;
     if (filter === 'current' && c.status !== 'current') return false;
     if (search && !c.name.toLowerCase().includes(search) && !c.id.toLowerCase().includes(search)) return false;
