@@ -912,6 +912,90 @@ async function commsInviteUser() {
   } catch (e) { alert('Invite failed: ' + e.message); }
 }
 
+// ─── Unified notifications bell (mentions + needs-reply + triage) ────────────
+async function commsUnifiedBell() {
+  try {
+    const [m, a] = await Promise.all([
+      apiFetch('/api/mentions'),
+      apiFetch('/api/comms/action-items').catch(() => ({ needsReplyTotal: 0, triage: 0, items: [] })),
+    ]);
+    const unconfirmed = (m.unconfirmedCount != null ? m.unconfirmedCount : m.unseenCount) || 0;
+    const total = unconfirmed + (a.needsReplyTotal || 0) + (a.triage || 0);
+    const badge = document.getElementById('mention-badge');
+    if (badge) { badge.textContent = total > 99 ? '99+' : total; badge.style.display = total > 0 ? '' : 'none'; }
+    const el = document.getElementById('mention-list');
+    if (!el) return;
+    let html = '';
+    if (a.needsReplyTotal || a.triage) {
+      html += `<div style="padding:8px 16px;background:#faf8f3;font-size:11px;font-weight:700;color:#6b6458;letter-spacing:.05em">CONVERSATIONS</div>`;
+      html += (a.items || []).slice(0, 5).map(cv => `
+        <div class="mention-item" onclick="closeMentionDropdown();navGo('comms-mailbox');setTimeout(() => commsOpenThread(${cv.id}), 400)">
+          <div class="mention-item-invoice">📩 ${escHtml(cv.customer_id || 'unfiled')} <span style="float:right;background:#fee2e2;color:#b91c1c;padding:0 6px;border-radius:7px;font-size:9.5px;font-weight:700">NEEDS REPLY</span></div>
+          <div class="mention-item-body">${escHtml((cv.subject || '').replace(/\s*\[ECF#[^\]]+\]/, '').slice(0, 70))}</div>
+        </div>`).join('');
+      if (a.triage) html += `<div class="mention-item" onclick="closeMentionDropdown();navGo('comms-triage')"><div class="mention-item-invoice">🚨 Triage</div><div class="mention-item-body">${a.triage} unfiled thread(s) need attention</div></div>`;
+    }
+    if (m.mentions && m.mentions.length) {
+      html += `<div style="padding:8px 16px;background:#faf8f3;font-size:11px;font-weight:700;color:#6b6458;letter-spacing:.05em">MENTIONS</div>`;
+      renderMentionList(m.mentions);
+      html += el.innerHTML;
+    }
+    el.innerHTML = html || '<div class="mention-empty">All clear — nothing needs you.</div>';
+  } catch (e) { /* quiet */ }
+}
+loadMentions = commsUnifiedBell;
+
+// ─── Stop Service list (their Operations screen) ─────────────────────────────
+async function commsLoadStopService() {
+  const root = document.getElementById('stopservice-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const rows = await apiFetch('/api/stop-service-view');
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 12px">Stop Service</h1>
+      ${rows.length ? `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+            ${['Customer', 'Service Centers', 'Past Due', 'Oldest Past Due', 'Effective Date', 'Issued By'].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
+          </tr></thead>
+          <tbody>${rows.map(r => `
+            <tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="commsOpenCustomerPage('${escHtml(r.customerId)}')">
+              <td style="padding:9px 12px;font-weight:600">${escHtml(r.name || r.customerId)}</td>
+              <td style="padding:9px 12px">${commsScChips(r.scs)}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#b32020">${fmt$(r.pastDue)}</td>
+              <td style="padding:9px 12px">${r.oldest ? `<span class="age-pill ${commsAgePillClass(r.oldest)}">${r.oldest}d</span>` : '—'}</td>
+              <td style="padding:9px 12px">${escHtml(r.effectiveDate || '—')}</td>
+              <td style="padding:9px 12px;font-size:12px">${escHtml((r.issuedBy || '—').split('@')[0])}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>` : '<div style="padding:30px;text-align:center;color:#6b6458">No customers currently on stop service.</div>'}`;
+  } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+// ─── Service Centers rollup ──────────────────────────────────────────────────
+async function commsLoadServiceCenters() {
+  const root = document.getElementById('servicecenters-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const locs = await apiFetch('/api/locations-view');
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 12px">Service Centers</h1>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${locs.map(r => `
+          <div style="min-width:230px;flex:1;max-width:320px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:center">${r.sc ? commsScChips([r.sc]) : ''}<span style="font-size:11px;color:#6b6458">${r.customers} customers</span></div>
+            <div style="font-weight:700;font-size:14px;margin:6px 0 2px">${escHtml(r.locationName)}</div>
+            <div style="font-size:13px;font-variant-numeric:tabular-nums"><span style="color:#b32020;font-weight:700">${fmt$(r.pastDue)}</span> past due · ${fmt$(r.totalAR)} total</div>
+            <div style="font-size:11.5px;color:#6b6458">${r.invoices.toLocaleString()} open invoices</div>
+          </div>`).join('')}
+      </div>`;
+  } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
 // ─── Overview dashboard (Phase 2 — their home screen, live data) ─────────────
 
 function commsAgePillClass(days) {
@@ -1695,7 +1779,7 @@ async function commsLoadStatements() {
             <td style="padding:8px 12px"><strong>${escHtml(nameOf(s.customer_id))}</strong> <span style="color:var(--gray-400);font-size:11.5px">${escHtml(s.customer_id)}</span></td>
             <td style="padding:8px 12px">${commsCanEdit() ? `<input type="number" min="1" max="28" value="${s.day_of_month}" style="width:56px;padding:5px;border:1px solid var(--gray-200);border-radius:6px;font-size:12.5px" onchange="commsStatementsToggle('${escHtml(s.customer_id)}', ${s.enabled}, this.value)">` : s.day_of_month}</td>
             <td style="padding:8px 12px;font-size:12px;color:var(--gray-600)">${s.contact_ids ? JSON.parse(s.contact_ids).length + ' selected' : 'primary contact'}
-              <button class="btn-sm" style="background:#f1f5f9;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px" onclick="commsOpenContacts('${escHtml(s.customer_id)}','${escHtml(nameOf(s.customer_id))}')">view</button></td>
+              ${commsCanEdit() ? `<button class="btn-sm" style="background:#f1f5f9;border:none;padding:2px 8px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px" onclick="commsPickStmtRecipients('${escHtml(s.customer_id)}', ${s.enabled}, ${s.day_of_month})">choose…</button>` : ''}</td>
             <td style="padding:8px 12px;font-size:12px;color:var(--gray-500)">${escHtml(s.last_sent_period || 'never')}</td>
             <td style="padding:8px 12px"></td>
           </tr>`).join('')}</tbody></table>`
@@ -1719,6 +1803,19 @@ async function commsStatementsAdd() {
 async function commsStatementsToggle(customerId, enabled, day) {
   try {
     await apiFetch(`/api/statements/schedules/${encodeURIComponent(customerId)}`, { method: 'POST', body: JSON.stringify({ enabled, day_of_month: day }) });
+    commsLoadStatements();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsPickStmtRecipients(customerId, enabled, day) {
+  try {
+    const contacts = await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/contacts`);
+    if (!contacts.length) { alert('No contacts on file — add one in the Contacts panel first.'); return; }
+    const listing = contacts.map((x, i) => `${i + 1}. ${x.name || x.email} <${x.email}>${x.is_primary ? ' ⭐' : ''}`).join('\n');
+    const pick = prompt(`Statement recipients for ${customerId} — enter numbers separated by commas, or blank for primary contact only:\n\n${listing}`);
+    if (pick === null) return;
+    const ids = pick.trim() ? pick.split(/[ ,]+/).map(n => (contacts[parseInt(n, 10) - 1] || {}).id).filter(Boolean) : [];
+    await apiFetch(`/api/statements/schedules/${encodeURIComponent(customerId)}`, { method: 'POST', body: JSON.stringify({ enabled, day_of_month: day, contact_ids: ids }) });
     commsLoadStatements();
   } catch (e) { alert('Failed: ' + e.message); }
 }

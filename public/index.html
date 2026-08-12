@@ -538,6 +538,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="ptp-board" onclick="navGo('ptp-board')">💰 Promises</div>
         <div class="nav-drop-item" data-view="calendar" onclick="navGo('calendar')">📅 PTP Calendar</div>
         <div class="nav-drop-item" data-view="watchlist" onclick="navGo('watchlist')">⭐ Watchlist</div>
+        <div class="nav-drop-item" data-view="stop-service-view" onclick="navGo('stop-service-view')">⏸ Stop Service</div>
       </div>
     </div>
 
@@ -549,6 +550,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="customers" onclick="navGo('customers')">👥 All Customers</div>
         <div class="nav-drop-item" data-view="locations" onclick="navGo('locations')">📍 Locations</div>
         <div class="nav-drop-item" data-view="search" onclick="navGo('search')">🔎 Search</div>
+        <div class="nav-drop-item" data-view="service-centers" onclick="navGo('service-centers')">🏢 Service Centers</div>
         <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">🟠 Amazon AR</div>
       </div>
     </div>
@@ -749,6 +751,14 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-search" class="view">
   <div id="search-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-stop-service-view" class="view">
+  <div id="stopservice-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-service-centers" class="view">
+  <div id="servicecenters-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-training" class="view">
@@ -2348,8 +2358,8 @@ async function manualRefresh() {
 // ─── PTP Calendar ──────────────────────────────────────────────────────────
 // Which grouped menu (if any) each view lives under — drives the active state.
 const NAV_GROUP_OF = {
-  'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
-  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts',
+  'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections',
+  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help',
   'admin': 'admin',
@@ -2393,6 +2403,8 @@ function switchView(name, el) {
   if (name === 'locations' && typeof commsLoadLocations === 'function') { commsLoadLocations(); }
   if (name === 'search' && typeof commsLoadSearch === 'function') { commsLoadSearch(); }
   if (name === 'training' && typeof commsLoadTraining === 'function') { commsLoadTraining(); }
+  if (name === 'stop-service-view' && typeof commsLoadStopService === 'function') { commsLoadStopService(); }
+  if (name === 'service-centers' && typeof commsLoadServiceCenters === 'function') { commsLoadServiceCenters(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5687,6 +5699,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812m"></script>
+<script src="/comms.js?v=20260812n"></script>
 </body>
 </html>

@@ -2619,6 +2619,36 @@ No separate password is needed. Questions? Reply to ${inviter.email}.
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Stop-service list (their Operations screen) ────────────────────────
+app.get('/api/stop-service-view', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (!invoices.length) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const byCust = new Map();
+    for (const i of invoices) {
+      let c = byCust.get(i.customerId);
+      if (!c) { c = { pastDue: 0, oldest: 0, scs: new Set(), name: i.customerName }; byCust.set(i.customerId, c); }
+      if ((i.daysOverdue || 0) >= 1) { c.pastDue += i.totalDue; if (i.daysOverdue > c.oldest) c.oldest = i.daysOverdue; }
+      const sc = scCodeFromLocation(i.locationId, i.locationName);
+      if (sc) c.scs.add(sc);
+    }
+    const rows = [];
+    for (const acct of db.getAllCustomerAccounts()) {
+      if (!acct.stop_service) continue;
+      const c = byCust.get(acct.customer_id) || { pastDue: 0, oldest: 0, scs: new Set(), name: acct.customer_name };
+      rows.push({
+        customerId: acct.customer_id, name: c.name || acct.customer_name,
+        scs: [...c.scs].sort(), pastDue: c.pastDue, oldest: c.oldest,
+        effectiveDate: acct.stop_service_effective_date, issuedBy: acct.stop_service_issued_by,
+        since: acct.stop_service_at,
+      });
+    }
+    rows.sort((a, b) => String(a.effectiveDate || '').localeCompare(String(b.effectiveDate || '')));
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Grid metadata (one call powering the emulated Invoices/My Work) ────
 app.get('/api/grid-meta', requireAuth, (req, res) => {
   try {
@@ -3447,6 +3477,13 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
       db.setCommState('dunning_last_auto', today);
       const r = dunning.generate({ triggeredBy: 'scheduler' });
       console.log(`[dunning] scheduled preview run ${r.runId}: ${r.digests || 0} digests`);
+      // Auto-execute only when BOTH armed and explicitly opted in — the final
+      // automation gate after Edwin has approved manual runs for a while.
+      if (process.env.DUNNING_AUTO === '1' && dunning.armed() && r.digests > 0) {
+        dunning.execute(r.runId, { actorEmail: 'scheduler' })
+          .then(x => console.log(`[dunning] auto-executed run ${r.runId}: ${x.sent} sent, ${x.failed} failed`))
+          .catch(e => console.warn(`[dunning] auto-execute failed: ${e.message}`));
+      }
     } catch (e) { console.warn(`[dunning] scheduled preview failed: ${e.message}`); }
   }, 15 * 60 * 1000);
 
