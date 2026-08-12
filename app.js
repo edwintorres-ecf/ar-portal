@@ -322,11 +322,13 @@ app.get('/auth/callback', async (req, res) => {
     try {
       const accessToken = tokenResp.accessToken;
       const graphHeaders = { Authorization: `Bearer ${accessToken}` };
-      // Fetch job title
-      const profileRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=jobTitle', { headers: graphHeaders });
+      // Fetch job title + phone (phone feeds the comms signature renderer)
+      const profileRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=jobTitle,mobilePhone,businessPhones', { headers: graphHeaders });
       if (profileRes.ok) {
         const profile = await profileRes.json();
         if (profile.jobTitle) db.updateUserJobTitle(email, profile.jobTitle);
+        const phone = profile.mobilePhone || (Array.isArray(profile.businessPhones) && profile.businessPhones[0]) || null;
+        if (phone) db.updateUserPhone(email, phone);
       }
       // Fetch profile photo (48x48)
       const photoRes = await fetch('https://graph.microsoft.com/v1.0/me/photos/48x48/$value', { headers: graphHeaders });
@@ -1005,12 +1007,14 @@ function portalBaseUrl() {
 }
 
 // Raw send — no preference checks. Fire-and-forget; never throws to caller.
+// Internal staff notifications only; customer-facing mail goes through the
+// comms service (invoices@), never this arclerk path.
 async function sendGraphMail(toEmail, subject, contentText) {
   try {
     const tokenResp = await msalApp.acquireTokenByClientCredential({
       scopes: ['https://graph.microsoft.com/.default']
     });
-    await fetch(`https://graph.microsoft.com/v1.0/users/arclerk@eastcoastfacilities.com/sendMail`, {
+    const res = await fetch(`https://graph.microsoft.com/v1.0/users/arclerk@eastcoastfacilities.com/sendMail`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${tokenResp.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1022,9 +1026,17 @@ async function sendGraphMail(toEmail, subject, contentText) {
         saveToSentItems: false
       })
     });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error(`[notify] sendMail ${res.status} to ${toEmail}: ${errText.slice(0, 200)}`);
+      try { db.auditLog('system', 'notify_email_fail', null, `${res.status} "${subject}" -> ${toEmail}`); } catch (e2) {}
+      return;
+    }
     console.log(`[notify] sent "${subject}" to ${toEmail}`);
+    try { db.auditLog('system', 'notify_email', null, `"${subject}" -> ${toEmail}`); } catch (e2) {}
   } catch (e) {
     console.error('[notify] failed:', e.message);
+    try { db.auditLog('system', 'notify_email_fail', null, `${e.message} "${subject}" -> ${toEmail}`); } catch (e2) {}
   }
 }
 

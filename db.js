@@ -265,7 +265,179 @@ function initSchema() {
   // set once and preserved even when ceiling_amount is later revised
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN stated_amount REAL DEFAULT NULL"); } catch(e) { /* already exists */ }
 
+  // Phone for the comms signature renderer (pulled from Graph /me at login)
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN phone TEXT DEFAULT NULL"); } catch(e) {}
+  // Customer-reply notifications default ON — a customer reply is the one
+  // notification a collector must not miss (unlike the opt-out internal prefs).
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN notify_replies INTEGER DEFAULT 1"); } catch(e) {}
+
+  initCommsSchema();
   seedDefaultRegions();
+}
+
+// ─── Communications platform schema ─────────────────────────────────────────
+// Customer-facing email: contacts, conversations, messages, templates, dunning.
+// Design notes (2026-08-11 plan):
+//  - messages/conversations are NEW tables; notes stays internal-only.
+//  - One conversation row = one email thread, owned by a customer; invoices
+//    are tagged per message via message_invoices.
+//  - messages stores the SEND-TIME SNAPSHOT (resolved body, recipients,
+//    signature, template version). Old messages are never re-rendered.
+//  - All emails stored lowercase (graph.normEmail).
+function initCommsSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customer_contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id TEXT NOT NULL,
+      name TEXT, email TEXT, phone TEXT, title TEXT,
+      source TEXT DEFAULT 'manual',        -- 'manual' | 'intacct'
+      is_active INTEGER DEFAULT 1,
+      is_primary INTEGER DEFAULT 0,
+      consent_email INTEGER DEFAULT 1,     -- may be emailed at all
+      dunning_enabled INTEGER DEFAULT 0,   -- human-approved for automated dunning
+      notes TEXT,
+      created_by TEXT, updated_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(customer_id, email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cc_customer ON customer_contacts(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_cc_email ON customer_contacts(email);
+
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id TEXT,                    -- NULL only while status='triage'
+      contact_id INTEGER,
+      subject TEXT,
+      subject_token TEXT UNIQUE,           -- signed opaque reply token
+      graph_conversation_id TEXT,
+      mailbox TEXT,
+      status TEXT DEFAULT 'open',          -- open|waiting|due|completed|archived|triage
+      assigned_email TEXT,
+      last_message_at TEXT, last_direction TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_conv_customer ON conversations(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_conv_status ON conversations(status);
+    CREATE INDEX IF NOT EXISTS idx_conv_graph ON conversations(graph_conversation_id);
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      direction TEXT NOT NULL,             -- 'out' | 'in'
+      actor_type TEXT NOT NULL,            -- 'human' | 'automation' | 'external' | 'mailbox_user'
+      actor_email TEXT,                    -- real internal user (impersonation-proof) or 'dunning-engine'
+      corresponding_email TEXT,            -- signature identity; attribution only, NEVER routing
+      from_email TEXT NOT NULL,
+      to_emails TEXT NOT NULL,             -- JSON array snapshot
+      cc_emails TEXT,                      -- JSON array snapshot
+      subject TEXT,
+      body_text TEXT, body_html TEXT,      -- resolved snapshot as sent/received
+      template_id INTEGER, template_version INTEGER,
+      token_values TEXT,                   -- JSON snapshot of substituted tokens
+      signature_snapshot TEXT,
+      graph_message_id TEXT,
+      internet_message_id TEXT,            -- RFC Message-ID
+      in_reply_to TEXT, references_hdr TEXT,
+      graph_conversation_id TEXT,
+      sent_at TEXT, received_at TEXT,
+      status TEXT DEFAULT 'sent',          -- queued|sent|failed|received
+      error TEXT,
+      has_attachments INTEGER DEFAULT 0,
+      attachments_json TEXT,               -- [{name,size,contentType,graphAttachmentId}]
+      dunning_action_id INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_msg_imid ON messages(internet_message_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_graphid
+      ON messages(graph_message_id) WHERE graph_message_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS message_invoices (
+      message_id INTEGER NOT NULL,
+      record_no TEXT NOT NULL,
+      PRIMARY KEY (message_id, record_no)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mi_record ON message_invoices(record_no);
+
+    CREATE TABLE IF NOT EXISTS comm_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      name TEXT,
+      kind TEXT DEFAULT 'external',        -- external | internal
+      active INTEGER DEFAULT 1,
+      current_version INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS comm_template_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL,
+      version INTEGER NOT NULL,
+      subject TEXT NOT NULL,
+      body_html TEXT NOT NULL,
+      tokens_used TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(template_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS comm_state (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS dunning_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      active INTEGER DEFAULT 0,
+      sequence INTEGER NOT NULL,
+      trigger_days_past_due INTEGER NOT NULL,
+      repeat_every_days INTEGER,           -- NULL = one-shot step
+      template_key TEXT NOT NULL,
+      billing_stream TEXT DEFAULT 'all',   -- 'sage' (ECI-) | 'omnia' (AST/ASTM/S-) | 'all'
+      min_invoice_balance REAL DEFAULT 0,
+      exclude_customers TEXT,              -- JSON; engine ALSO hard-excludes Amazon
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS dunning_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mode TEXT NOT NULL,                  -- 'preview' | 'live'
+      triggered_by TEXT,
+      started_at TEXT DEFAULT (datetime('now')),
+      finished_at TEXT,
+      status TEXT DEFAULT 'running',
+      stats_json TEXT,
+      error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS dunning_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id INTEGER NOT NULL,
+      rule_id INTEGER NOT NULL,
+      customer_id TEXT NOT NULL,
+      record_nos TEXT NOT NULL,            -- JSON: invoices in this digest
+      status TEXT DEFAULT 'preview',       -- preview|approved|sent|skipped|failed
+      skip_reason TEXT,                    -- amazon|stop_service|open_ptp|no_contact|recent_send|idempotent
+      message_id INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_da_run ON dunning_actions(run_id);
+
+    CREATE TABLE IF NOT EXISTS dunning_sent (
+      idem_key TEXT PRIMARY KEY,           -- record_no:rule_id or record_no:rule_id:cycle_no
+      record_no TEXT NOT NULL,
+      rule_id INTEGER NOT NULL,
+      message_id INTEGER,
+      sent_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ds_record ON dunning_sent(record_no);
+  `);
 }
 
 // Pre-populate the existing hardcoded region definitions on first run so
@@ -570,6 +742,25 @@ function updateUserPhoto(email, photoDataUrl) {
 function updateUserJobTitle(email, jobTitle) {
   const d = getDb();
   d.prepare("UPDATE user_roles SET job_title=? WHERE email=?").run(jobTitle || null, email);
+}
+
+function updateUserPhone(email, phone) {
+  const d = getDb();
+  d.prepare("UPDATE user_roles SET phone=? WHERE email=?").run(phone || null, email);
+}
+
+// ─── Comms state (kv: delta links, run locks, cursors) ─────────────────────
+
+function getCommState(key) {
+  const row = getDb().prepare('SELECT value FROM comm_state WHERE key=?').get(key);
+  return row ? row.value : null;
+}
+
+function setCommState(key, value) {
+  getDb().prepare(`
+    INSERT INTO comm_state (key, value, updated_at) VALUES (?,?,datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
+  `).run(key, value == null ? null : String(value));
 }
 
 function preProvisionUser(email, name, role, jobTitle) {
@@ -941,6 +1132,9 @@ module.exports = {
   getNoteCounts,
   updateUserPhoto,
   updateUserJobTitle,
+  updateUserPhone,
+  getCommState,
+  setCommState,
   preProvisionUser,
   getUserRole,
   upsertUserRole,

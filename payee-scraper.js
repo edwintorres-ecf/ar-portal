@@ -304,6 +304,15 @@ async function scrapePayeeCentral() {
     }
 
     ops.ok('payee-feed', `${items.length} items, newest entry ${ageHours.toFixed(1)}h old`, items.length);
+    // Clear guard keys raised on earlier failed runs — without this a tripped
+    // guard stays red in ops_health forever and the nightly self-test cries
+    // wolf on long-recovered incidents (seen: openpos-floor 07-26, stale 08-02).
+    // payee-feed-stale is cleared only when this pull genuinely passed the
+    // freshness invariant, so a business-lull warn raised above survives.
+    if (newestMs && ageHours <= FRESHNESS_HOURS) {
+      ops.ok('payee-feed-stale', `newest entry ${ageHours.toFixed(1)}h old (limit ${FRESHNESS_HOURS}h)`);
+    }
+    ops.ok('payee-feed-floor', `${items.length} items vs ${prevCount} cached`);
 
     const tmpPath = FEED_PATH + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(feed, null, 2));
@@ -407,6 +416,9 @@ async function scrapeOpenPOs() {
     fs.writeFileSync(tmp, JSON.stringify(out, null, 2));
     fs.renameSync(tmp, OPEN_POS_PATH);
     console.log(`[payee-scraper] Wrote ${pos.length} open POs (${rounds} keep-going rounds) to ${OPEN_POS_PATH}`);
+    // Clear the floor guard raised on earlier truncated pulls (see note in
+    // scrapePayeeCentral — a tripped guard otherwise stays red forever).
+    require('./ops-alerts').ok('openpos-floor', `${pos.length} POs written (floor guard passed)`);
     return out;
   } finally {
     await browser.close();
