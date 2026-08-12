@@ -228,6 +228,7 @@ let _composerCtx = null;   // { customerId, customerName, recordNos, contacts, t
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="composer-template" onchange="commsApplyTemplate()" style="padding:7px 9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px"></select>
         <label style="font-size:12.5px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="composer-attach-stmt"> Attach statement</label>
+        <label id="composer-attach-inv-wrap" style="font-size:12.5px;display:none;align-items:center;gap:5px"><input type="checkbox" id="composer-attach-inv"> <span id="composer-attach-inv-label">Attach invoice PDF</span></label>
         <button class="btn-sm" id="composer-ai-btn" style="background:#f5f3ff;color:#6d28d9;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-weight:600;display:none" onclick="commsAiPrefill(this)">✨ Draft with AI</button>
       </div>
       <input id="composer-subject" placeholder="Subject" oninput="_composerCtx&&(_composerCtx.dirty=true)" style="padding:7px 9px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-weight:600">
@@ -297,6 +298,12 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
   document.getElementById('composer-body').value = '';
   document.getElementById('composer-cc').value = '';
   document.getElementById('composer-attach-stmt').checked = !!defaultAttach;
+  const invWrap = document.getElementById('composer-attach-inv-wrap');
+  const invCount = (_composerCtx.recordNos || []).length;
+  invWrap.style.display = invCount ? 'flex' : 'none';
+  document.getElementById('composer-attach-inv').checked = false;
+  document.getElementById('composer-attach-inv-label').textContent =
+    invCount > 1 ? `Attach invoice PDFs (${invCount})` : 'Attach invoice PDF';
   document.getElementById('composer-preview').style.display = 'none';
   document.getElementById('composer-status').innerHTML = '';
   document.getElementById('composer-ai-btn').style.display =
@@ -337,6 +344,7 @@ function commsComposerPayload() {
     recordNos: c.recordNos,
     conversationId: c.conversationId || undefined,
     attachStatement: document.getElementById('composer-attach-stmt').checked,
+    attachInvoicePdfs: document.getElementById('composer-attach-inv').checked,
     ...(useTemplate
       ? { templateKey: c.templateKey }
       : {
@@ -605,8 +613,11 @@ async function commsReplyToConversation(id) {
         try { const t = JSON.parse(messages[i].to_emails || '[]'); if (t.length) { replyTo = t[0]; break; } } catch (e) {}
       }
     }
+    // A reply inherits the thread's tagged invoices so tokens resolve and the
+    // invoice-PDF attach checkbox is available (the "resend a copy" case).
+    const recordNos = [...new Set(messages.flatMap(m => m.recordNos || []))];
     await commsOpenComposer({
-      customerId: c.customer_id, customerName: c.customer_id, recordNos: [],
+      customerId: c.customer_id, customerName: c.customer_id, recordNos,
       conversationId: c.id, replyToEmail: replyTo,
       replySubject: /^re:/i.test(c.subject || '') ? c.subject : 'RE: ' + (c.subject || ''),
     });

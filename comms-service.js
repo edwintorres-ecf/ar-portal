@@ -318,7 +318,7 @@ async function sendMessage(opts) {
     actorEmail, actorType, correspondingEmail,
     customerId, contactId, toEmails, ccEmails, recordNos,
     templateKey, rawSubject, rawBody, attachStatement, conversationId,
-    dunningActionId,
+    dunningActionId, extraAttachments,
   } = opts;
   if (!actorEmail) throw new Error('actorEmail is required');
   if (!['human', 'automation'].includes(actorType)) throw new Error('actorType must be human or automation');
@@ -383,6 +383,19 @@ async function sendMessage(opts) {
         contentBytes: Buffer.from(html, 'utf8').toString('base64'),
       }];
       attachmentsMeta.push({ name, size: html.length, contentType: 'text/html' });
+    }
+  }
+  // Caller-supplied binary attachments (e.g. invoice PDFs resolved at the
+  // route layer). contentBytes is already base64.
+  if (Array.isArray(extraAttachments) && extraAttachments.length) {
+    draftPayload.attachments = draftPayload.attachments || [];
+    for (const a of extraAttachments) {
+      draftPayload.attachments.push({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: a.name, contentType: a.contentType || 'application/octet-stream',
+        contentBytes: a.contentBytes,
+      });
+      attachmentsMeta.push({ name: a.name, size: a.size || null, contentType: a.contentType || null });
     }
   }
 

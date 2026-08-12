@@ -618,6 +618,24 @@ async function fetchOmniaInvoicePdfDeduped(invoiceId) {
   return p;
 }
 
+// Shared PDF fetch for an invoice: Omnia cache/deduped fetch, or on-demand
+// ECI generation. Returns a Buffer, or null when no source can produce one.
+// Used by the /pdf route flow below and by /api/comms/send attachments.
+async function fetchInvoicePdfBuffer(inv) {
+  if (omnia.isOmniaInvoice(inv.invoiceId)) {
+    const cached = getCachedPdf(inv.invoiceId);
+    if (cached) return cached;
+    const result = await fetchOmniaInvoicePdfDeduped(inv.invoiceId);
+    if (result.found && result.buf) { setCachedPdf(inv.invoiceId, result.buf); return result.buf; }
+    return null;
+  }
+  if (inv.source === 'oe' || inv.source === 'eci-ar' || inv.source === 'eci-oe' || (inv.invoiceId && /^ECI-/i.test(inv.invoiceId))) {
+    const lines = await sage.getInvoiceLines(inv.invoiceId).catch(() => []);
+    return generateEciPdf(inv, lines);
+  }
+  return null;
+}
+
 app.get('/api/invoice/:recordno/pdf', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
@@ -2221,9 +2239,9 @@ function commsRealActor(req) {
 // server-side so a request body can never spoof automation identity.
 function commsPickBody(body) {
   const { customerId, contactId, toEmails, ccEmails, recordNos,
-          templateKey, rawSubject, rawBody, attachStatement, conversationId, correspondingEmail } = body || {};
+          templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId, correspondingEmail } = body || {};
   return { customerId, contactId, toEmails, ccEmails, recordNos,
-           templateKey, rawSubject, rawBody, attachStatement, conversationId, correspondingEmail };
+           templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId, correspondingEmail };
 }
 
 app.get('/api/comms/config', requireAuth, (req, res) => {
@@ -2249,8 +2267,29 @@ app.post('/api/comms/send', requireAuth, requireRole('admin', 'manager', 'ar_spe
   try {
     const actor = commsRealActor(req);
     const p = commsPickBody(req.body);
+
+    // Resolve invoice PDF attachments HERE (route layer) so comms-service
+    // stays generic. Fails loudly: the user asked for the PDF, so a send
+    // without it would be worse than no send.
+    let extraAttachments;
+    if (p.attachInvoicePdfs && Array.isArray(p.recordNos) && p.recordNos.length) {
+      const invoices = applyUserFilter(sage.getCachedInvoices(), req.session.user);
+      extraAttachments = [];
+      for (const rn of p.recordNos.slice(0, 5)) {
+        const inv = invoices.find(i => i.recordNo === rn);
+        if (!inv) return res.status(400).json({ error: `Invoice ${rn} not found (or outside your scope)` });
+        const buf = await fetchInvoicePdfBuffer(inv);
+        if (!buf) return res.status(400).json({ error: `No PDF available for ${inv.invoiceId}` });
+        extraAttachments.push({ name: `${inv.invoiceId}.pdf`, contentType: 'application/pdf', contentBytes: buf.toString('base64'), size: buf.length });
+      }
+      if (p.recordNos.length > 5) {
+        return res.status(400).json({ error: 'At most 5 invoice PDFs per email — attach the statement instead' });
+      }
+    }
+
     const result = await comms.sendMessage({
       ...p,
+      extraAttachments,
       actorEmail: actor,
       actorType: 'human',
       correspondingEmail: p.correspondingEmail || actor,
@@ -2328,7 +2367,11 @@ app.get('/api/comms/conversations/:id', requireAuth, (req, res) => {
   try {
     const conversation = db.getConversation(parseInt(req.params.id, 10));
     if (!conversation) return res.status(404).json({ error: 'Not found' });
-    res.json({ conversation, messages: db.getMessagesForConversation(conversation.id) });
+    const messages = db.getMessagesForConversation(conversation.id).map(m => ({
+      ...m,
+      recordNos: db.all('SELECT record_no FROM message_invoices WHERE message_id=?', [m.id]).map(r => r.record_no),
+    }));
+    res.json({ conversation, messages });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
