@@ -13,9 +13,14 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const TENANT_ID = process.env.AZURE_TENANT_ID;
-const CLIENT_ID = process.env.AZURE_CLIENT_ID;
-const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
+// Dedicated comms app registration when configured (AR_GRAPH_*): a separate
+// Entra app holding ONLY Mail permissions, scoped by an Exchange
+// ApplicationAccessPolicy to invoices@ — the shared AZURE_* registration
+// (recruit calendars, OneDrive, SharePoint) stays untouched. Falls back to
+// the shared app until the dedicated one is configured.
+const TENANT_ID = process.env.AR_GRAPH_TENANT_ID || process.env.AZURE_TENANT_ID;
+const CLIENT_ID = process.env.AR_GRAPH_CLIENT_ID || process.env.AZURE_CLIENT_ID;
+const CLIENT_SECRET = process.env.AR_GRAPH_CLIENT_SECRET || process.env.AZURE_CLIENT_SECRET;
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 let _token = null, _tokenExp = 0;
