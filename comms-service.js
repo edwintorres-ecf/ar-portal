@@ -435,7 +435,12 @@ async function sendMessage(opts) {
     let replyAnchor = null;
     if (conversationId) {
       const prior = db.getMessagesForConversation(conv.id).filter(m => m.graph_message_id);
-      replyAnchor = prior.length ? prior[prior.length - 1] : null;
+      // Anchor to the newest message that is IN the thread's canonical
+      // Exchange conversation — anchoring to a stray (a pre-fix reply that
+      // spawned its own conversationId) would propagate the broken thread.
+      const canonical = prior.filter(m => !conv.graph_conversation_id || m.graph_conversation_id === conv.graph_conversation_id);
+      const pool = canonical.length ? canonical : prior;
+      replyAnchor = pool.length ? pool[pool.length - 1] : null;
     }
     if (replyAnchor) {
       let replyDraft = null;
