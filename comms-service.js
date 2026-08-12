@@ -55,7 +55,9 @@ function verifyToken(token) {
   return a.length === b.length && crypto.timingSafeEqual(a, b) ? id : null;
 }
 
-const TOKEN_RE = /\[ECF#([a-z0-9]{1,10}-[0-9a-f]{10})\]/i;
+// Matches the reference token anywhere — legacy bracketed subjects and the
+// current body-footer "Ref: ECF#..." form alike.
+const TOKEN_RE = /ECF#([a-z0-9]{1,10}-[0-9a-f]{10})/i;
 
 // ─── Allowlist (the go-live gate) ────────────────────────────────────────────
 function allowlist() {
@@ -318,7 +320,14 @@ function previewMessage(opts) {
   if (conversationId) {
     const conv = db.getConversation(conversationId);
     if (!conv) throw new Error('Conversation not found');
-    subjectFinal = /^re:/i.test(conv.subject || '') ? conv.subject : `RE: ${conv.subject}`;
+    const cleanSubject = String(conv.subject || '').replace(/\s*\[ECF#[^\]]+\]/i, '');
+    subjectFinal = /^re:/i.test(cleanSubject) ? cleanSubject : `RE: ${cleanSubject}`;
+    // Old conversations may predate tokens (triage-born threads) — mint one
+    // lazily so every outbound carries the reference footer.
+    if (!conv.subject_token) {
+      db.setConversationSubject(conv.id, conv.subject, signToken(conv.id));
+      conv = db.getConversation(conv.id);
+    }
   } else {
     subjectFinal = `${rendered.subject} [ECF#new]`;
   }
@@ -374,22 +383,37 @@ async function sendMessage(opts) {
     if (customerId && conv.customer_id && conv.customer_id !== customerId) {
       throw new Error('Conversation belongs to a different customer');
     }
-    subjectFinal = /^re:/i.test(conv.subject || '') ? conv.subject : `RE: ${conv.subject}`;
+    const cleanSubject = String(conv.subject || '').replace(/\s*\[ECF#[^\]]+\]/i, '');
+    subjectFinal = /^re:/i.test(cleanSubject) ? cleanSubject : `RE: ${cleanSubject}`;
+    // Old conversations may predate tokens (triage-born threads) — mint one
+    // lazily so every outbound carries the reference footer.
+    if (!conv.subject_token) {
+      db.setConversationSubject(conv.id, conv.subject, signToken(conv.id));
+      conv = db.getConversation(conv.id);
+    }
   } else {
     conv = db.createConversation({
       customerId, contactId: contact ? contact.id : null,
       mailbox: mb, assignedEmail: graph.normEmail(actorType === 'human' ? actorEmail : correspondingEmail || ''),
     });
     const token = signToken(conv.id);
-    subjectFinal = `${rendered.subject} [ECF#${token}]`;
+    // Subject stays CLEAN — the routing token rides in a small body footer
+    // instead (repliers quote the body, so it survives; subjects full of
+    // bracket codes read like spam to customers).
+    subjectFinal = rendered.subject;
     db.setConversationSubject(conv.id, subjectFinal, token);
     conv = db.getConversation(conv.id);
   }
 
-  // Build the Graph draft
+  // Build the Graph draft. The reference footer is part of the send-time
+  // snapshot so the stored body matches what the customer received.
+  const refToken = conv.subject_token;
+  const bodyFinal = rendered.body + (refToken
+    ? `<div style="color:#94a3b8;font-size:11px;margin-top:14px">Ref: ECF#${refToken}</div>`
+    : '');
   const draftPayload = {
     subject: subjectFinal,
-    body: { contentType: 'HTML', content: rendered.body },
+    body: { contentType: 'HTML', content: bodyFinal },
     toRecipients: to.map(a => ({ emailAddress: { address: a } })),
     ...(cc.length ? { ccRecipients: cc.map(a => ({ emailAddress: { address: a } })) } : {}),
     replyTo: [{ emailAddress: { address: mb } }],
@@ -483,7 +507,7 @@ async function sendMessage(opts) {
           ...(draftPayload.ccRecipients ? { ccRecipients: draftPayload.ccRecipients } : {}),
           replyTo: draftPayload.replyTo,
           // Our content on top, Exchange's quoted history preserved below.
-          body: { contentType: 'HTML', content: rendered.body + '<br>' + ((full.body && full.body.content) || '') },
+          body: { contentType: 'HTML', content: bodyFinal + '<br>' + ((full.body && full.body.content) || '') },
         });
         for (const att of (draftPayload.attachments || [])) {
           await graph.gPost(`/users/${mb}/messages/${encodeURIComponent(replyDraft.id)}/attachments`, att);
@@ -504,7 +528,7 @@ async function sendMessage(opts) {
       conversation_id: conv.id, direction: 'out', actor_type: actorType,
       actor_email: graph.normEmail(actorEmail), corresponding_email: graph.normEmail(correspondingEmail || ''),
       from_email: mb, to_emails: JSON.stringify(to), cc_emails: cc.length ? JSON.stringify(cc) : null,
-      subject: subjectFinal, body_html: rendered.body,
+      subject: subjectFinal, body_html: bodyFinal,
       template_id: template ? template.id : null, template_version: template ? template.current_version : null,
       token_values: JSON.stringify(rendered.tokenValues), signature_snapshot: signatureHtml,
       status: 'failed', error: String(e.message).slice(0, 500),
@@ -519,7 +543,7 @@ async function sendMessage(opts) {
     conversation_id: conv.id, direction: 'out', actor_type: actorType,
     actor_email: graph.normEmail(actorEmail), corresponding_email: graph.normEmail(correspondingEmail || ''),
     from_email: mb, to_emails: JSON.stringify(to), cc_emails: cc.length ? JSON.stringify(cc) : null,
-    subject: subjectFinal, body_html: rendered.body,
+    subject: subjectFinal, body_html: bodyFinal,
     template_id: template ? template.id : null, template_version: template ? template.current_version : null,
     token_values: JSON.stringify(rendered.tokenValues), signature_snapshot: signatureHtml,
     graph_message_id: draft.id, internet_message_id: draft.internetMessageId || null,

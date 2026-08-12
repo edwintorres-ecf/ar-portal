@@ -92,8 +92,11 @@ function matchConversation(m, rfc) {
     const conv = db.getConversationByGraphId(m.conversationId);
     if (conv) return { conv, via: 'graph-conv' };
   }
-  // 3. Signed subject token
-  const tok = (m.subject || '').match(comms.TOKEN_RE);
+  // 3. Signed reference token — subject (legacy) or body footer / quoted
+  // history (current form). Quoted bodies preserve the token even when a
+  // ticketing system strips the RFC headers.
+  const hay = (m.subject || '') + ' ' + String((m.body && m.body.content) || '').slice(0, 20000);
+  const tok = hay.match(comms.TOKEN_RE);
   if (tok) {
     const convId = comms.verifyToken(tok[1]);
     if (convId) {
