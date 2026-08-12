@@ -482,6 +482,161 @@ function commsUpdateTriageBadge(count) {
   else b.style.display = 'none';
 }
 
+// ─── Customer page (Phase 4 — their customer detail layout + our comms) ──────
+
+let _custPageId = null;
+
+async function commsOpenCustomerPage(customerId) {
+  _custPageId = customerId;
+  if (typeof switchView === 'function') switchView('customer-page');
+  commsLoadCustomerPage();
+}
+
+async function commsLoadCustomerPage() {
+  const root = document.getElementById('customer-page-root');
+  if (!root || !_custPageId) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [c] = await Promise.all([apiFetch(`/api/customer-page/${encodeURIComponent(_custPageId)}`), commsGridMeta()]);
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const scChips = commsScChips(c.scBreakdown.map(x => x.sc).filter(x => x !== '—'));
+    const kpi = (label, value, sub, red) => `
+      <div style="flex:1;min-width:170px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#6b6458;text-transform:uppercase">${label}</div>
+        <div style="font-size:22px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;${red ? 'color:#b32020' : ''}">${value}</div>
+        <div style="font-size:11.5px;color:#6b6458">${sub}</div>
+      </div>`;
+    root.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin:6px 0 12px">
+        <div>
+          <div style="font-size:11.5px;color:#6b6458">Customers / ${escHtml(c.id)}</div>
+          <h1 style="font-size:26px;font-weight:700;margin:2px 0 4px">${escHtml(c.name)}</h1>
+          <div>${scChips}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${commsCanEdit() ? `<button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 14px;border-radius:9px;cursor:pointer;font-weight:600" onclick='commsOpenComposer({customerId:"${escHtml(c.id)}",customerName:"${escHtml(c.name)}",recordNos:[],defaultAttach:true})'>✉️ Email customer</button>` : ''}
+          <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:7px 14px;border-radius:9px;cursor:pointer" onclick="commsOpenContacts('${escHtml(c.id)}','${escHtml(c.name)}')">👤 Contacts</button>
+          <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:7px 14px;border-radius:9px;cursor:pointer" onclick="openStatement('${escHtml(c.id)}')">📄 Statement</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        ${kpi('Past Due Remaining', fmt$(c.kpis.pastDue), c.kpis.invoices + ' invoices', true)}
+        ${kpi('Total AR', fmt$(c.kpis.totalAR), c.kpis.invoices + ' open invoices')}
+        ${kpi('Oldest Invoice', c.kpis.oldest + 'd', 'days past due')}
+        ${kpi('Service Centers', c.kpis.locations, 'with open invoices')}
+      </div>
+      <div style="font-size:12px;font-weight:700;color:#6b6458;text-transform:uppercase;letter-spacing:.05em;margin:4px 0 8px">SC breakdown</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        ${c.scBreakdown.map(b => `
+          <div style="min-width:150px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:12px;padding:10px 14px">
+            ${commsScChips([b.sc])}
+            <div style="font-size:15px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;color:${b.pastDue > 0 ? '#b32020' : '#3f7238'}">${fmt$(b.pastDue)} past due</div>
+            <div style="font-size:11px;color:#6b6458">${fmt$(b.open)} open · ${b.count} inv</div>
+          </div>`).join('')}
+      </div>
+      <div id="custpage-attachments"></div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden;margin-top:14px">
+        <div style="padding:10px 16px;background:#faf8f3;font-size:12.5px;font-weight:600">Open Invoices (${c.invoices.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+            ${['Invoice', 'SC', 'Invoice Date', 'Due', 'Days Past Due', 'Status', 'Collector', 'Amount'].map(h => `<th style="padding:8px 10px">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${c.invoices.slice(0, 200).map(i => {
+            const cs = (_gridMeta.csByRecord[i.recordNo] || {}).status || 'Open';
+            const col = commsEffectiveCollector(i);
+            return `<tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="openDrawer('${escHtml(i.recordNo)}')">
+              <td style="padding:8px 10px;font-weight:600">${escHtml(i.invoiceId || i.recordNo)}</td>
+              <td style="padding:8px 10px">${commsScChipFor(i)}</td>
+              <td style="padding:8px 10px">${escHtml(i.whenCreated || '—')}</td>
+              <td style="padding:8px 10px">${escHtml(i.whenDue || '—')}</td>
+              <td style="padding:8px 10px">${i.daysOverdue > 0 ? `<span class="age-pill ${commsAgePillClass(i.daysOverdue)}">${i.daysOverdue}d</span>` : '<span style="color:#3f7238;font-size:11.5px;font-weight:600">Current</span>'}</td>
+              <td style="padding:8px 10px"><span class="cs-chip ${commsCsClass(cs)}">${escHtml(cs)}</span></td>
+              <td style="padding:8px 10px;font-size:11.5px">${col ? escHtml(col.split('@')[0]) : 'Unassigned'}</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">${fmt$(i.totalDue)}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+        ${c.invoices.length > 200 ? `<div style="padding:8px 16px;font-size:11.5px;color:#6b6458">Showing 200 of ${c.invoices.length} — use Invoices with a customer filter for the full set.</div>` : ''}
+      </div>`;
+    // Attachments block reuses the shared loader, retargeted at this container
+    const att = document.getElementById('custpage-attachments');
+    att.innerHTML = '<div id="contacts-attachments" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:4px 16px 12px"></div>';
+    commsLoadAttachments(c.id);
+  } catch (e) {
+    root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+// Their platform: clicking a customer opens the customer page. Take over the
+// legacy filterByCustomer (which used to just filter the invoice table).
+filterByCustomer = (customerId) => commsOpenCustomerPage(customerId);
+
+// ─── Locations view (Phase 4) ────────────────────────────────────────────────
+async function commsLoadLocations() {
+  const root = document.getElementById('locations-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const rows = await apiFetch('/api/locations-view');
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    await commsGridMeta();
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 12px">Locations</h1>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+            ${['Location', 'Service Center', 'Customers', 'Invoices', 'Past Due', 'Current', 'Total AR'].map(h => `<th style="padding:8px 12px">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${rows.map(r => `
+            <tr style="border-top:1px solid #f1ede3">
+              <td style="padding:9px 12px;font-weight:600">${escHtml(r.locationName)}</td>
+              <td style="padding:9px 12px">${r.sc ? commsScChips([r.sc]) : '—'}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">${r.customers}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">${r.invoices.toLocaleString()}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${r.pastDue > 0 ? '#b32020' : 'inherit'};font-weight:600">${fmt$(r.pastDue)}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.current)}</td>
+              <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmt$(r.totalAR)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+// ─── Global search (Phase 4) ─────────────────────────────────────────────────
+async function commsLoadSearch() {
+  const root = document.getElementById('search-root');
+  if (!root) return;
+  root.innerHTML = `
+    <h1 style="font-size:26px;font-weight:700;margin:6px 0 12px">Global Search</h1>
+    <div style="display:flex;gap:8px;max-width:560px">
+      <input id="gsearch-q" placeholder="Customer, invoice #, PO #, or location…" style="flex:1;padding:10px 14px;border:1px solid var(--line,#e7e1d4);border-radius:10px;font-size:14px;background:#fff" onkeydown="if(event.key==='Enter')commsRunSearch()">
+      <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:9px 18px;border-radius:10px;cursor:pointer;font-weight:600" onclick="commsRunSearch()">Search</button>
+    </div>
+    <div id="gsearch-results" style="margin-top:16px"></div>`;
+  setTimeout(() => document.getElementById('gsearch-q').focus(), 100);
+}
+
+async function commsRunSearch() {
+  const q = document.getElementById('gsearch-q').value.trim();
+  const out = document.getElementById('gsearch-results');
+  if (q.length < 2) { out.innerHTML = '<div style="color:#6b6458;font-size:13px">Type at least 2 characters.</div>'; return; }
+  out.innerHTML = '<div style="color:#6b6458;font-size:13px">Searching…</div>';
+  try {
+    const r = await apiFetch('/api/search?q=' + encodeURIComponent(q));
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const card = (title, inner) => inner ? `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px;margin-bottom:12px"><div style="font-weight:700;font-size:13.5px;margin-bottom:8px">${title}</div>${inner}</div>` : '';
+    out.innerHTML =
+      card(`Customers (${r.customers.length})`, r.customers.map(c => `<div style="padding:6px 0;border-top:1px solid #f1ede3;cursor:pointer;font-size:13px" onclick="commsOpenCustomerPage('${escHtml(c.id)}')"><strong>${escHtml(c.name)}</strong> <span style="color:#6b6458;font-size:11.5px">${escHtml(c.id)}</span> · ${c.invoices} inv · ${fmt$(c.totalAR)}</div>`).join('')) +
+      card(`Invoices (${r.invoices.length})`, r.invoices.map(i => `<div style="padding:6px 0;border-top:1px solid #f1ede3;cursor:pointer;font-size:13px" onclick="openDrawer('${escHtml(i.recordNo)}')"><strong>${escHtml(i.invoiceId)}</strong> · ${escHtml(i.customerName)} · ${fmt$(i.totalDue)}${i.daysOverdue > 0 ? ` · <span class="age-pill ${commsAgePillClass(i.daysOverdue)}">${i.daysOverdue}d</span>` : ''}</div>`).join('')) +
+      card(`Locations (${r.locations.length})`, r.locations.map(l => `<div style="padding:6px 0;border-top:1px solid #f1ede3;font-size:13px">${escHtml(l.name)}</div>`).join('')) ||
+      '<div style="color:#6b6458;font-size:13px">No matches.</div>';
+  } catch (e) {
+    out.innerHTML = `<div style="color:var(--red);font-size:13px">${escHtml(e.message)}</div>`;
+  }
+}
+
 // ─── Invoices grid v2 (Phase 3 — their Client Data > Invoices, verbatim) ─────
 
 let _gridMeta = null;

@@ -2605,6 +2605,74 @@ app.get('/api/grid-meta', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: Customer page / Locations / Global search (emulation Phase 4) ──────
+app.get('/api/customer-page/:customerId', requireAuth, async (req, res) => {
+  try {
+    const user = req.session.user;
+    let invoices = sage.getCachedInvoices();
+    if (!invoices.length) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, user).filter(i => i.customerId === req.params.customerId);
+    const name = invoices.length ? invoices[0].customerName : req.params.customerId;
+    let pastDue = 0, totalAR = 0, oldest = 0;
+    const bySc = {};
+    for (const i of invoices) {
+      totalAR += i.totalDue;
+      const d = i.daysOverdue || 0;
+      if (d > oldest) oldest = d;
+      if (d >= 1) pastDue += i.totalDue;
+      const sc = scCodeFromLocation(i.locationId, i.locationName) || '—';
+      if (!bySc[sc]) bySc[sc] = { sc, pastDue: 0, open: 0, count: 0 };
+      bySc[sc].count++;
+      bySc[sc].open += i.totalDue;
+      if (d >= 1) bySc[sc].pastDue += i.totalDue;
+    }
+    res.json({
+      id: req.params.customerId, name,
+      kpis: { pastDue, totalAR, oldest, invoices: invoices.length, locations: new Set(invoices.map(i => i.locationId)).size },
+      scBreakdown: Object.values(bySc).sort((a, b) => b.pastDue - a.pastDue),
+      invoices: invoices.sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0)),
+      account: db.getCustomerAccount(req.params.customerId),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/locations-view', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (!invoices.length) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const by = new Map();
+    for (const i of invoices) {
+      const key = i.locationId || '—';
+      let r = by.get(key);
+      if (!r) { r = { locationId: key, locationName: i.locationName || key, sc: scCodeFromLocation(i.locationId, i.locationName), pastDue: 0, current: 0, invoices: 0, totalAR: 0, customers: new Set() }; by.set(key, r); }
+      r.invoices++; r.totalAR += i.totalDue; r.customers.add(i.customerId);
+      if ((i.daysOverdue || 0) >= 1) r.pastDue += i.totalDue; else r.current += i.totalDue;
+    }
+    res.json([...by.values()].map(r => ({ ...r, customers: r.customers.size })).sort((a, b) => b.totalAR - a.totalAR));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/search', requireAuth, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().toLowerCase();
+    if (q.length < 2) return res.json({ customers: [], invoices: [], locations: [] });
+    let invoices = sage.getCachedInvoices();
+    if (!invoices.length) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const custs = new Map(), locs = new Map(), invs = [];
+    for (const i of invoices) {
+      if ((i.customerName || '').toLowerCase().includes(q) || (i.customerId || '').toLowerCase().includes(q)) {
+        const c = custs.get(i.customerId) || { id: i.customerId, name: i.customerName, invoices: 0, totalAR: 0 };
+        c.invoices++; c.totalAR += i.totalDue; custs.set(i.customerId, c);
+      }
+      if ((i.locationName || '').toLowerCase().includes(q) && !locs.has(i.locationId)) locs.set(i.locationId, { id: i.locationId, name: i.locationName });
+      if (invs.length < 25 && ((i.invoiceId || '').toLowerCase().includes(q) || (i.poNumber || '').toLowerCase().includes(q))) invs.push(i);
+    }
+    res.json({ customers: [...custs.values()].slice(0, 20), invoices: invs, locations: [...locs.values()].slice(0, 20) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Collection status (emulation of the reconciliation platform) ───────
 // Assigned collector sets the status; AR staff can change/update after.
 const COLLECTION_STATUSES = ['Open', 'In Progress', 'HOF Support Required', 'Resubmit Requested',

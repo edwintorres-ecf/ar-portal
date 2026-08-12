@@ -547,6 +547,8 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="invoices2" onclick="navGo('invoices2')">🧾 Invoices</div>
         <div class="nav-drop-item" data-view="dashboard" onclick="navGo('dashboard')">🗂 Invoices (advanced)</div>
         <div class="nav-drop-item" data-view="customers" onclick="navGo('customers')">👥 All Customers</div>
+        <div class="nav-drop-item" data-view="locations" onclick="navGo('locations')">📍 Locations</div>
+        <div class="nav-drop-item" data-view="search" onclick="navGo('search')">🔎 Search</div>
         <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">🟠 Amazon AR</div>
       </div>
     </div>
@@ -727,6 +729,18 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-invoices2" class="view">
   <div id="invoices2-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-customer-page" class="view">
+  <div id="customer-page-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-locations" class="view">
+  <div id="locations-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-search" class="view">
+  <div id="search-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-customers" class="view">
@@ -2296,7 +2310,7 @@ async function manualRefresh() {
 // Which grouped menu (if any) each view lives under — drives the active state.
 const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
-  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts',
+  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms',
   'admin': 'admin',
@@ -2337,6 +2351,8 @@ function switchView(name, el) {
   if (name === 'comms-statements' && typeof commsLoadStatements === 'function') { commsLoadStatements(); }
   if (name === 'overview' && typeof commsLoadOverview === 'function') { commsLoadOverview(); }
   if (name === 'invoices2' && typeof commsLoadInvoices2 === 'function') { commsLoadInvoices2(); }
+  if (name === 'locations' && typeof commsLoadLocations === 'function') { commsLoadLocations(); }
+  if (name === 'search' && typeof commsLoadSearch === 'function') { commsLoadSearch(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5620,6 +5636,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812h"></script>
+<script src="/comms.js?v=20260812i"></script>
 </body>
 </html>
