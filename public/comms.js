@@ -560,11 +560,53 @@ async function commsLoadCustomerPage() {
       </div>`;
     // Attachments block reuses the shared loader, retargeted at this container
     const att = document.getElementById('custpage-attachments');
-    att.innerHTML = '<div id="custpage-attachments-inner" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:4px 16px 12px"></div>';
+    att.innerHTML = '<div id="custpage-attachments-inner" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:4px 16px 12px"></div>'
+      + '<div id="custpage-notes" style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px;margin-top:14px"></div>';
     commsLoadAttachments(c.id, 'custpage-attachments-inner');
+    commsLoadCustNotes(c.id);
   } catch (e) {
     root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
+}
+
+// Customer-level notes (their platform keeps notes on the customer; ours
+// were invoice-only). Keyed by customer id in the same notes table.
+let _custNoteReplyTo = null;
+async function commsLoadCustNotes(customerId) {
+  const el = document.getElementById('custpage-notes');
+  if (!el) return;
+  try {
+    const notes = await apiFetch(`/api/notes/${encodeURIComponent(customerId)}`);
+    const kids = {}, tops = [];
+    for (const n of notes) { if (n.parent_id) (kids[n.parent_id] = kids[n.parent_id] || []).push(n); else tops.push(n); }
+    const one = (n, child) => `
+      <div style="padding:8px 10px;border-top:1px solid #f1ede3;${child ? 'margin-left:24px;border-left:2px solid #e7e1d4;' : ''}">
+        <div style="font-size:13px">${escHtml(n.body)}</div>
+        <div style="font-size:11px;color:#6b6458;margin-top:2px">${child ? '↳ ' : ''}${escHtml(n.user_name)} · ${escHtml((n.created_at || '').slice(0, 10))}
+          ${commsCanEdit() ? ` · <a href="#" style="color:#3763a0" onclick="_custNoteReplyTo=${n.id};document.getElementById('custnote-ind').textContent='↳ replying to ${escHtml(n.user_name)}';document.getElementById('custnote-body').focus();return false">reply</a>` : ''}</div>
+      </div>`;
+    el.innerHTML = `
+      <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:4px">CUSTOMER NOTES (${notes.length})</div>
+      ${tops.map(n => one(n, false) + (kids[n.id] || []).map(x => one(x, true)).join('')).join('') || '<div style="font-size:12px;color:#a8a093;padding:6px 0">No notes on this customer yet.</div>'}
+      ${commsCanEdit() ? `
+        <div id="custnote-ind" style="font-size:11px;color:#6b6458;margin-top:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <input id="custnote-body" placeholder="Add a customer note…" style="flex:1;padding:8px 10px;border:1px solid #e7e1d4;border-radius:8px;font-size:13px"
+            onkeydown="if(event.key==='Enter')commsSaveCustNote('${escHtml(customerId)}')">
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsSaveCustNote('${escHtml(customerId)}')">Save</button>
+        </div>` : ''}`;
+  } catch (e) { el.innerHTML = `<div style="font-size:12px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsSaveCustNote(customerId) {
+  const box = document.getElementById('custnote-body');
+  const body = box.value.trim();
+  if (!body) return;
+  try {
+    await apiFetch(`/api/notes/${encodeURIComponent(customerId)}`, { method: 'POST', body: JSON.stringify({ body, parent_id: _custNoteReplyTo }) });
+    _custNoteReplyTo = null;
+    commsLoadCustNotes(customerId);
+  } catch (e) { alert('Save failed: ' + e.message); }
 }
 
 // Their platform: clicking a customer opens the customer page. Take over the

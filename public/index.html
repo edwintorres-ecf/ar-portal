@@ -1733,8 +1733,13 @@ function renderDrawer(data) {
       <div class="ptp-meta">Set by ${escHtml(p.user_name)} on ${fmtDateShort(p.created_at)}${p.note ? ' · ' + escHtml(p.note) : ''}</div>
     </div>`).join('');
 
-  const notesList = notes.length === 0 ? '<p style="font-size:13px;color:var(--gray-500)">No notes yet.</p>' :
-    notes.map(n => {
+  const notesList = (() => {
+    if (notes.length === 0) return '<p style="font-size:13px;color:var(--gray-500)">No notes yet.</p>';
+    // Threaded: top-level notes with replies nested beneath (parent_id).
+    const kids = {};
+    const tops = [];
+    for (const n of notes) { if (n.parent_id) (kids[n.parent_id] = kids[n.parent_id] || []).push(n); else tops.push(n); }
+    const renderOne = (n, child) => {
       const reactions = n.reactions || [];
       const reactionHtml = reactions.length > 0 ?
         `<div class="reaction-bar">${reactions.map(r =>
@@ -1744,15 +1749,18 @@ function renderDrawer(data) {
         ).join('')}</div>` : '';
       const quickReactHtml = `<div class="quick-react">
         ${['👍','💯','✅','🚨'].map(e => `<button class="quick-react-btn" title="${e}" onclick="toggleReaction(${n.id}, '${e}', '${escHtml(n.body.slice(0,10))}')">"+e+"</button>`).join('')}
+        <button class="quick-react-btn" title="Reply in thread" onclick="setNoteReply(${n.id}, '${escHtml(n.user_name)}')">↩ Reply</button>
       </div>`;
       const bodyHighlighted = escHtml(n.body).replace(/@(\S+)/g, '<span class="mention-tag">@$1</span>');
-      return `<div class="note-item ${n.type}" id="note-item-${n.id}">
+      return `<div class="note-item ${n.type}" id="note-item-${n.id}" style="${child ? 'margin-left:26px;border-left:2px solid var(--gray-200);' : ''}">
         <div class="note-body-highlighted">${bodyHighlighted}</div>
-        <div class="note-meta">${escHtml(n.user_name)} · ${fmtDateShort(n.created_at)} · <em>${n.type}</em></div>
+        <div class="note-meta">${child ? '↳ ' : ''}${escHtml(n.user_name)} · ${fmtDateShort(n.created_at)} · <em>${n.type}</em></div>
         ${reactionHtml}
         ${quickReactHtml}
       </div>`;
-    }).join('');
+    };
+    return tops.map(n => renderOne(n, false) + (kids[n.id] || []).map(c => renderOne(c, true)).join('')).join('');
+  })();
 
   const canEdit = currentUser && ['admin','manager','ar_specialist'].includes(currentUser.role);
 
@@ -2243,12 +2251,31 @@ async function submitPtp(recordNo) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+let _noteReplyTo = null;
+function setNoteReply(noteId, authorName) {
+  _noteReplyTo = noteId;
+  let ind = document.getElementById('note-reply-ind');
+  const box = document.getElementById('note-body');
+  if (!ind && box) {
+    box.insertAdjacentHTML('beforebegin', '<div id="note-reply-ind" style="font-size:11.5px;color:#6b6458;padding:4px 2px"></div>');
+    ind = document.getElementById('note-reply-ind');
+  }
+  if (ind) ind.innerHTML = `↳ Replying to ${escHtml(authorName)} <a href="#" style="color:#b32020" onclick="cancelNoteReply();return false">cancel</a>`;
+  if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.focus(); }
+}
+function cancelNoteReply() {
+  _noteReplyTo = null;
+  const ind = document.getElementById('note-reply-ind');
+  if (ind) ind.remove();
+}
+
 async function submitNote(recordNo) {
   const body = document.getElementById('note-body').value.trim();
   if (!body) { showToast('Note cannot be empty', 'error'); return; }
   try {
-    await apiFetch('/api/notes/' + recordNo, { method: 'POST', body: JSON.stringify({ body, mentions: _noteMentions }) });
+    await apiFetch('/api/notes/' + recordNo, { method: 'POST', body: JSON.stringify({ body, mentions: _noteMentions, parent_id: _noteReplyTo }) });
     _noteMentions = [];
+    _noteReplyTo = null;
     showToast('Note added', 'success');
     // Re-open drawer and refresh invoice list so note badge updates
     openDrawer(recordNo);
@@ -2873,7 +2900,7 @@ let _mentionAcStart = -1;
 async function loadMentions() {
   try {
     const data = await apiFetch('/api/mentions');
-    const count = data.unseenCount || 0;
+    const count = (data.unconfirmedCount != null ? data.unconfirmedCount : data.unseenCount) || 0;
     const badge = document.getElementById('mention-badge');
     if (badge) {
       badge.textContent = count > 99 ? '99+' : count;
@@ -2892,11 +2919,22 @@ function renderMentionList(mentions) {
   }
   el.innerHTML = mentions.map(m => `
     <div class="mention-item${m.seen ? ' seen' : ''}" onclick="handleMentionClick(${m.note_id}, '${escHtml(m.record_no)}', ${m.mention_id})">
-      <div class="mention-item-invoice">${escHtml(m.record_no)}</div>
+      <div class="mention-item-invoice">${escHtml(m.record_no)}
+        ${m.confirmed_at
+          ? '<span style="float:right;color:#3f7238;font-size:10.5px;font-weight:700">✓ confirmed</span>'
+          : `<button style="float:right;background:#1a1814;color:#fff;border:none;padding:2px 9px;border-radius:7px;font-size:10.5px;font-weight:700;cursor:pointer" onclick="event.stopPropagation();confirmMention(${m.note_id})">Confirm</button>`}
+      </div>
       <div class="mention-item-body">${escHtml((m.body || '').slice(0, 80))}</div>
       <div class="mention-item-meta">from ${escHtml(m.author_name || m.author_email)} · ${fmtDateShort(m.note_created_at)}</div>
     </div>
   `).join('');
+}
+
+async function confirmMention(noteId) {
+  try {
+    await apiFetch('/api/mentions/' + noteId + '/confirm', { method: 'POST' });
+    loadMentions();
+  } catch (e) { /* quiet */ }
 }
 
 async function handleMentionClick(noteId, recordNo, mentionId) {
@@ -5649,6 +5687,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812l"></script>
+<script src="/comms.js?v=20260812m"></script>
 </body>
 </html>

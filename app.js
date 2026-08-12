@@ -3097,13 +3097,13 @@ app.get('/api/notes/:recordno', requireAuth, (req, res) => {
 app.post('/api/notes/:recordno', requireAuth, (req, res) => {
   try {
     const user = req.session.user;
-    const { body, type, mentions } = req.body;
+    const { body, type, mentions, parent_id } = req.body;
     if (!body || !body.trim()) return res.status(400).json({ error: 'Body required' });
     if (!['admin', 'manager', 'ar_specialist'].includes(user.role)) {
       return res.status(403).json({ error: 'Viewers cannot add notes' });
     }
     const mentionList = Array.isArray(mentions) ? mentions.filter(e => typeof e === 'string' && e.includes('@')) : [];
-    const note = db.addNote(req.params.recordno, user.email, user.name, body.trim(), type || 'note', mentionList);
+    const note = db.addNote(req.params.recordno, user.email, user.name, body.trim(), type || 'note', mentionList, parent_id ? parseInt(parent_id, 10) : null);
     db.auditLog(user.email, 'add_note', req.params.recordno, body.slice(0, 100));
     // Fire-and-forget mention emails
     if (mentionList.length > 0) {
@@ -3182,10 +3182,18 @@ app.get('/api/mentions', requireAuth, (req, res) => {
     const user = req.session.user;
     const mentions = db.getMentionsForUser(user.email);
     const unseenCount = db.getUnseenMentionCount(user.email);
-    res.json({ mentions, unseenCount });
+    res.json({ mentions, unconfirmedCount: db.getUnconfirmedMentionCount(req.session.user.email), unseenCount });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+app.post('/api/mentions/:noteId/confirm', requireAuth, (req, res) => {
+  try {
+    db.markMentionConfirmed(parseInt(req.params.noteId, 10), req.session.user.email);
+    db.auditLog(req.session.user.email, 'mention_confirm', null, `note=${req.params.noteId}`);
+    res.json({ ok: true, unconfirmed: db.getUnconfirmedMentionCount(req.session.user.email) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/mentions/:noteId/seen', requireAuth, (req, res) => {

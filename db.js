@@ -246,6 +246,11 @@ function initSchema() {
 
   // Add mentions column if missing (idempotent)
   try { db.exec("ALTER TABLE notes ADD COLUMN mentions TEXT DEFAULT NULL"); } catch(e) { /* already exists */ }
+  // Threaded replies (2026-08-12): a note may answer another note.
+  try { db.exec("ALTER TABLE notes ADD COLUMN parent_id INTEGER DEFAULT NULL"); } catch(e) {}
+  // Mentions-confirm workflow: seen is passive; confirmed is the explicit
+  // "I've got this" acknowledgment visible to the author.
+  try { db.exec("ALTER TABLE note_mentions ADD COLUMN confirmed_at TEXT DEFAULT NULL"); } catch(e) {}
   // Add photo column to user_roles if missing
   try { db.exec("ALTER TABLE user_roles ADD COLUMN photo_data_url TEXT DEFAULT NULL"); } catch(e) { /* already exists */ }
   // Add job_title column to user_roles if missing
@@ -598,14 +603,14 @@ function getNotes(recordNo) {
   return db.prepare('SELECT * FROM notes WHERE record_no=? ORDER BY created_at ASC').all(recordNo);
 }
 
-function addNote(recordNo, userEmail, userName, body, type = 'note', mentions) {
+function addNote(recordNo, userEmail, userName, body, type = 'note', mentions, parentId) {
   if (mentions && Array.isArray(mentions) && mentions.length > 0) {
-    return addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions);
+    return addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions, parentId);
   }
   const db = getDb();
   const result = db.prepare(`
-    INSERT INTO notes (record_no, user_email, user_name, type, body) VALUES (?,?,?,?,?)
-  `).run(recordNo, userEmail, userName, type, body);
+    INSERT INTO notes (record_no, user_email, user_name, type, body, parent_id) VALUES (?,?,?,?,?,?)
+  `).run(recordNo, userEmail, userName, type, body, parentId || null);
   return db.prepare('SELECT * FROM notes WHERE id=?').get(result.lastInsertRowid);
 }
 
@@ -696,14 +701,14 @@ function getMissingLocationRecordNos(recordNos) {
 
 // ─── Notes with Mentions ───────────────────────────────────────────────────
 
-function addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions) {
+function addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions, parentId) {
   const d = getDb();
   const mentionList = Array.isArray(mentions) ? mentions : [];
   const mentionsJson = mentionList.length ? JSON.stringify(mentionList) : null;
 
   const result = d.prepare(`
-    INSERT INTO notes (record_no, user_email, user_name, type, body, mentions) VALUES (?,?,?,?,?,?)
-  `).run(recordNo, userEmail, userName, type || 'note', body, mentionsJson);
+    INSERT INTO notes (record_no, user_email, user_name, type, body, mentions, parent_id) VALUES (?,?,?,?,?,?,?)
+  `).run(recordNo, userEmail, userName, type || 'note', body, mentionsJson, parentId || null);
 
   const noteId = result.lastInsertRowid;
 
@@ -722,7 +727,7 @@ function addNoteWithMentions(recordNo, userEmail, userName, body, type, mentions
 function getMentionsForUser(email) {
   const d = getDb();
   return d.prepare(`
-    SELECT nm.id as mention_id, nm.note_id, nm.mentioned_email, nm.seen, nm.created_at as mention_created_at,
+    SELECT nm.id as mention_id, nm.note_id, nm.mentioned_email, nm.seen, nm.confirmed_at, nm.created_at as mention_created_at,
            n.record_no, n.user_email as author_email, n.user_name as author_name,
            n.body, n.type, n.created_at as note_created_at
     FROM note_mentions nm
@@ -736,6 +741,15 @@ function getMentionsForUser(email) {
 function markMentionSeen(noteId, email) {
   const d = getDb();
   d.prepare(`UPDATE note_mentions SET seen=1 WHERE note_id=? AND mentioned_email=?`).run(noteId, email);
+}
+
+function markMentionConfirmed(noteId, email) {
+  getDb().prepare(`UPDATE note_mentions SET confirmed_at=datetime('now'), seen=1 WHERE note_id=? AND mentioned_email=?`).run(noteId, email);
+}
+
+function getUnconfirmedMentionCount(email) {
+  const row = getDb().prepare(`SELECT COUNT(*) AS c FROM note_mentions WHERE mentioned_email=? AND confirmed_at IS NULL`).get(email);
+  return row ? row.c : 0;
 }
 
 function getUnseenMentionCount(email) {
@@ -1670,6 +1684,8 @@ module.exports = {
   addNoteWithMentions,
   getMentionsForUser,
   markMentionSeen,
+  markMentionConfirmed,
+  getUnconfirmedMentionCount,
   getUnseenMentionCount,
   addReaction,
   removeReaction,
