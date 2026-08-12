@@ -473,6 +473,30 @@
   .note-body-highlighted .mention-tag { color: var(--blue); font-weight: 600; }
 </style>
 <style id="ui-polish-2026">
+/* ── Typography: self-hosted Inter (latin), tabular numerals for money ── */
+@font-face { font-family: 'Inter'; font-weight: 400; font-display: swap; src: url('/fonts/inter-400.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; font-display: swap; src: url('/fonts/inter-600.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; font-display: swap; src: url('/fonts/inter-700.woff2') format('woff2'); }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; -webkit-font-smoothing: antialiased; }
+td.amount, .kpi-amount, .kpi-count, .wf-card-value { font-variant-numeric: tabular-nums; }
+
+/* ── Cards: one consistent treatment ── */
+.kpi-card, .wf-card, .report-card { border-radius: 12px !important; border-color: #eef2f7 !important; box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: box-shadow .15s ease, transform .15s ease; }
+.kpi-card:hover, .wf-card:hover { box-shadow: 0 6px 18px rgba(15,23,42,.08) !important; transform: translateY(-1px); }
+.kpi-label, .wf-card-label { letter-spacing: .06em; }
+
+/* ── Tables: quieter headers, clearer scan lines ── */
+.view thead th { letter-spacing: .05em; font-weight: 700; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+.view table { border-radius: 10px; }
+
+/* ── Buttons & pills ── */
+.btn, .btn-sm, .cust-pill { border-radius: 8px; }
+.cust-pill { transition: background .12s ease, color .12s ease; }
+
+/* ── Drawer & sections ── */
+.drawer-section { border-radius: 10px; }
+#drawer { box-shadow: -18px 0 50px rgba(15,23,42,.16); }
+
 /* Global polish layer (2026-08-12): visual refinement only — no layout changes.
    Hover/transition/focus/scrollbar/shadow upgrades applied portal-wide. */
 .view table tbody tr { transition: background .12s ease; }
