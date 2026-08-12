@@ -1560,6 +1560,11 @@ app.get('/api/my-work', requireAuth, async (req, res) => {
         collectorLevel: ic ? 'invoice' : 'customer',
         stopService,
         noteCount: noteCounts[inv.recordNo] || 0,
+        latestNote: (() => {
+          const ns = db.getNotes(inv.recordNo);
+          const n = ns[ns.length - 1];
+          return n ? { body: String(n.body).slice(0, 140), by: n.user_name, at: n.created_at } : null;
+        })(),
         ptpActive: !!(ptpMap[inv.recordNo] && ptpMap[inv.recordNo].length > 0),
         ptpAmount: ptpMap[inv.recordNo] ? ptpMap[inv.recordNo].reduce((s, p) => s + p.amount, 0) : 0,
       });
@@ -2497,8 +2502,23 @@ app.post('/api/dunning/rules/impact', requireAuth, (req, res) => {
 // Service-center code from a location name by initials: "Baltimore Service
 // Center" -> BSC, "South Chicago Service Center" -> SCSC. Matches the temp
 // platform's chip codes for the common cases; unknowns render neutral.
-function scCodeFromLocation(name) {
-  const words = String(name || '').replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+const SC_BY_LOCATION = {
+  'L-ECF-ALN': 'ASC',   // Allentown
+  'L-ECF-BLT': 'BTSC',  // Baltimore (confirmed by Edwin)
+  'L-ECF-BRW': 'BSC',   // Broward (confirmed by Edwin)
+  'L-ECF-CIN': 'CTSC',  // Cincinnati
+  'L-ECF-FCR': 'FC',    // FacilityCare
+  'L-ECF-HBG': 'HSC',   // Harrisburg
+  'L-ECF-HCT': 'HTSC',  // Hartford
+  'L-ECF-SCSC': 'SCSC', // South Chicago
+  'L-ECF-SRN': 'SSC',   // Scranton
+  'L-ECF-TRN': 'TSC',   // Trenton
+  'L-ECF-WPB': 'WPB',   // Palm Beach — no code observed on their platform yet
+  'E-ECF': 'ECF',       // corporate
+};
+function scCodeFromLocation(locationIdOrName, name) {
+  if (SC_BY_LOCATION[locationIdOrName]) return SC_BY_LOCATION[locationIdOrName];
+  const words = String(name || locationIdOrName || '').replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/).filter(Boolean);
   if (!words.length) return null;
   const code = words.map(w => w[0].toUpperCase()).join('');
   return code.length >= 2 && code.length <= 4 ? code : null;
@@ -2521,7 +2541,7 @@ app.get('/api/overview', requireAuth, async (req, res) => {
     for (const inv of invoices) {
       totalAR += inv.totalDue;
       if (inv.locationId) locs.add(inv.locationId);
-      const sc = scCodeFromLocation(inv.locationName);
+      const sc = scCodeFromLocation(inv.locationId, inv.locationName);
       if (sc) userScs.add(sc);
       const d = inv.daysOverdue || 0;
       if (d > oldest) oldest = d;
@@ -2563,6 +2583,24 @@ app.get('/api/overview', requireAuth, async (req, res) => {
       pctPastDue: totalAR > 0 ? Math.round((pastDueAR / totalAR) * 100) : 0,
       top10,
       sageCacheAgeMin: Math.round((sage.getCacheAge() || 0) / 60000),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── API: Grid metadata (one call powering the emulated Invoices/My Work) ────
+app.get('/api/grid-meta', requireAuth, (req, res) => {
+  try {
+    const collectors = {};
+    for (const [rn, r] of Object.entries(db.getAllInvoiceCollectors())) collectors[rn] = r.collector_email;
+    const customerCollectors = {};
+    for (const a of db.getAllCustomerAccounts()) if (a.collector_email) customerCollectors[a.customer_id] = a.collector_email;
+    res.json({
+      statuses: COLLECTION_STATUSES,
+      csByRecord: db.getAllCollectionStatuses(),
+      collectors,
+      customerCollectors,
+      users: db.listUsers().map(u => ({ email: u.email, name: u.name })),
+      scMap: SC_BY_LOCATION,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -544,7 +544,8 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     <div class="nav-group" data-group="accounts">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'accounts')">Client Data<span class="caret">▾</span></div>
       <div class="nav-group-menu">
-        <div class="nav-drop-item" data-view="dashboard" onclick="navGo('dashboard')">🧾 Invoices</div>
+        <div class="nav-drop-item" data-view="invoices2" onclick="navGo('invoices2')">🧾 Invoices</div>
+        <div class="nav-drop-item" data-view="dashboard" onclick="navGo('dashboard')">🗂 Invoices (advanced)</div>
         <div class="nav-drop-item" data-view="customers" onclick="navGo('customers')">👥 All Customers</div>
         <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">🟠 Amazon AR</div>
       </div>
@@ -722,6 +723,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 <!-- ─── CUSTOMERS VIEW ─── -->
 <div id="view-overview" class="view active">
   <div id="overview-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-invoices2" class="view">
+  <div id="invoices2-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-customers" class="view">
@@ -2291,7 +2296,7 @@ async function manualRefresh() {
 // Which grouped menu (if any) each view lives under — drives the active state.
 const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections',
-  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts',
+  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms',
   'admin': 'admin',
@@ -2331,6 +2336,7 @@ function switchView(name, el) {
   if (name === 'comms-dunning' && typeof commsLoadDunning === 'function') { commsLoadDunning(); }
   if (name === 'comms-statements' && typeof commsLoadStatements === 'function') { commsLoadStatements(); }
   if (name === 'overview' && typeof commsLoadOverview === 'function') { commsLoadOverview(); }
+  if (name === 'invoices2' && typeof commsLoadInvoices2 === 'function') { commsLoadInvoices2(); }
 }
 
 // Grouped-dropdown nav interactions
@@ -5614,6 +5620,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812g"></script>
+<script src="/comms.js?v=20260812h"></script>
 </body>
 </html>

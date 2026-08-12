@@ -482,6 +482,206 @@ function commsUpdateTriageBadge(count) {
   else b.style.display = 'none';
 }
 
+// ─── Invoices grid v2 (Phase 3 — their Client Data > Invoices, verbatim) ─────
+
+let _gridMeta = null;
+let _inv2 = { all: [], quick: '', page: 1, f: {} };
+const INV2_PAGE = 50;
+
+async function commsGridMeta(force) {
+  if (!_gridMeta || force) _gridMeta = await apiFetch('/api/grid-meta');
+  return _gridMeta;
+}
+
+function commsScChipFor(inv) {
+  const code = (_gridMeta && _gridMeta.scMap[inv.locationId]) || null;
+  return code ? commsScChips([code]) : '<span class="sc-chip sc-unknown">—</span>';
+}
+
+function commsEffectiveCollector(inv) {
+  if (!_gridMeta) return null;
+  return _gridMeta.collectors[inv.recordNo] || _gridMeta.customerCollectors[inv.customerId] || null;
+}
+
+async function commsLoadInvoices2() {
+  const root = document.getElementById('invoices2-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [data, meta] = await Promise.all([apiFetch('/api/invoices'), commsGridMeta(true)]);
+    _inv2.all = Array.isArray(data) ? data : (data.invoices || []);
+    _inv2.page = 1;
+    commsRenderInvoices2(true);
+  } catch (e) {
+    root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+function commsInv2Filtered() {
+  const m = _gridMeta;
+  const f = _inv2.f;
+  const AMZ = ['C-00403', 'C-00566'];
+  let rows = _inv2.all;
+  const csOf = (inv) => (m.csByRecord[inv.recordNo] || {}).status || 'Open';
+  if (_inv2.quick === 'amazon') rows = rows.filter(i => AMZ.includes(i.customerId));
+  else if (_inv2.quick) rows = rows.filter(i => csOf(i) === _inv2.quick);
+  if (f.sc) rows = rows.filter(i => m.scMap[i.locationId] === f.sc);
+  if (f.customer) { const q = f.customer.toLowerCase(); rows = rows.filter(i => (i.customerName || '').toLowerCase().includes(q) || (i.customerId || '').toLowerCase().includes(q)); }
+  if (f.location) rows = rows.filter(i => i.locationId === f.location);
+  if (f.invoice) { const q = f.invoice.toLowerCase(); rows = rows.filter(i => (i.invoiceId || '').toLowerCase().includes(q)); }
+  if (f.status) rows = rows.filter(i => csOf(i) === f.status);
+  if (f.payment === 'none') rows = rows.filter(i => (i.totalEntered || 0) - (i.totalDue || 0) < 0.01);
+  if (f.payment === 'partial') rows = rows.filter(i => { const p = (i.totalEntered || 0) - (i.totalDue || 0); return p >= 0.01 && i.totalDue > 0.01; });
+  if (f.collector) rows = rows.filter(i => (commsEffectiveCollector(i) || '') === f.collector);
+  const dir = f.direction === 'asc' ? 1 : -1;
+  const key = f.sort || 'aging';
+  rows = [...rows].sort((a, b) => {
+    if (key === 'amount') return dir * (a.totalDue - b.totalDue);
+    if (key === 'invoice-date') return dir * String(a.whenCreated || '').localeCompare(String(b.whenCreated || ''));
+    if (key === 'due-date') return dir * String(a.whenDue || '').localeCompare(String(b.whenDue || ''));
+    return dir * ((a.daysOverdue || 0) - (b.daysOverdue || 0));
+  });
+  return rows;
+}
+
+function commsRenderInvoices2(full) {
+  const root = document.getElementById('invoices2-root');
+  const m = _gridMeta;
+  const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const QUICK = [['', 'All'], ...m.statuses.map(s => [s, s]), ['amazon', 'Amazon View']];
+  if (full) {
+    const locs = [...new Map(_inv2.all.map(i => [i.locationId, i.locationName])).entries()].filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+    const scs = [...new Set(_inv2.all.map(i => m.scMap[i.locationId]).filter(Boolean))].sort();
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 10px">Invoices</h1>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <span style="font-size:12px;color:#6b6458;margin-right:2px">Quick Filters:</span>
+        ${QUICK.map(([v, label]) => `<button class="btn-sm inv2-quick" data-q="${escHtml(v)}" style="border:1px solid var(--line,#e7e1d4);background:#fff;padding:5px 12px;border-radius:12px;cursor:pointer;font-size:12px" onclick="_inv2.quick='${escHtml(v)}';_inv2.page=1;commsRenderInvoices2(true)">${escHtml(label)}</button>`).join('')}
+      </div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${[['Service Centers', `<select id="if-sc"><option value="">All</option>${scs.map(c => `<option ${_inv2.f.sc === c ? 'selected' : ''}>${c}</option>`).join('')}</select>`],
+             ['Customer', `<input id="if-customer" placeholder="Customer name or code" value="${escHtml(_inv2.f.customer || '')}">`],
+             ['Location', `<select id="if-location"><option value="">All</option>${locs.map(([id, n]) => `<option value="${escHtml(id)}" ${_inv2.f.location === id ? 'selected' : ''}>${escHtml(n)}</option>`).join('')}</select>`],
+             ['Invoice #', `<input id="if-invoice" placeholder="ECI-024110" value="${escHtml(_inv2.f.invoice || '')}">`],
+             ['Status', `<select id="if-status"><option value="">All</option>${m.statuses.map(x => `<option ${_inv2.f.status === x ? 'selected' : ''}>${x}</option>`).join('')}</select>`],
+             ['Payment Status', `<select id="if-payment"><option value="">All</option><option value="none" ${_inv2.f.payment === 'none' ? 'selected' : ''}>No Payments</option><option value="partial" ${_inv2.f.payment === 'partial' ? 'selected' : ''}>Partially Paid</option></select>`],
+             ['Collector', `<select id="if-collector"><option value="">All</option>${m.users.map(u => `<option value="${escHtml(u.email.toLowerCase())}" ${_inv2.f.collector === u.email.toLowerCase() ? 'selected' : ''}>${escHtml(u.name || u.email)}</option>`).join('')}</select>`],
+             ['Sort By', `<select id="if-sort"><option value="aging">Aging</option><option value="amount" ${_inv2.f.sort === 'amount' ? 'selected' : ''}>Amount</option><option value="invoice-date" ${_inv2.f.sort === 'invoice-date' ? 'selected' : ''}>Invoice Date</option><option value="due-date" ${_inv2.f.sort === 'due-date' ? 'selected' : ''}>Due Date</option></select>`],
+             ['Direction', `<select id="if-direction"><option value="desc">Descending</option><option value="asc" ${_inv2.f.direction === 'asc' ? 'selected' : ''}>Ascending</option></select>`]]
+            .map(([label, ctl]) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b6458;min-width:140px;flex:1">${label}${ctl}</label>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsInv2Apply()">Apply</button>
+          <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:7px 14px;border-radius:8px;cursor:pointer" onclick="_inv2.f={};_inv2.quick='';_inv2.page=1;commsRenderInvoices2(true)">Reset</button>
+        </div>
+      </div>
+      <div id="inv2-table"></div>`;
+    root.querySelectorAll('#invoices2-root select, #invoices2-root input').forEach(el => { el.style.cssText += 'padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;background:#fff'; });
+    root.querySelectorAll('.inv2-quick').forEach(b => {
+      if (b.dataset.q === _inv2.quick) { b.style.background = '#1a1814'; b.style.color = '#fff'; b.style.borderColor = '#1a1814'; }
+    });
+  }
+  const rows = commsInv2Filtered();
+  const start = (_inv2.page - 1) * INV2_PAGE;
+  const pageRows = rows.slice(start, start + INV2_PAGE);
+  const paidOf = (i) => Math.max(0, (i.totalEntered || 0) - (i.totalDue || 0));
+  document.getElementById('inv2-table').innerHTML = `
+    <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;padding:10px 16px;background:#faf8f3;font-size:12.5px;font-weight:600"><span>Invoices</span><span style="color:#6b6458">${rows.length.toLocaleString()} total</span></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+          ${['Invoice Number', 'Service Center', 'Location', 'Customer', 'Status', 'Amount', 'PO #', 'Payment', 'Aging', 'Collector', 'Manage'].map(h => `<th style="padding:8px 10px">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${pageRows.map(i => {
+          const cs = (_gridMeta.csByRecord[i.recordNo] || {}).status || 'Open';
+          const paid = paidOf(i);
+          const col = commsEffectiveCollector(i);
+          const colName = col ? ((_gridMeta.users.find(u => u.email.toLowerCase() === col.toLowerCase()) || {}).name || col.split('@')[0]) : '—';
+          return `<tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="openDrawer('${escHtml(i.recordNo)}')">
+            <td style="padding:9px 10px;font-weight:600">${escHtml(i.invoiceId || i.recordNo)}</td>
+            <td style="padding:9px 10px">${commsScChipFor(i)}</td>
+            <td style="padding:9px 10px">${escHtml(i.locationName || '—')}</td>
+            <td style="padding:9px 10px">${escHtml(i.customerName || '—')}</td>
+            <td style="padding:9px 10px"><span class="cs-chip ${commsCsClass(cs)}">${escHtml(cs)}</span></td>
+            <td style="padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmt$(i.totalDue)}</td>
+            <td style="padding:9px 10px;font-size:11.5px">${escHtml(i.poNumber || '—')}</td>
+            <td style="padding:9px 10px;font-size:11px;color:#6b6458">${paid >= 0.01 ? 'Paid ' + fmt$(paid) + '<br>of ' + fmt$(i.totalEntered) : 'No Payments<br>Recorded'}</td>
+            <td style="padding:9px 10px">${i.daysOverdue > 0 ? `<span class="age-pill ${commsAgePillClass(i.daysOverdue)}">${i.daysOverdue}d</span>` : '<span style="color:#3f7238;font-size:11.5px;font-weight:600">Current</span>'}</td>
+            <td style="padding:9px 10px;font-size:12px">${escHtml(colName)}</td>
+            <td style="padding:9px 10px" onclick="event.stopPropagation()"><button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="openDrawer('${escHtml(i.recordNo)}')">Open</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid #f1ede3;font-size:12.5px">
+        <span style="color:#6b6458">Showing ${rows.length ? start + 1 : 0}–${Math.min(start + INV2_PAGE, rows.length)} of ${rows.length.toLocaleString()}</span>
+        <span style="display:flex;gap:8px;align-items:center">
+          <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:5px 12px;border-radius:8px;cursor:${_inv2.page > 1 ? 'pointer' : 'not-allowed'}" ${_inv2.page > 1 ? 'onclick="_inv2.page--;commsRenderInvoices2(false)"' : 'disabled'}>Previous</button>
+          <span style="color:#6b6458">Page ${_inv2.page} of ${Math.max(1, Math.ceil(rows.length / INV2_PAGE))}</span>
+          <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:5px 12px;border-radius:8px;cursor:${start + INV2_PAGE < rows.length ? 'pointer' : 'not-allowed'}" ${start + INV2_PAGE < rows.length ? 'onclick="_inv2.page++;commsRenderInvoices2(false)"' : 'disabled'}>Next</button>
+        </span>
+      </div>
+    </div>`;
+}
+
+function commsInv2Apply() {
+  _inv2.f = {
+    sc: document.getElementById('if-sc').value,
+    customer: document.getElementById('if-customer').value.trim(),
+    location: document.getElementById('if-location').value,
+    invoice: document.getElementById('if-invoice').value.trim(),
+    status: document.getElementById('if-status').value,
+    payment: document.getElementById('if-payment').value,
+    collector: document.getElementById('if-collector').value,
+    sort: document.getElementById('if-sort').value,
+    direction: document.getElementById('if-direction').value,
+  };
+  _inv2.page = 1;
+  commsRenderInvoices2(true);
+}
+
+// ─── My Work v2 (their columns incl. LATEST NOTE) — takes over loadMyWork ────
+async function commsMyWorkV2() {
+  const view = document.getElementById('view-my-work');
+  if (!view) return;
+  let host = document.getElementById('mywork2-root');
+  if (!host) { view.innerHTML = '<div id="mywork2-root" style="padding:4px 8px"></div>'; host = document.getElementById('mywork2-root'); }
+  host.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [data] = await Promise.all([apiFetch('/api/my-work'), commsGridMeta()]);
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const rows = data.invoices || [];
+    host.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 2px">My Work</h1>
+      <div style="font-size:12.5px;color:#6b6458;margin-bottom:14px">${rows.length} invoice(s) assigned to you · ${fmt$(data.totalDue || 0)} total</div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+          ${['Invoice', 'Status', 'Due Date', 'Days Past Due', 'Amount', 'Stop Service', 'Customer', 'Latest Note'].map(h => `<th style="padding:8px 10px">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${rows.map(i => {
+          const cs = (_gridMeta.csByRecord[i.recordNo] || {}).status || 'Open';
+          return `<tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="openDrawer('${escHtml(i.recordNo)}')">
+            <td style="padding:9px 10px;font-weight:600">${escHtml(i.invoiceId || i.recordNo)}</td>
+            <td style="padding:9px 10px"><span class="cs-chip ${commsCsClass(cs)}">${escHtml(cs)}</span></td>
+            <td style="padding:9px 10px">${escHtml(i.whenDue || '—')}</td>
+            <td style="padding:9px 10px">${i.daysOverdue > 0 ? `<span class="age-pill ${commsAgePillClass(i.daysOverdue)}">${i.daysOverdue}d</span>` : '<span style="color:#3f7238;font-weight:600;font-size:11.5px">Current</span>'}</td>
+            <td style="padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmt$(i.totalDue)}</td>
+            <td style="padding:9px 10px">${i.stopService ? '<span class="cs-chip cs-sent-to-legal">STOP</span>' : '—'}</td>
+            <td style="padding:9px 10px;font-size:12px">${escHtml(i.customerName || '')}</td>
+            <td style="padding:9px 10px;font-size:11.5px;color:#6b6458;max-width:260px">${i.latestNote ? escHtml(i.latestNote.body) + `<div style="font-size:10.5px;color:#a8a093">${escHtml(i.latestNote.by || '')} · ${escHtml((i.latestNote.at || '').slice(0, 10))}</div>` : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+      ${rows.length === 0 ? '<div style="padding:30px;text-align:center;color:#6b6458;font-size:13px">Nothing assigned to you right now.</div>' : ''}
+      </div>`;
+  } catch (e) {
+    host.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+// Take over the legacy loader so the existing nav dispatch just works.
+loadMyWork = commsMyWorkV2;
+
 // ─── Overview dashboard (Phase 2 — their home screen, live data) ─────────────
 
 function commsAgePillClass(days) {
