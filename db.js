@@ -459,6 +459,21 @@ function initCommsSchema() {
     );
   `);
 
+  // InterNex (Velocity) transmit log + last-number high-water in comm_state
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS velocity_transmits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_no TEXT NOT NULL,
+      invoice_id TEXT NOT NULL,
+      line TEXT DEFAULT 'LOC1',
+      batch TEXT,
+      result TEXT,
+      transmitted_by TEXT,
+      transmitted_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_vt_record ON velocity_transmits(record_no);
+  `);
+
   // Collection-status workflow (2026-08-12, emulating the reconciliation
   // platform's vocabulary): assigned collector sets it, AR staff can update.
   db.exec(`
@@ -1159,6 +1174,25 @@ function softDeleteCustomerAttachment(id) {
   getDb().prepare('UPDATE customer_attachments SET deleted=1 WHERE id=?').run(id);
 }
 
+// ─── InterNex (Velocity) transmits ──────────────────────────────────────────
+
+function insertVelocityTransmit(recordNo, invoiceId, line, batch, result, by) {
+  getDb().prepare(`INSERT INTO velocity_transmits (record_no, invoice_id, line, batch, result, transmitted_by) VALUES (?,?,?,?,?,?)`)
+    .run(recordNo, invoiceId, line, batch, result, by);
+}
+
+function getVelocityTransmitMap() {
+  const map = {};
+  for (const r of getDb().prepare('SELECT record_no, MAX(transmitted_at) AS at, COUNT(*) AS n FROM velocity_transmits GROUP BY record_no').all()) {
+    map[r.record_no] = { at: r.at, times: r.n };
+  }
+  return map;
+}
+
+function listVelocityTransmits(limit = 100) {
+  return getDb().prepare('SELECT * FROM velocity_transmits ORDER BY id DESC LIMIT ?').all(limit);
+}
+
 // ─── Statement schedules ────────────────────────────────────────────────────
 
 function listStatementSchedules() {
@@ -1656,6 +1690,9 @@ module.exports = {
   getStatementSchedule,
   upsertStatementSchedule,
   setStatementSent,
+  insertVelocityTransmit,
+  getVelocityTransmitMap,
+  listVelocityTransmits,
   getAllCollectionStatuses,
   setCollectionStatus,
   listCustomerAttachments,

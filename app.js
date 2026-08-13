@@ -2735,6 +2735,140 @@ app.get('/api/search', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API: InterNex Capital (Velocity) — range/single transmit, LOC rules ─────
+// Edwin's rules (2026-08-12): everything transmits under LOC1; LOC2 is only
+// for Amazon invoices NOT in the Payee feed (flagged in preview, held from
+// transmit until the uploader's account switcher is mapped). Live sends gated
+// by VELOCITY_TRANSMIT_ARMED. Tracks the last invoice number transmitted.
+const velocityBridge = require('./velocity-bridge');
+const AMAZON_CUSTS = new Set(['C-00403', 'C-00566']);
+
+let _vNameMap = null;
+function velocityName(customerName) {
+  try {
+    if (_vNameMap === null) {
+      _vNameMap = {};
+      const p = path.join(__dirname, 'velocity-name-map.spark.json');
+      if (fs.existsSync(p)) _vNameMap = JSON.parse(fs.readFileSync(p, 'utf8'));
+    }
+  } catch (e) { _vNameMap = {}; }
+  return _vNameMap[customerName] || customerName;
+}
+
+function eciNum(invoiceId) {
+  const m = /^ECI-(\d+)$/i.exec(String(invoiceId || '').trim());
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function velocityRows(from, to, user) {
+  let invoices = applyUserFilter(sage.getCachedInvoices(), user);
+  const payeeMod = require('./payee');
+  const vtMap = db.getVelocityTransmitMap();
+  const rows = [];
+  for (const inv of invoices) {
+    const num = eciNum(inv.invoiceId);
+    if (num == null || num < from || num > to) continue;
+    let line = 'LOC1';
+    if (AMAZON_CUSTS.has(inv.customerId)) {
+      let inPayee = false;
+      try { inPayee = !!(payeeMod.lookupInvoice && payeeMod.lookupInvoice(inv.invoiceId)); } catch (e) {}
+      line = inPayee ? 'LOC1' : 'LOC2';
+    }
+    rows.push({
+      recordNo: inv.recordNo, invoiceId: inv.invoiceId, num,
+      customer: inv.customerName, velocityCustomer: velocityName(inv.customerName),
+      amount: inv.totalEntered || inv.totalDue, balance: inv.totalDue,
+      whenCreated: inv.whenCreated, whenDue: inv.whenDue, daysOverdue: inv.daysOverdue || 0,
+      line, transmitted: vtMap[inv.recordNo] || null,
+    });
+  }
+  rows.sort((a, b) => a.num - b.num);
+  return rows;
+}
+
+function buildVelocityCsv(rows) {
+  const d2 = (s) => {
+    const dt = new Date(s);
+    if (isNaN(dt)) return '';
+    return `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}/${String(dt.getFullYear()).slice(2)}`;
+  };
+  const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+  const lines = ['INVOICE #,CUSTOMER,INVOICE DATE,DUE,AMOUNT,AMOUNT PAID,BALANCE,TERM,AGE,Days Past Due,TX_TYPE,CM_REASON,INELIGIBLE'];
+  for (const r of rows) {
+    const paid = Math.max(0, (r.amount || 0) - (r.balance || 0));
+    const term = r.whenCreated && r.whenDue ? days(r.whenCreated, r.whenDue) : '';
+    const age = r.whenCreated ? days(r.whenCreated, new Date()) : '';
+    const cust = String(r.velocityCustomer).replace(/,/g, ' ');
+    lines.push(`${r.invoiceId},${cust},${d2(r.whenCreated)},${d2(r.whenDue)},$${(r.amount || 0).toFixed(2)},$${paid.toFixed(2)},$${(r.balance || 0).toFixed(2)},${term},${age},${r.daysOverdue},Invoice,,N`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+app.get('/api/velocity/pending', requireAuth, (req, res) => {
+  try {
+    const from = parseInt(req.query.from, 10), to = parseInt(req.query.to, 10);
+    if (!from || !to || to < from || to - from > 2000) return res.status(400).json({ error: 'Give a sane from/to invoice number range' });
+    res.json({
+      rows: velocityRows(from, to, req.session.user),
+      lastNumber: parseInt(db.getCommState('velocity_last_number') || '0', 10) || null,
+      armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    if (process.env.VELOCITY_TRANSMIT_ARMED !== '1') {
+      return res.status(400).json({ error: 'VELOCITY_TRANSMIT_ARMED is not set — InterNex transmission is disabled.' });
+    }
+    const { from, to, includeRetransmit } = req.body || {};
+    const f = parseInt(from, 10), t = parseInt(to, 10);
+    if (!f || !t || t < f) return res.status(400).json({ error: 'from/to required' });
+    let rows = velocityRows(f, t, req.session.user).filter(r => r.line === 'LOC1');
+    const skippedRetrans = rows.filter(r => r.transmitted && !includeRetransmit).length;
+    if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);
+    if (!rows.length) return res.status(400).json({ error: `Nothing to transmit${skippedRetrans ? ` (${skippedRetrans} already transmitted — enable retransmit to resend)` : ''}` });
+    const csv = buildVelocityCsv(rows);
+    const tmp = path.join('/tmp', `velocity-batch-${String(f).padStart(6, '0')}-${String(t).padStart(6, '0')}.csv`);
+    fs.writeFileSync(tmp, csv);
+    const user = commsRealActor(req);
+    const result = await velocityBridge.transmitFile(tmp, { dryRun: false });
+    const batch = `${f}-${t}`;
+    for (const r of rows) db.insertVelocityTransmit(r.recordNo, r.invoiceId, r.line, batch, result.ok ? 'OK' : 'FAIL', user);
+    if (result.ok) {
+      const maxNum = Math.max(...rows.map(r => r.num));
+      const prev = parseInt(db.getCommState('velocity_last_number') || '0', 10) || 0;
+      if (maxNum > prev) db.setCommState('velocity_last_number', String(maxNum));
+    }
+    db.auditLog(user, 'velocity_transmit', rows[0].recordNo,
+      `batch ${batch}: ${rows.length} invoice(s) -> ${result.ok ? 'OK' : 'FAIL'}${skippedRetrans ? `, ${skippedRetrans} retransmit-skipped` : ''}`);
+    res.json({ ok: result.ok, count: rows.length, batch, skippedRetrans, output: result.output });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/velocity/status', requireAuth, async (req, res) => {
+  try {
+    let uploader = null;
+    try { uploader = await velocityBridge.status(); } catch (e) { uploader = 'iMac unreachable: ' + e.message; }
+    let feedAge = null;
+    try { feedAge = Math.round((Date.now() - fs.statSync(path.join(__dirname, 'velocity-feed.spark.json')).mtimeMs) / 3600000); } catch (e) {}
+    res.json({
+      armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
+      lastNumber: parseInt(db.getCommState('velocity_last_number') || '0', 10) || null,
+      recent: db.listVelocityTransmits(60),
+      uploader, feedAgeHours: feedAge,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/velocity/sync-feed', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const r = await velocityBridge.syncFeed(__dirname);
+    _vNameMap = null;   // re-read the freshly synced map next use
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Collection status (emulation of the reconciliation platform) ───────
 // Assigned collector sets the status; AR staff can change/update after.
 const COLLECTION_STATUSES = ['Open', 'In Progress', 'HOF Support Required', 'Resubmit Requested',

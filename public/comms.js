@@ -1010,6 +1010,96 @@ function commsToggleTheme() {
   else { document.documentElement.dataset.theme = 'dark'; localStorage.setItem('arTheme', 'dark'); }
 }
 
+// ─── InterNex Capital / Velocity (Finance) ───────────────────────────────────
+
+async function commsLoadVelocity() {
+  const root = document.getElementById('velocity-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const s = await apiFetch('/api/velocity/status');
+    const nextFrom = s.lastNumber ? s.lastNumber + 1 : '';
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">InterNex Capital (Velocity)</h1>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <span style="background:${s.armed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b32020'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${s.armed ? '🟢 ARMED — live uploads enabled' : '🔒 UNARMED — preview only'}</span>
+        <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last transmitted: <strong>${s.lastNumber ? 'ECI-' + String(s.lastNumber).padStart(6, '0') : 'not tracked yet'}</strong></span>
+        ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
+        ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
+      </div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px;color:#6b6458">From ECI- <input id="vel-from" type="number" value="${nextFrom}" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <label style="font-size:12px;color:#6b6458">To ECI- <input id="vel-to" type="number" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="vel-retrans"> include already-transmitted (retransmit)</label>
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsVelocityPreview()">Preview</button>
+        </div>
+      </div>
+      <div id="vel-preview"></div>
+      <div style="font-size:13px;font-weight:700;color:#6b6458;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">Transmit history</div>
+      ${s.recent.length ? `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase"><th style="padding:7px 12px">Invoice</th><th style="padding:7px 12px">Batch</th><th style="padding:7px 12px">Line</th><th style="padding:7px 12px">Result</th><th style="padding:7px 12px">By</th><th style="padding:7px 12px">At</th></tr></thead>
+        <tbody>${s.recent.map(t => `<tr style="border-top:1px solid #f1ede3">
+          <td style="padding:7px 12px;font-weight:600">${escHtml(t.invoice_id)}</td><td style="padding:7px 12px">${escHtml(t.batch || '')}</td>
+          <td style="padding:7px 12px">${escHtml(t.line)}</td>
+          <td style="padding:7px 12px"><span style="color:${t.result === 'OK' ? '#15803d' : '#b32020'};font-weight:700">${escHtml(t.result || '')}</span></td>
+          <td style="padding:7px 12px">${escHtml((t.transmitted_by || '').split('@')[0])}</td>
+          <td style="padding:7px 12px;color:#6b6458">${escHtml((t.transmitted_at || '').slice(0, 16))}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div style="font-size:12.5px;color:#6b6458">No portal transmits yet. Earlier uploads live in the iMac manifest.</div>'}
+      <div style="font-size:11.5px;color:#6b6458;margin-top:10px;white-space:pre-wrap">${escHtml(String(s.uploader || '').slice(0, 500))}</div>`;
+  } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsVelocityPreview() {
+  const from = document.getElementById('vel-from').value, to = document.getElementById('vel-to').value || from;
+  const out = document.getElementById('vel-preview');
+  if (!from) { alert('Enter a starting ECI number.'); return; }
+  out.innerHTML = '<div style="padding:14px;color:#6b6458">Loading…</div>';
+  try {
+    const p = await apiFetch(`/api/velocity/pending?from=${from}&to=${to}`);
+    const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const loc1 = p.rows.filter(r => r.line === 'LOC1'), loc2 = p.rows.filter(r => r.line === 'LOC2');
+    const total = loc1.reduce((s, r) => s + r.amount, 0);
+    out.innerHTML = `
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#faf8f3;font-size:12.5px;flex-wrap:wrap;gap:8px">
+          <span><strong>${loc1.length}</strong> LOC1 invoice(s) · ${fmt$(total)}${loc2.length ? ` · <span style="color:#b0472a">${loc2.length} LOC2 (Amazon, held — see below)</span>` : ''}</span>
+          ${commsIsManager() && loc1.length ? `<button class="btn-sm" style="background:${p.armed ? '#1a1814' : '#e2e8f0'};color:${p.armed ? '#fff' : '#94a3b8'};border:none;padding:6px 16px;border-radius:8px;cursor:${p.armed ? 'pointer' : 'not-allowed'};font-weight:600" ${p.armed ? `onclick="commsVelocityTransmit(${from}, ${to}, this)"` : 'title="Set VELOCITY_TRANSMIT_ARMED=1 to enable"'}>🚀 Transmit to InterNex${p.armed ? '' : ' (unarmed)'}</button>` : ''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase"><th style="padding:7px 12px">Invoice</th><th style="padding:7px 12px">Customer (Velocity name)</th><th style="padding:7px 12px">Line</th><th style="padding:7px 12px;text-align:right">Amount</th><th style="padding:7px 12px;text-align:right">Balance</th><th style="padding:7px 12px">Prior transmit</th></tr></thead>
+          <tbody>${p.rows.map(r => `<tr style="border-top:1px solid #f1ede3;${r.line === 'LOC2' ? 'opacity:.6' : ''}">
+            <td style="padding:7px 12px;font-weight:600">${escHtml(r.invoiceId)}</td>
+            <td style="padding:7px 12px">${escHtml(r.velocityCustomer)}${r.velocityCustomer !== r.customer ? ` <span style="color:#a8a093;font-size:10.5px">(${escHtml(r.customer)})</span>` : ''}</td>
+            <td style="padding:7px 12px"><span class="sc-chip ${r.line === 'LOC1' ? 'sc-BSC' : 'sc-HSC'}">${r.line}</span></td>
+            <td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.amount)}</td>
+            <td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.balance)}</td>
+            <td style="padding:7px 12px;font-size:11px;color:#6b6458">${r.transmitted ? '✓ ' + r.transmitted.times + 'x, last ' + (r.transmitted.at || '').slice(0, 10) : '—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+        ${loc2.length ? '<div style="padding:9px 16px;font-size:11.5px;color:#b0472a;border-top:1px solid #f1ede3">LOC2 rows (Amazon invoices not in Payee) are shown for review but held from transmit until the uploader\'s account switcher is mapped.</div>' : ''}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsVelocityTransmit(from, to, btn) {
+  const retrans = document.getElementById('vel-retrans').checked;
+  if (!confirm(`Transmit ECI-${from}${to !== from ? ' through ECI-' + to : ''} to InterNex Capital?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
+  btn.disabled = true; btn.textContent = '🚀 Transmitting…';
+  try {
+    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ from, to, includeRetransmit: retrans }) });
+    alert(`${r.ok ? 'Success' : 'FAILED'} — batch ${r.batch}: ${r.count} invoice(s)${r.skippedRetrans ? `, ${r.skippedRetrans} skipped (already sent)` : ''}\n\nUploader output tail:\n${(r.output || '').slice(-400)}`);
+    commsLoadVelocity();
+  } catch (e) { alert('Transmit failed: ' + e.message); btn.disabled = false; btn.textContent = '🚀 Transmit to InterNex'; }
+}
+
+async function commsVelocitySync(btn) {
+  btn.disabled = true; btn.textContent = '⟳ Syncing…';
+  try { const r = await apiFetch('/api/velocity/sync-feed', { method: 'POST' }); alert('Synced: ' + JSON.stringify(r)); commsLoadVelocity(); }
+  catch (e) { alert('Sync failed: ' + e.message); }
+}
+
 // ─── Unified notifications bell (mentions + needs-reply + triage) ────────────
 async function commsUnifiedBell() {
   try {

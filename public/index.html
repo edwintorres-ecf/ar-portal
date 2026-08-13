@@ -575,6 +575,13 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       </div>
     </div>
 
+    <div class="nav-group" data-group="finance">
+      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'finance')">Finance<span class="caret">▾</span></div>
+      <div class="nav-group-menu">
+        <div class="nav-drop-item" data-view="velocity" onclick="navGo('velocity')">🏦 InterNex (Velocity)</div>
+      </div>
+    </div>
+
     <div class="nav-group" data-group="help">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'help')">Help<span class="caret">▾</span></div>
       <div class="nav-group-menu">
@@ -759,6 +766,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-service-centers" class="view">
   <div id="servicecenters-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-velocity" class="view">
+  <div id="velocity-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-training" class="view">
@@ -2361,7 +2372,7 @@ const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections',
   'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
-  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help',
+  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance',
   'admin': 'admin',
 };
 
@@ -2403,6 +2414,7 @@ function switchView(name, el) {
   if (name === 'locations' && typeof commsLoadLocations === 'function') { commsLoadLocations(); }
   if (name === 'search' && typeof commsLoadSearch === 'function') { commsLoadSearch(); }
   if (name === 'training' && typeof commsLoadTraining === 'function') { commsLoadTraining(); }
+  if (name === 'velocity' && typeof commsLoadVelocity === 'function') { commsLoadVelocity(); }
   if (name === 'stop-service-view' && typeof commsLoadStopService === 'function') { commsLoadStopService(); }
   if (name === 'service-centers' && typeof commsLoadServiceCenters === 'function') { commsLoadServiceCenters(); }
 }
@@ -5699,6 +5711,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260812o"></script>
+<script src="/comms.js?v=20260812p"></script>
 </body>
 </html>
