@@ -897,6 +897,7 @@ function commsLoadTraining() {
     ${card('Notes and @mentions', 'Notes work like before: open the invoice drawer and write. Type @ to mention a teammate; they get a bell notification and an email. Notes are internal only and never reach customers.')}
     ${card('Amazon', 'Amazon collections stay in the <strong>🟠 Amazon PO Manager</strong>: PO funds, EDI transmission, Payee Central status. Amazon is excluded from email dunning automatically. Use the "Amazon View" quick filter on Invoices to see only Amazon rows.')}
     ${card('Finance: InterNex (Velocity)', 'Invoices are financed through InterNex Capital. <strong>Finance → InterNex</strong> shows the line status (borrowing base, principal, availability), lets you transmit invoice ranges, and reconciles our open invoices against the lender with one button. <strong>If you see a "Safeguard active" notice</strong>, an upload or data refresh is using the shared connection; transmits pause for a few minutes to protect both systems, then everything works again on its own.')}
+      ${card('Roles & permissions', '<strong>Viewer</strong>: sees dashboards, invoices, customers, and reports; cannot write notes, change statuses, or email. <strong>AR Specialist</strong> (collectors): everything viewers see, plus notes/@mentions, collection statuses, contacts, attachments, customer email, statement schedules, and EDI previews. <strong>Manager</strong>: adds dunning runs, InterNex/Velocity (the Finance section is visible to managers and admins only), statement runs, user invitations, and live transmits. <strong>Admin</strong>: adds user administration, templates, dunning rule deletion, and system settings. Access is enforced on the server; if a button or section is missing for you, that is your role, not a bug.')}
       ${card('For managers: automation', '<strong>Comms → Dunning</strong> runs reminder sequences: rules by days past due, previewed before anything sends, with per-customer targeting. <strong>Comms → Statements</strong> emails monthly statements on a schedule. Customers only receive automated email when their contact is explicitly approved for it, and both engines are armed by administrators.')}
   `;
 }
@@ -1636,7 +1637,13 @@ async function commsUpdateFooter() {
       }
     } catch (e) { /* quiet */ }
   };
-  const tickAll = () => { tick(); commsUpdateFooter(); };
+  const roleGateNav = () => {
+    const u = commsUser();
+    if (!u) return;
+    const fin = document.querySelector('.nav-group[data-group="finance"]');
+    if (fin) fin.style.display = ['admin', 'manager'].includes(u.role) ? '' : 'none';
+  };
+  const tickAll = () => { tick(); commsUpdateFooter(); roleGateNav(); };
   setTimeout(tickAll, 5000);
   setInterval(tickAll, 2 * 60 * 1000);
 })();

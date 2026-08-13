@@ -2862,7 +2862,7 @@ function buildVelocityCsv(rows) {
   return lines.join('\n') + '\n';
 }
 
-app.get('/api/velocity/pending', requireAuth, (req, res) => {
+app.get('/api/velocity/pending', requireAuth, requireRole('admin', 'manager'), (req, res) => {
   try {
     const prefix = String(req.query.prefix || 'ECI').toUpperCase();
     const from = parseInt(req.query.from, 10), to = parseInt(req.query.to, 10);
@@ -2944,7 +2944,7 @@ app.post('/api/velocity/refresh', requireAuth, requireRole('admin', 'manager'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/refresh-status', requireAuth, async (req, res) => {
+app.get('/api/velocity/refresh-status', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     const before = parseInt(db.getCommState('velocity_refresh_before') || '0', 10);
     const startedAt = db.getCommState('velocity_refresh_started');
@@ -2964,7 +2964,7 @@ app.get('/api/velocity/refresh-status', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/reconcile', requireAuth, async (req, res) => {
+app.get('/api/velocity/reconcile', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
     if (!invoices.length) invoices = await sage.getInvoices();
@@ -3075,7 +3075,7 @@ async function velocityPaymentWorklist(user) {
   return rows;
 }
 
-app.get('/api/velocity/payment-worklist', requireAuth, async (req, res) => {
+app.get('/api/velocity/payment-worklist', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     const rows = await velocityPaymentWorklist(req.session.user);
     res.json({
@@ -3087,7 +3087,7 @@ app.get('/api/velocity/payment-worklist', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/payment-worklist.csv', requireAuth, async (req, res) => {
+app.get('/api/velocity/payment-worklist.csv', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     const rows = await velocityPaymentWorklist(req.session.user);
     const today = new Date();
@@ -3106,7 +3106,7 @@ app.get('/api/velocity/payment-worklist.csv', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/status', requireAuth, async (req, res) => {
+app.get('/api/velocity/status', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     let uploader = null;
     try { uploader = await velocityBridge.status(); } catch (e) { uploader = 'iMac unreachable: ' + e.message; }
@@ -3233,7 +3233,7 @@ app.delete('/api/attachments/:id', requireAuth, requireRole('admin', 'manager', 
 // ─── API: Scheduled statement delivery (statements.js) ───────────────────────
 const statements = require('./statements');
 
-app.get('/api/statements/schedules', requireAuth, (req, res) => {
+app.get('/api/statements/schedules', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
   try {
     res.json({
       armed: statements.armed(),
