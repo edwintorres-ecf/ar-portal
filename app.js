@@ -2724,6 +2724,66 @@ app.get('/api/stop-service-view', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Collector auto-assignment (location + aging rules) ──────────────────────
+// Fills ONLY invoices with no effective collector (invoice- or customer-
+// level); never reassigns existing ownership. First matching rule by
+// priority wins. Runs daily + on demand.
+function applyAssignmentRules(triggeredBy) {
+  const rules = db.listAssignmentRules().filter(r => r.active);
+  if (!rules.length) return { assigned: 0, rules: 0 };
+  const invoices = sage.getCachedInvoices();
+  const invColl = db.getAllInvoiceCollectors();
+  const acctByCust = {};
+  for (const acct of db.getAllCustomerAccounts()) acctByCust[acct.customer_id] = acct;
+  let assigned = 0;
+  const byRule = {};
+  for (const inv of invoices) {
+    if (inv.totalDue <= 0.01) continue;
+    if (invColl[inv.recordNo]) continue;
+    const acct = acctByCust[inv.customerId];
+    if (acct && acct.collector_email) continue;
+    const d = inv.daysOverdue || 0;
+    const rule = rules.find(r =>
+      (!r.location_id || r.location_id === inv.locationId) &&
+      d >= (r.min_days_past_due || 0) &&
+      (r.max_days_past_due == null || d <= r.max_days_past_due));
+    if (!rule) continue;
+    db.setInvoiceCollector(inv.recordNo, inv.invoiceId, rule.collector_email, 'auto-rule:' + rule.id);
+    assigned++;
+    byRule[rule.name] = (byRule[rule.name] || 0) + 1;
+  }
+  if (assigned) db.auditLog(triggeredBy || 'auto-assign', 'collector_auto_assign', null,
+    `${assigned} invoice(s): ${Object.entries(byRule).map(([n, c]) => n + '=' + c).join(', ')}`);
+  return { assigned, rules: rules.length, byRule };
+}
+
+app.get('/api/assignment-rules', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try { res.json(db.listAssignmentRules()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/assignment-rules', requireAuth, requirePerm('customers.manage'), (req, res) => {
+  try {
+    const f = req.body || {};
+    if (!f.id && (!f.name || !f.collector_email)) return res.status(400).json({ error: 'name and collector_email required' });
+    const rule = db.upsertAssignmentRule(f.id || null, f, req.session.user.email);
+    db.auditLog(req.session.user.email, 'assignment_rule_save', null, `${rule.id} ${rule.name} -> ${rule.collector_email}`);
+    res.json(rule);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/assignment-rules/:id', requireAuth, requirePerm('customers.manage'), (req, res) => {
+  try {
+    db.deleteAssignmentRule(parseInt(req.params.id, 10));
+    db.auditLog(req.session.user.email, 'assignment_rule_delete', null, req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/assignment-rules/run', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try { res.json(applyAssignmentRules(req.session.user.email)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Grid metadata (one call powering the emulated Invoices/My Work) ────
 app.get('/api/grid-meta', requireAuth, (req, res) => {
   try {
@@ -3998,6 +4058,19 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
       }
     } catch (e) { console.warn(`[dunning] scheduled preview failed: ${e.message}`); }
   }, 15 * 60 * 1000);
+
+  // Collector auto-assignment: daily pass ~07:45 ET (after fresh invoices).
+  setInterval(() => {
+    try {
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      if (now.getHours() !== 7 || now.getMinutes() < 40) return;
+      const today = now.toISOString().slice(0, 10);
+      if (db.getCommState('autoassign_last') === today) return;
+      db.setCommState('autoassign_last', today);
+      const r = applyAssignmentRules('scheduler');
+      if (r.assigned) console.log(`[auto-assign] ${r.assigned} invoice(s) assigned`);
+    } catch (e) { console.warn(`[auto-assign] ${e.message}`); }
+  }, 10 * 60 * 1000);
 
   // Customer-contact sync from Intacct DISPLAYCONTACT — contacts change slowly;
   // startup pass (delayed 2 min so it never competes with the invoice

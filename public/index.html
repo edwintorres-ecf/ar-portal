@@ -539,6 +539,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="calendar" onclick="navGo('calendar')">📅 PTP Calendar</div>
         <div class="nav-drop-item" data-view="watchlist" onclick="navGo('watchlist')">⭐ Watchlist</div>
         <div class="nav-drop-item" data-view="stop-service-view" onclick="navGo('stop-service-view')">⏸ Stop Service</div>
+        <div class="nav-drop-item" data-view="auto-assign" onclick="navGo('auto-assign')">🎯 Auto-Assignment</div>
       </div>
     </div>
 
@@ -759,6 +760,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-search" class="view">
   <div id="search-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-auto-assign" class="view">
+  <div id="autoassign-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-stop-service-view" class="view">
@@ -2374,7 +2379,7 @@ async function manualRefresh() {
 // ─── PTP Calendar ──────────────────────────────────────────────────────────
 // Which grouped menu (if any) each view lives under — drives the active state.
 const NAV_GROUP_OF = {
-  'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections',
+  'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections', 'auto-assign': 'collections',
   'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance', 'permissions': 'admin',
@@ -2422,6 +2427,7 @@ function switchView(name, el) {
   if (name === 'velocity' && typeof commsLoadVelocity === 'function') { commsLoadVelocity(); }
   if (name === 'permissions' && typeof commsLoadPermissions === 'function') { commsLoadPermissions(); }
   if (name === 'stop-service-view' && typeof commsLoadStopService === 'function') { commsLoadStopService(); }
+  if (name === 'auto-assign' && typeof commsLoadAutoAssign === 'function') { commsLoadAutoAssign(); }
   if (name === 'service-centers' && typeof commsLoadServiceCenters === 'function') { commsLoadServiceCenters(); }
 }
 
@@ -5717,6 +5723,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260813m"></script>
+<script src="/comms.js?v=20260813n"></script>
 </body>
 </html>

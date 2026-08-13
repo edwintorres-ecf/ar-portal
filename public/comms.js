@@ -793,9 +793,22 @@ function commsRenderInvoices2(full) {
   const paidOf = (i) => Math.max(0, (i.totalEntered || 0) - (i.totalDue || 0));
   document.getElementById('inv2-table').innerHTML = `
     <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
-      <div style="display:flex;justify-content:space-between;padding:10px 16px;background:#faf8f3;font-size:12.5px;font-weight:600"><span>Invoices</span><span style="color:#6b6458">${rows.length.toLocaleString()} total</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 16px;background:#faf8f3;font-size:12.5px;font-weight:600;flex-wrap:wrap;gap:8px">
+        <span>Invoices</span>
+        <span id="inv2-bulkbar" style="display:none;gap:8px;align-items:center">
+          <span id="inv2-bulkcount" style="font-size:12px;color:#6b6458"></span>
+          <select id="inv2-bulk-collector" style="padding:4px 8px;border:1px solid var(--line,#e7e1d4);border-radius:6px;font-size:12px">
+            <option value="">Assign collector…</option>
+            ${(_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('')}
+            <option value="__clear__">— Clear collector —</option>
+          </select>
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsInv2BulkAssign(this)">Apply</button>
+        </span>
+        <span style="color:#6b6458">${rows.length.toLocaleString()} total</span>
+      </div>
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em">
+          <th style="padding:8px 10px"><input type="checkbox" onclick="document.querySelectorAll('.inv2-pick').forEach(x => x.checked = this.checked);commsInv2BulkBar()"></th>
           ${['Invoice Number', 'Service Center', 'Location', 'Customer', 'Status', 'Amount', 'PO #', 'Payment', 'Aging', 'Collector', 'Manage'].map(h => `<th style="padding:8px 10px">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${pageRows.map(i => {
@@ -804,6 +817,7 @@ function commsRenderInvoices2(full) {
           const col = commsEffectiveCollector(i);
           const colName = col ? ((_gridMeta.users.find(u => u.email.toLowerCase() === col.toLowerCase()) || {}).name || col.split('@')[0]) : '—';
           return `<tr style="border-top:1px solid #f1ede3;cursor:pointer" onclick="openDrawer('${escHtml(i.recordNo)}')">
+            <td style="padding:9px 10px" onclick="event.stopPropagation()"><input type="checkbox" class="inv2-pick" value="${escHtml(i.recordNo)}" onclick="commsInv2BulkBar()"></td>
             <td style="padding:9px 10px;font-weight:600">${escHtml(i.invoiceId || i.recordNo)}</td>
             <td style="padding:9px 10px">${commsScChipFor(i)}</td>
             <td style="padding:9px 10px">${escHtml(i.locationName || '—')}</td>
@@ -827,6 +841,29 @@ function commsRenderInvoices2(full) {
         </span>
       </div>
     </div>`;
+}
+
+function commsInv2BulkBar() {
+  const n = document.querySelectorAll('.inv2-pick:checked').length;
+  const bar = document.getElementById('inv2-bulkbar');
+  if (bar) { bar.style.display = n ? 'inline-flex' : 'none'; }
+  const cnt = document.getElementById('inv2-bulkcount');
+  if (cnt) cnt.textContent = n + ' selected';
+}
+
+async function commsInv2BulkAssign(btn) {
+  const items = [...document.querySelectorAll('.inv2-pick:checked')].map(x => x.value);
+  const sel = document.getElementById('inv2-bulk-collector').value;
+  if (!items.length || !sel) { alert('Select invoices and a collector.'); return; }
+  const clear = sel === '__clear__';
+  if (!confirm(`${clear ? 'Clear collector on' : 'Assign'} ${items.length} invoice(s)${clear ? '' : ' to ' + sel}?`)) return;
+  btn.disabled = true;
+  try {
+    await apiFetch('/api/collector/invoice-bulk', { method: 'POST', body: JSON.stringify({ items, collectorEmail: clear ? '' : sel }) });
+    await commsGridMeta(true);
+    commsRenderInvoices2(false);
+  } catch (e) { alert('Failed: ' + e.message); }
+  btn.disabled = false;
 }
 
 function commsInv2Apply() {
@@ -964,6 +1001,92 @@ async function commsTogglePerm(email, cap) {
     await apiFetch(`/api/admin/users/${encodeURIComponent(email)}/permissions`, { method: 'POST', body: JSON.stringify({ grant, revoke }) });
     commsLoadPermissions();
   } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ─── Collector auto-assignment rules (Operations → Auto-Assignment) ──────────
+async function commsLoadAutoAssign() {
+  const root = document.getElementById('autoassign-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const [rules, meta, locs] = await Promise.all([
+      apiFetch('/api/assignment-rules'), commsGridMeta(), apiFetch('/api/locations-view').catch(() => [])]);
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">Collector Auto-Assignment</h1>
+      <div style="font-size:12.5px;color:#6b6458;margin-bottom:14px">Rules fill in a collector for UNASSIGNED invoices only (existing assignments are never overwritten). First matching rule by priority wins. Runs daily at ~7:45 AM ET, or on demand.</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsAutoAssignRun(this)">▶ Run rules now</button>
+      </div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden;margin-bottom:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase">
+            ${['Active', 'Priority', 'Name', 'Location', 'Aging (days past due)', 'Collector', ''].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
+          </tr></thead>
+          <tbody>${rules.map(r => `
+            <tr style="border-top:1px solid #f1ede3">
+              <td style="padding:8px 12px;cursor:pointer;font-size:15px" onclick="commsAutoAssignSave({id:${r.id},active:${r.active ? 0 : 1}})">${r.active ? '🟢' : '⚪'}</td>
+              <td style="padding:8px 12px">${r.priority}</td>
+              <td style="padding:8px 12px;font-weight:600">${escHtml(r.name)}</td>
+              <td style="padding:8px 12px">${r.location_id ? escHtml((locs.find(l => l.locationId === r.location_id) || {}).locationName || r.location_id) : 'Any'}</td>
+              <td style="padding:8px 12px">${r.min_days_past_due || 0}${r.max_days_past_due != null ? '–' + r.max_days_past_due : '+'}</td>
+              <td style="padding:8px 12px">${escHtml(((_gridMeta.users || []).find(u => u.email.toLowerCase() === (r.collector_email || '').toLowerCase()) || {}).name || r.collector_email)}</td>
+              <td style="padding:8px 12px"><button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsAutoAssignDelete(${r.id})">✕</button></td>
+            </tr>`).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:#6b6458">No rules yet — add one below.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px">
+        <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">ADD RULE</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="ar-name" placeholder="Rule name" style="flex:1.4;min-width:160px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
+          <select id="ar-loc" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
+            <option value="">Any location</option>
+            ${locs.map(l => `<option value="${escHtml(l.locationId)}">${escHtml(l.locationName)}</option>`).join('')}
+          </select>
+          <label style="font-size:11.5px;color:#6b6458">Days ≥ <input id="ar-min" type="number" value="0" style="width:64px;padding:7px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <label style="font-size:11.5px;color:#6b6458">≤ <input id="ar-max" type="number" placeholder="∞" style="width:64px;padding:7px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <select id="ar-collector" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
+            <option value="">Collector…</option>
+            ${(_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('')}
+          </select>
+          <label style="font-size:11.5px;color:#6b6458">Priority <input id="ar-priority" type="number" value="${rules.length + 1}" style="width:56px;padding:7px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsAutoAssignAdd()">+ Add rule</button>
+        </div>
+      </div>`;
+  } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsAutoAssignSave(f) {
+  try { await apiFetch('/api/assignment-rules', { method: 'POST', body: JSON.stringify(f) }); commsLoadAutoAssign(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsAutoAssignAdd() {
+  const f = {
+    name: document.getElementById('ar-name').value.trim(),
+    active: 1,
+    location_id: document.getElementById('ar-loc').value || null,
+    min_days_past_due: parseInt(document.getElementById('ar-min').value, 10) || 0,
+    max_days_past_due: document.getElementById('ar-max').value ? parseInt(document.getElementById('ar-max').value, 10) : null,
+    collector_email: document.getElementById('ar-collector').value,
+    priority: parseInt(document.getElementById('ar-priority').value, 10) || 1,
+  };
+  if (!f.name || !f.collector_email) { alert('Name and collector are required.'); return; }
+  commsAutoAssignSave(f);
+}
+
+async function commsAutoAssignDelete(id) {
+  if (!confirm('Delete this rule? Existing assignments it made are kept.')) return;
+  try { await apiFetch('/api/assignment-rules/' + id, { method: 'DELETE' }); commsLoadAutoAssign(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsAutoAssignRun(btn) {
+  btn.disabled = true; btn.textContent = '▶ Running…';
+  try {
+    const r = await apiFetch('/api/assignment-rules/run', { method: 'POST' });
+    alert(r.assigned ? `Assigned ${r.assigned} invoice(s):\n` + Object.entries(r.byRule || {}).map(([n, x]) => `${n}: ${x}`).join('\n') : 'Nothing to assign — every matching invoice already has a collector.');
+  } catch (e) { alert('Run failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '▶ Run rules now';
 }
 
 // ─── Invite user (Admin) ─────────────────────────────────────────────────────

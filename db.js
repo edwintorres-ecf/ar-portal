@@ -506,6 +506,22 @@ function initCommsSchema() {
   // once the invoice appears in the scraped feed (accepted on the portal).
   try { db.exec("ALTER TABLE velocity_transmits ADD COLUMN confirmed_at TEXT DEFAULT NULL"); } catch (e) {}
 
+  // Collector auto-assignment rules (2026-08-13): location + aging → collector
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      active INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 1,
+      location_id TEXT,                 -- NULL = any location
+      min_days_past_due INTEGER DEFAULT 0,
+      max_days_past_due INTEGER,        -- NULL = no upper bound
+      collector_email TEXT NOT NULL,
+      created_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // Per-rule customer TARGETING (2026-08-12, Edwin): JSON array of customer
   // ids. Combined with target_mode: 'all' (ignore list), 'only' (rule applies
   // ONLY to listed customers), 'except' (applies to everyone BUT the listed).
@@ -831,6 +847,26 @@ function updateUserJobTitle(email, jobTitle) {
   const d = getDb();
   d.prepare("UPDATE user_roles SET job_title=? WHERE email=?").run(jobTitle || null, email);
 }
+
+function listAssignmentRules() {
+  return getDb().prepare('SELECT * FROM assignment_rules ORDER BY priority ASC, id ASC').all();
+}
+function upsertAssignmentRule(id, f, by) {
+  const d2 = getDb();
+  if (id) {
+    const sets = [], vals = [];
+    for (const k of ['name', 'active', 'priority', 'location_id', 'min_days_past_due', 'max_days_past_due', 'collector_email']) {
+      if (f[k] !== undefined) { sets.push(k + '=?'); vals.push(f[k]); }
+    }
+    if (sets.length) { sets.push("updated_at=datetime('now')"); vals.push(id);
+      d2.prepare('UPDATE assignment_rules SET ' + sets.join(',') + ' WHERE id=?').run(...vals); }
+    return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(id);
+  }
+  const r = d2.prepare('INSERT INTO assignment_rules (name, active, priority, location_id, min_days_past_due, max_days_past_due, collector_email, created_by) VALUES (?,?,?,?,?,?,?,?)')
+    .run(f.name, f.active ? 1 : 0, f.priority || 1, f.location_id || null, f.min_days_past_due || 0, f.max_days_past_due ?? null, f.collector_email, by || null);
+  return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(r.lastInsertRowid);
+}
+function deleteAssignmentRule(id) { getDb().prepare('DELETE FROM assignment_rules WHERE id=?').run(id); }
 
 function setUserPermissions(email, permissionsJson) {
   getDb().prepare("UPDATE user_roles SET permissions=?, updated_at=datetime('now') WHERE email=? COLLATE NOCASE")
@@ -1682,6 +1718,9 @@ module.exports = {
   updateUserJobTitle,
   updateUserPhone,
   setUserPermissions,
+  listAssignmentRules,
+  upsertAssignmentRule,
+  deleteAssignmentRule,
   getCommState,
   setCommState,
   listCustomerContacts,
