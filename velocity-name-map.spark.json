@@ -1,0 +1,10 @@
+{
+  "_comment": "Velocity customer-name alias map for AR reconciliation. Use invoice number + amount + dates as primary match keys. Names are secondary and may be fuzzy.",
+  "_lastUpdated": "2026-04-18",
+  "_matchingPolicy": {
+    "primaryKeys": ["invoice_number", "amount", "invoice_date", "due_date"],
+    "secondaryKey": "customer_name",
+    "notes": "Velocity exports may not include customer numbers and names may not exactly match Intacct. Add aliases over time as reconciliations are reviewed."
+  },
+  "mappings": {}
+}
