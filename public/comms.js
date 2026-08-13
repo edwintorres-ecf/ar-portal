@@ -1034,7 +1034,7 @@ async function commsLoadVelocity() {
         <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label style="font-size:12px;color:#6b6458">Series <select id="vel-prefix" onchange="(function(){const m=(window._velMarks||{})[document.getElementById('vel-prefix').value];document.getElementById('vel-from').value=m?String(m+1).padStart(6,'0'):'';document.getElementById('vel-to').value='';})()" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
-            ${['ECI', 'AST', 'ASTM', 'S'].map(p => `<option value="${p}">${p}-</option>`).join('')}
+            ${(s.prefixes || ['ECI', 'AST', 'ASTM', 'S', 'SPI', 'SS']).map(p => `<option value="${p}">${p}-</option>`).join('')}
           </select></label>
           <label style="font-size:12px;color:#6b6458">From <input id="vel-from" type="text" inputmode="numeric" value="${nextFrom}" placeholder="025424" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
           <label style="font-size:12px;color:#6b6458">To <input id="vel-to" type="text" inputmode="numeric" placeholder="same for single" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>

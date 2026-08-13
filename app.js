@@ -2802,9 +2802,10 @@ function eciNum(invoiceId) {
 }
 // Per-prefix confirmed high-water marks (velocity_last_<PREFIX> in comm_state;
 // legacy velocity_last_number migrates to ECI on first read).
+const VELOCITY_PREFIXES = ['ECI', 'AST', 'ASTM', 'S', 'SPI', 'SS'];
 function velocityMarks() {
   const marks = {};
-  for (const p of ['ECI', 'AST', 'ASTM', 'S']) {
+  for (const p of VELOCITY_PREFIXES) {
     const v = parseInt(db.getCommState('velocity_last_' + p) || '0', 10) || 0;
     if (v) marks[p] = v;
   }
@@ -2917,6 +2918,7 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
     res.json({
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
       marks: velocityMarks(),
+      prefixes: VELOCITY_PREFIXES,
       recent: db.listVelocityTransmits(60),
       pendingConfirmation: db.countUnconfirmedVelocity(),
       uploader, feedAgeHours: feedAge,
