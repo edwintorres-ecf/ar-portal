@@ -65,4 +65,28 @@ async function syncFeed(destDir) {
   return out;
 }
 
-module.exports = { status, transmitFile, syncFeed };
+// Browser-mutex state on the iMac (see .velocity-browser.lock in the
+// finance workspace) — the portal refuses to start work while it's held.
+async function lockState() {
+  try {
+    const r = await ssh(`cat ${FIN}/.velocity-browser.lock 2>/dev/null || echo none`, 15000);
+    const t = r.stdout.trim();
+    if (t === 'none' || !t) return { locked: false };
+    const j = JSON.parse(t);
+    return { locked: true, tool: j.tool, since: new Date(j.startedAt).toISOString() };
+  } catch (e) { return { locked: false, error: e.message }; }
+}
+
+// Kick a full Velocity scrape on the iMac in the background (respects the
+// mutex itself). Returns immediately; completion detected via feed mtime.
+async function startScrape() {
+  const r = await ssh(`cd ${FIN} && (nohup /usr/local/bin/node velocity-scraper.js scrape > /tmp/velocity-scrape-portal.log 2>&1 & echo started)`, 20000);
+  return /started/.test(r.stdout);
+}
+
+async function remoteFeedMtime() {
+  const r = await ssh(`stat -f %m ${FIN}/velocity-feed.json 2>/dev/null || echo 0`, 15000);
+  return parseInt(r.stdout.trim(), 10) || 0;
+}
+
+module.exports = { status, transmitFile, syncFeed, lockState, startScrape, remoteFeedMtime };

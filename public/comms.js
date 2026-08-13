@@ -1032,6 +1032,7 @@ async function commsLoadVelocity() {
         <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last confirmed on Velocity: <strong>${marksLabel}</strong>${s.pendingConfirmation ? ` · <span style=\"color:#8a6d1a\">${s.pendingConfirmation} awaiting confirmation</span>` : ''}</span>
         ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
         ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
+        ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocityRefresh(this)">🔄 Refresh from Velocity now</button>` : ''}
         <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsVelocityReconcile(this)">⚖ Reconcile</button>
       </div>
       ${s.facilities ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
@@ -1119,9 +1120,52 @@ async function commsVelocityPreview() {
   } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
 }
 
+let _velRefreshTimer = null;
+async function commsVelocityRefresh(btn) {
+  if (!confirm('Run a full Velocity scrape now? Takes about 6 minutes; transmits are blocked while it runs (browser mutex).')) return;
+  btn.disabled = true; btn.textContent = '🔄 Scraping…';
+  try {
+    await apiFetch('/api/velocity/refresh', { method: 'POST' });
+  } catch (e) { alert(e.message); btn.disabled = false; btn.textContent = '🔄 Refresh from Velocity now'; return; }
+  clearInterval(_velRefreshTimer);
+  _velRefreshTimer = setInterval(async () => {
+    try {
+      const s = await apiFetch('/api/velocity/refresh-status');
+      if (s.done) {
+        clearInterval(_velRefreshTimer);
+        btn.disabled = false; btn.textContent = '🔄 Refresh from Velocity now';
+        commsLoadVelocity();
+        alert('Velocity refresh complete — feed synced and confirmations reconciled. Run ⚖ Reconcile for the fresh comparison.');
+      } else if (s.stalled) {
+        clearInterval(_velRefreshTimer);
+        btn.disabled = false; btn.textContent = '🔄 Refresh from Velocity now';
+        alert('Refresh stalled: ' + (s.note || 'unknown'));
+      } else {
+        btn.textContent = `🔄 Scraping… ${s.runningFor || 0}m`;
+      }
+    } catch (e) { /* keep polling */ }
+  }, 30000);
+}
+
+function commsEnsureReconModal() {
+  if (document.getElementById('velrecon-modal')) return;
+  document.body.insertAdjacentHTML('beforeend', `
+<div id="velrecon-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box" style="width:1000px;max-width:97vw;max-height:92vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">⚖ Velocity Reconciliation</h3>
+      <button class="btn-sm" style="background:#f1f5f9;border:none;padding:6px 12px;border-radius:8px;cursor:pointer" onclick="document.getElementById('velrecon-modal').style.display='none'">Close</button>
+    </div>
+    <div id="velrecon-body"></div>
+  </div>
+</div>`);
+}
+
 async function commsVelocityReconcile(btn) {
   btn.disabled = true; btn.textContent = '⚖ Reconciling…';
-  const out = document.getElementById('vel-preview');
+  commsEnsureReconModal();
+  document.getElementById('velrecon-modal').style.display = 'flex';
+  const out = document.getElementById('velrecon-body');
   try {
     const r = await apiFetch('/api/velocity/reconcile');
     const fmt$ = (n) => '$' + Math.round(n || 0).toLocaleString();
@@ -1152,9 +1196,11 @@ async function commsVelocityReconcile(btn) {
         ${tile('Balance mismatches', s.balanceMismatch.toLocaleString(), 'differ by > $1', s.balanceMismatch > 0)}
       </div>
       ${table('Open here, not open on Velocity', r.oursOnly, [
+        ['<input type=\"checkbox\" onclick=\"document.querySelectorAll(\'.velrecon-pick\').forEach(c=>c.checked=this.checked)\">', x => `<input type=\"checkbox\" class=\"velrecon-pick\" value=\"${escHtml(x.invoiceId)}\">`],
         ['Invoice', x => escHtml(x.invoiceId)], ['Customer', x => escHtml(x.customer || '')],
         ['Velocity status', x => escHtml(x.velocityStatus)], ['Our balance', x => fmt$(x.balance), 1]],
-        'Candidates to transmit, or intentionally unsubmitted.')}
+        'Candidates to transmit, or intentionally unsubmitted. Tick rows and use the button below.')}
+      ${r.oursOnly.length && commsIsManager() ? `<div style="margin-top:8px"><button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsReconTransmitSelected(this)">🚀 Transmit selected to InterNex (LOC1)</button></div>` : ''}
       ${table('Open on Velocity, not open here', r.velocityOnly, [
         ['Invoice', x => escHtml(x.invoiceId)], ['Customer', x => escHtml(x.customer || '')],
         ['Account', x => escHtml(x.account || '')], ['Velocity balance', x => fmt$(x.velocityBalance), 1]],
@@ -1181,6 +1227,20 @@ async function commsVelocityTransmit(prefix, from, to, btn, line) {
     alert(`${r.ok ? 'Success' : 'FAILED'} — batch ${r.batch}: ${r.count} invoice(s)${r.skippedRetrans ? `, ${r.skippedRetrans} skipped (already sent)` : ''}\n\nUploader output tail:\n${(r.output || '').slice(-400)}`);
     commsLoadVelocity();
   } catch (e) { alert('Transmit failed: ' + e.message); btn.disabled = false; btn.textContent = '🚀 Transmit to InterNex'; }
+}
+
+async function commsReconTransmitSelected(btn) {
+  const ids = [...document.querySelectorAll('.velrecon-pick:checked')].map(x => x.value);
+  if (!ids.length) { alert('Tick at least one invoice.'); return; }
+  if (!confirm(`Transmit ${ids.length} selected invoice(s) to InterNex (LOC1 rules apply; LOC2 candidates are skipped)?`)) return;
+  btn.disabled = true; btn.textContent = '🚀 Transmitting…';
+  try {
+    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ invoiceIds: ids, line: 'LOC1' }) });
+    alert(`${r.ok ? 'Success' : 'FAILED'} — ${r.count} invoice(s) sent (batch ${r.batch}).\n\n${(r.output || '').slice(-300)}`);
+    document.getElementById('velrecon-modal').style.display = 'none';
+    commsLoadVelocity();
+  } catch (e) { alert('Transmit failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🚀 Transmit selected to InterNex (LOC1)';
 }
 
 async function commsVelocitySync(btn) {

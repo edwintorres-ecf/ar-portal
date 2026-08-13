@@ -2880,27 +2880,45 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     if (process.env.VELOCITY_TRANSMIT_ARMED !== '1') {
       return res.status(400).json({ error: 'VELOCITY_TRANSMIT_ARMED is not set — InterNex transmission is disabled.' });
     }
-    const { from, to, includeRetransmit, line, confirmLoc2, prefix: rawPrefix } = req.body || {};
+    const busy = await velocityBridge.lockState();
+    if (busy.locked) return res.status(409).json({ error: `Velocity browser is busy (${busy.tool} since ${busy.since}) — transmit blocked to protect the session.` });
+    const { from, to, includeRetransmit, line, confirmLoc2, prefix: rawPrefix, invoiceIds } = req.body || {};
     const prefix = String(rawPrefix || 'ECI').toUpperCase();
+    const byList = Array.isArray(invoiceIds) && invoiceIds.length > 0;
     const f = parseInt(from, 10), t = parseInt(to, 10);
-    if (!f || !t || t < f) return res.status(400).json({ error: 'from/to required' });
+    if (!byList && (!f || !t || t < f)) return res.status(400).json({ error: 'from/to or invoiceIds required' });
     const targetLine = line === 'LOC2' ? 'LOC2' : 'LOC1';
     // LOC2 is EXPRESS-ONLY (Edwin 2026-08-12): a dedicated request with an
     // explicit confirmation flag; never part of a default transmit.
     if (targetLine === 'LOC2' && confirmLoc2 !== true) {
       return res.status(400).json({ error: 'LOC2 transmission requires the express confirmation' });
     }
-    let rows = velocityRows(prefix, f, t, req.session.user).filter(r => r.line === targetLine);
+    let rows;
+    if (byList) {
+      // Explicit list (reconcile popup): resolve each id via its own series.
+      const wanted = new Set(invoiceIds.map(String));
+      rows = [];
+      for (const id of wanted) {
+        const p = parseInv(id);
+        if (!p) continue;
+        rows.push(...velocityRows(p.prefix, p.num, p.num, req.session.user));
+      }
+      rows = rows.filter(r => wanted.has(r.invoiceId) && r.line === targetLine);
+    } else {
+      rows = velocityRows(prefix, f, t, req.session.user).filter(r => r.line === targetLine);
+    }
     const skippedRetrans = rows.filter(r => r.transmitted && !includeRetransmit).length;
     if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);
     if (!rows.length) return res.status(400).json({ error: `Nothing to transmit${skippedRetrans ? ` (${skippedRetrans} already transmitted — enable retransmit to resend)` : ''}` });
     const csv = buildVelocityCsv(rows);
     const padW = prefix === 'S' ? 4 : 6;
-    const tmp = path.join('/tmp', `velocity-batch-${prefix}-${String(f).padStart(padW, '0')}-${String(t).padStart(padW, '0')}.csv`);
+    const tmp = byList
+      ? path.join('/tmp', `velocity-list-${Date.now()}-${rows.length}.csv`)
+      : path.join('/tmp', `velocity-batch-${prefix}-${String(f).padStart(padW, '0')}-${String(t).padStart(padW, '0')}.csv`);
     fs.writeFileSync(tmp, csv);
     const user = commsRealActor(req);
     const result = await velocityBridge.transmitFile(tmp, { dryRun: false, account: targetLine });
-    const batch = `${prefix} ${f}-${t}`;
+    const batch = byList ? `list:${rows.length}` : `${prefix} ${f}-${t}`;
     for (const r of rows) db.insertVelocityTransmit(r.recordNo, r.invoiceId, r.line, batch, result.ok ? 'OK' : 'FAIL', user);
     // High-water mark advances only on CONFIRMED acceptance (feed reconcile),
     // never at transmit time — and never moves for retransmits/backfills.
@@ -2911,6 +2929,41 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
 });
 
 // ─── One-button reconciliation: our open AR vs Velocity's open invoices ──────
+// ─── On-demand Velocity refresh (scrape now → sync → reconcile) ──────────────
+app.post('/api/velocity/refresh', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const lock = await velocityBridge.lockState();
+    if (lock.locked) return res.status(409).json({ error: `Velocity browser is busy (${lock.tool} since ${lock.since}). Try again shortly.` });
+    const before = await velocityBridge.remoteFeedMtime();
+    const ok = await velocityBridge.startScrape();
+    if (!ok) return res.status(500).json({ error: 'Could not start the scrape on the iMac' });
+    db.setCommState('velocity_refresh_before', String(before));
+    db.setCommState('velocity_refresh_started', new Date().toISOString());
+    db.auditLog(req.session.user.email, 'velocity_refresh', null, 'on-demand scrape started');
+    res.json({ started: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/velocity/refresh-status', requireAuth, async (req, res) => {
+  try {
+    const before = parseInt(db.getCommState('velocity_refresh_before') || '0', 10);
+    const startedAt = db.getCommState('velocity_refresh_started');
+    const now = await velocityBridge.remoteFeedMtime();
+    if (now > before) {
+      await velocityBridge.syncFeed(__dirname);
+      _vFeed = { mtime: 0, map: {} };
+      const rec = reconcileVelocity();
+      return res.json({ done: true, syncedAt: new Date().toISOString(), reconcile: rec });
+    }
+    const lock = await velocityBridge.lockState();
+    const mins = startedAt ? Math.round((Date.now() - Date.parse(startedAt)) / 60000) : null;
+    if (!lock.locked && mins != null && mins > 2) {
+      return res.json({ done: false, stalled: true, note: 'Scrape not running and feed not updated — check /tmp/velocity-scrape-portal.log on the iMac' });
+    }
+    res.json({ done: false, runningFor: mins, lock });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/velocity/reconcile', requireAuth, async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
