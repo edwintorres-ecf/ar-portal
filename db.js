@@ -270,6 +270,8 @@ function initSchema() {
   // set once and preserved even when ceiling_amount is later revised
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN stated_amount REAL DEFAULT NULL"); } catch(e) { /* already exists */ }
 
+  // Per-user granular permission overrides: JSON {grant:[caps], revoke:[caps]}
+  try { db.exec("ALTER TABLE user_roles ADD COLUMN permissions TEXT DEFAULT NULL"); } catch(e) {}
   // Phone for the comms signature renderer (pulled from Graph /me at login)
   try { db.exec("ALTER TABLE user_roles ADD COLUMN phone TEXT DEFAULT NULL"); } catch(e) {}
   // Customer-reply notifications default ON — a customer reply is the one
@@ -828,6 +830,11 @@ function updateUserPhoto(email, photoDataUrl) {
 function updateUserJobTitle(email, jobTitle) {
   const d = getDb();
   d.prepare("UPDATE user_roles SET job_title=? WHERE email=?").run(jobTitle || null, email);
+}
+
+function setUserPermissions(email, permissionsJson) {
+  getDb().prepare("UPDATE user_roles SET permissions=?, updated_at=datetime('now') WHERE email=? COLLATE NOCASE")
+    .run(permissionsJson || null, email);
 }
 
 function updateUserPhone(email, phone) {
@@ -1674,6 +1681,7 @@ module.exports = {
   updateUserPhoto,
   updateUserJobTitle,
   updateUserPhone,
+  setUserPermissions,
   getCommState,
   setCommState,
   listCustomerContacts,

@@ -245,6 +245,55 @@ function requireRole(...roles) {
   };
 }
 
+// ─── Granular permissions (2026-08-13) ───────────────────────────────────────
+// Capabilities are area-level permissions. Each role has a default set;
+// per-user overrides (user_roles.permissions JSON {grant:[],revoke:[]}) add
+// or remove capabilities for individuals. Admin UI: Admin → Permissions.
+const CAPABILITIES = [
+  'notes.write', 'status.set', 'contacts.manage', 'attachments.manage',
+  'email.send', 'triage.manage', 'statements.manage', 'statements.run',
+  'dunning.run', 'dunning.admin', 'finance.view', 'finance.transmit',
+  'po.edit', 'po.admin', 'edi.transmit', 'invoices.create',
+  'customers.manage', 'collectors.assign', 'refresh.data',
+  'invites.send', 'users.admin', 'templates.admin', 'regions.admin',
+];
+const ROLE_DEFAULT_CAPS = {
+  viewer: [],
+  ar_specialist: ['notes.write', 'status.set', 'contacts.manage', 'attachments.manage',
+    'email.send', 'triage.manage', 'statements.manage', 'po.edit', 'refresh.data', 'collectors.assign'],
+  manager: ['notes.write', 'status.set', 'contacts.manage', 'attachments.manage',
+    'email.send', 'triage.manage', 'statements.manage', 'statements.run',
+    'dunning.run', 'finance.view', 'finance.transmit', 'po.edit', 'po.admin',
+    'edi.transmit', 'invoices.create', 'customers.manage', 'collectors.assign',
+    'refresh.data', 'invites.send'],
+  admin: null,   // null = everything
+};
+
+function effectiveCaps(email, role) {
+  let caps = ROLE_DEFAULT_CAPS[role] === null ? [...CAPABILITIES] : [...(ROLE_DEFAULT_CAPS[role] || [])];
+  try {
+    const u = db.getUserRoleAnyCase(email);
+    if (u && u.permissions) {
+      const o = JSON.parse(u.permissions);
+      for (const g of (o.grant || [])) if (!caps.includes(g)) caps.push(g);
+      caps = caps.filter(c => !(o.revoke || []).includes(c));
+    }
+  } catch (e) { /* defaults */ }
+  return caps;
+}
+
+function hasPerm(user, cap) {
+  if (!user) return false;
+  return effectiveCaps(user.email, user.role).includes(cap);
+}
+
+function requirePerm(cap) {
+  return (req, res, next) => {
+    if (hasPerm(req.session.user, cap)) return next();
+    res.status(403).json({ error: `Missing permission: ${cap}` });
+  };
+}
+
 function applyUserFilter(invoices, user) {
   let result = invoices;
   if (user.location_filter) {
@@ -403,7 +452,7 @@ app.post('/api/me/notify-prefs', requireAuth, (req, res) => {
 // Lets an admin view the portal as another user — adopts that user's role and
 // location/customer access filters — for support and verification. The real
 // admin identity is preserved in the session for the exit path and audit.
-app.post('/api/admin/impersonate/:email', requireAuth, requireRole('admin'), (req, res) => {
+app.post('/api/admin/impersonate/:email', requireAuth, requirePerm('users.admin'), (req, res) => {
   try {
     if (req.session.realUser) return res.status(409).json({ error: 'Already impersonating — exit first' });
     const target = db.getUserRole(req.params.email);
@@ -750,7 +799,7 @@ app.get('/api/items', requireAuth, async (req, res) => {
 });
 
 // ─── API: Full customer list from Sage (for invoice creation) ─────────────────
-app.get('/api/customers/all', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/customers/all', requireAuth, requirePerm('customers.manage'), async (req, res) => {
   try {
     const customers = await sage.getCustomers();
     res.json(customers);
@@ -760,7 +809,7 @@ app.get('/api/customers/all', requireAuth, requireRole('admin', 'manager'), asyn
 });
 
 // ─── API: Full location list from Sage (for invoice creation) ─────────────────
-app.get('/api/locations/all', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/locations/all', requireAuth, requirePerm('customers.manage'), async (req, res) => {
   try {
     const locs = await sage.getLocations();
     res.json(locs);
@@ -770,7 +819,7 @@ app.get('/api/locations/all', requireAuth, requireRole('admin', 'manager'), asyn
 });
 
 // ─── API: Create Invoice ──────────────────────────────────────────────────────
-app.post('/api/invoice/create', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/invoice/create', requireAuth, requirePerm('invoices.create'), async (req, res) => {
   const user = req.session.user;
   try {
     const { customerId, invoiceId, invoiceDate, dueDate, locationId, description, poNumber, lines } = req.body;
@@ -1210,7 +1259,7 @@ app.get('/api/po/meta', requireAuth, (req, res) => {
 
 // Manual Payee Central refresh — kicks off the guarded scrape and returns
 // immediately (it takes a few minutes). The client polls /api/po/meta.
-app.post('/api/po/refresh-payee', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/po/refresh-payee', requireAuth, requirePerm('refresh.data'), (req, res) => {
   try {
     const r = doPayeeRefresh();
     db.auditLog(req.session.user.email, 'payee_refresh', null, r.alreadyRunning ? 'already running' : 'started');
@@ -1220,7 +1269,7 @@ app.post('/api/po/refresh-payee', requireAuth, requireRole('admin', 'manager', '
 
 // Manual per-PO detail scrape (Amazon "Available amount"). Long-running; returns
 // immediately. The ledger picks up new balances on its next read.
-app.post('/api/po/refresh-details', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/po/refresh-details', requireAuth, requirePerm('refresh.data'), (req, res) => {
   try {
     const r = doPoDetailRefresh();
     db.auditLog(req.session.user.email, 'po_detail_refresh', null, r.alreadyRunning ? 'already running' : 'started');
@@ -1242,7 +1291,7 @@ function ediInvoiceNumber(inv) {
 }
 
 // Dry-run preview — SAFE, generates the 810 without transmitting.
-app.post('/api/po/edi/dry-run', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/po/edi/dry-run', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
     const { recordNo, po, as } = req.body || {};
     let invoices = sage.getCachedInvoices();
@@ -1265,7 +1314,7 @@ app.post('/api/po/edi/dry-run', requireAuth, requireRole('admin', 'manager', 'ar
 // 2026-07-15: parallel bulk runs took the whole endpoint down for minutes).
 let _ediRunActive = null;
 
-app.post('/api/po/edi/transmit', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/po/edi/transmit', requireAuth, requirePerm('edi.transmit'), async (req, res) => {
   if (_ediRunActive) {
     const mins = Math.round((Date.now() - _ediRunActive.startedAt) / 60000);
     return res.status(409).json({
@@ -1346,7 +1395,7 @@ function poAssignError(assignedPo, invoiceId) {
   return null;
 }
 
-app.post('/api/po/reassign/:recordNo', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     const user = req.session.user;
     const { invoiceId, originalPo, assignedPo, note } = req.body || {};
@@ -1358,7 +1407,7 @@ app.post('/api/po/reassign/:recordNo', requireAuth, requireRole('admin', 'manage
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/po/reassign/:recordNo', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.delete('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     const user = req.session.user;
     db.clearInvoicePoAssignment(req.params.recordNo);
@@ -1368,7 +1417,7 @@ app.delete('/api/po/reassign/:recordNo', requireAuth, requireRole('admin', 'mana
 });
 
 // Bulk-reassign: point many invoices at the same PO in one action.
-app.post('/api/po/reassign-bulk', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/po/reassign-bulk', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
     const user = req.session.user;
     const { items, assignedPo, note } = req.body || {};
@@ -1397,7 +1446,7 @@ app.post('/api/po/reassign-bulk', requireAuth, requireRole('admin', 'manager', '
 // Effective collector for an invoice = invoice-level override, else the
 // customer-level collector. These routes set/clear at each level.
 
-app.post('/api/collector/customer/:customerId', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/collector/customer/:customerId', requireAuth, requirePerm('customers.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const { collectorEmail, customerName } = req.body || {};
@@ -1413,7 +1462,7 @@ app.post('/api/collector/customer/:customerId', requireAuth, requireRole('admin'
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/collector/invoice/:recordNo', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/collector/invoice/:recordNo', requireAuth, requirePerm('collectors.assign'), (req, res) => {
   try {
     const user = req.session.user;
     const { invoiceId, collectorEmail } = req.body || {};
@@ -1434,7 +1483,7 @@ app.post('/api/collector/invoice/:recordNo', requireAuth, requireRole('admin', '
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/collector/invoice-bulk', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/collector/invoice-bulk', requireAuth, requirePerm('collectors.assign'), async (req, res) => {
   try {
     const user = req.session.user;
     const { items, collectorEmail } = req.body || {};
@@ -1466,7 +1515,7 @@ app.post('/api/collector/invoice-bulk', requireAuth, requireRole('admin', 'manag
 // Customer-level flips the account flag with an effective date + issuer.
 // Invoice-level records an override in invoice_stop_service.
 
-app.post('/api/stop-service/customer/:customerId', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/stop-service/customer/:customerId', requireAuth, requirePerm('customers.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const { stop, effectiveDate, note, customerName } = req.body || {};
@@ -1493,7 +1542,7 @@ app.post('/api/stop-service/customer/:customerId', requireAuth, requireRole('adm
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/stop-service/invoice/:recordNo', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/stop-service/invoice/:recordNo', requireAuth, requirePerm('status.set'), async (req, res) => {
   try {
     const user = req.session.user;
     const { invoiceId, stop, effectiveDate, note } = req.body || {};
@@ -1654,7 +1703,7 @@ app.post('/api/ai/summary/:recordno', requireAuth, async (req, res) => {
   } catch (e) { res.status(502).json({ error: 'AI unavailable: ' + e.message }); }
 });
 
-app.post('/api/ai/draft-email/:recordno', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/ai/draft-email/:recordno', requireAuth, requirePerm('email.send'), async (req, res) => {
   try {
     const ctx = await buildInvoiceContext(req.params.recordno, req.session.user);
     if (!ctx) return res.status(404).json({ error: 'Invoice not found' });
@@ -1720,7 +1769,7 @@ app.get('/api/health/data', requireAuth, (req, res) => {
 // ─── Manual PO→site assignment ───────────────────────────────────────────
 // For POs whose documents/invoices don't reveal a site: a human pins it here
 // and the assignment wins over every automatic attribution source.
-app.post('/api/po/:poNumber/site', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     const user = req.session.user;
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
@@ -1734,7 +1783,7 @@ app.post('/api/po/:poNumber/site', requireAuth, requireRole('admin', 'manager', 
 // Pin an INVOICE's true service site. Needed for multi-site blanket POs whose
 // header ship-to is a corporate code (BNA12 = Amazon Nashville HQ), where the
 // PO-site fallback would mislabel the invoice. Empty siteCode clears.
-app.post('/api/invoice/:recordNo/site', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/invoice/:recordNo/site', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     const user = req.session.user;
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
@@ -1747,7 +1796,7 @@ app.post('/api/invoice/:recordNo/site', requireAuth, requireRole('admin', 'manag
 
 // Manually pin a PO's service type (resolves a "needs service review" flag).
 const PO_SERVICE_TYPES = new Set(['snow', 'landscape', 'cleaning', 'maintenance', 'other']);
-app.post('/api/po/:poNumber/service', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/po/:poNumber/service', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     const user = req.session.user;
     const raw = (req.body && req.body.serviceType || '').trim().toLowerCase();
@@ -1895,7 +1944,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/po/:poNumber/notify-reroute', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/po/:poNumber/notify-reroute', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const { toPoNumber, note } = req.body || {};
@@ -1914,7 +1963,7 @@ app.get('/api/po/:poNumber', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/po', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/po', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const { poNumber, locationId, customerId, ceilingAmount, notes } = req.body || {};
@@ -1931,7 +1980,7 @@ app.post('/api/po', requireAuth, requireRole('admin', 'manager'), (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/po/:poNumber', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.patch('/api/po/:poNumber', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const { locationId, customerId, ceilingAmount, status, notes } = req.body || {};
@@ -1948,7 +1997,7 @@ app.patch('/api/po/:poNumber', requireAuth, requireRole('admin', 'manager'), (re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/po/:poNumber', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.delete('/api/po/:poNumber', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
     db.deletePo(req.params.poNumber);
@@ -2132,7 +2181,7 @@ app.get('/api/customer-account/:id', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/customer-account/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.patch('/api/customer-account/:id', requireAuth, requirePerm('customers.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const { stop_service, owner_name, owner_email, customer_name, notes } = req.body;
@@ -2158,7 +2207,7 @@ app.get('/api/ptp/all', requireAuth, (req, res) => {
 });
 
 // ─── API: PTP status update ───────────────────────────────────────────────────
-app.patch('/api/ptp/:id/status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.patch('/api/ptp/:id/status', requireAuth, requirePerm('status.set'), (req, res) => {
   try {
     const { status } = req.body;
     if (!['open', 'kept', 'broken', 'partial'].includes(status)) {
@@ -2189,7 +2238,7 @@ app.get('/api/customers/:customerId/contacts', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/customers/:customerId/contacts', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/customers/:customerId/contacts', requireAuth, requirePerm('contacts.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes } = req.body;
@@ -2203,7 +2252,7 @@ app.post('/api/customers/:customerId/contacts', requireAuth, requireRole('admin'
   }
 });
 
-app.put('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.put('/api/contacts/:id', requireAuth, requirePerm('contacts.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const contact = db.updateCustomerContact(parseInt(req.params.id, 10), req.body, user.email);
@@ -2215,7 +2264,7 @@ app.put('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar_sp
   }
 });
 
-app.delete('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.delete('/api/contacts/:id', requireAuth, requirePerm('contacts.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const contact = db.updateCustomerContact(parseInt(req.params.id, 10), { is_active: 0, is_primary: 0 }, user.email);
@@ -2224,7 +2273,7 @@ app.delete('/api/contacts/:id', requireAuth, requireRole('admin', 'manager', 'ar
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/contacts/sync', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/contacts/sync', requireAuth, requirePerm('customers.manage'), async (req, res) => {
   try {
     const summary = await runContactSync(req.session.user.email);
     res.json(summary);
@@ -2249,6 +2298,31 @@ function commsPickBody(body) {
            templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId, correspondingEmail };
 }
 
+// ─── API: Granular permission administration ─────────────────────────────────
+app.get('/api/admin/permissions', requireAuth, requirePerm('users.admin'), (req, res) => {
+  try {
+    const users = db.listUsers().map(u => ({
+      email: u.email, name: u.name, role: u.role,
+      overrides: (() => { try { return JSON.parse(u.permissions || '{}'); } catch (e) { return {}; } })(),
+      effective: effectiveCaps(u.email, u.role),
+    }));
+    res.json({ capabilities: CAPABILITIES, roleDefaults: ROLE_DEFAULT_CAPS, users });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:email/permissions', requireAuth, requirePerm('users.admin'), (req, res) => {
+  try {
+    const { grant, revoke } = req.body || {};
+    const g = (Array.isArray(grant) ? grant : []).filter(c => CAPABILITIES.includes(c));
+    const r = (Array.isArray(revoke) ? revoke : []).filter(c => CAPABILITIES.includes(c));
+    db.setUserPermissions(req.params.email, JSON.stringify({ grant: g, revoke: r }));
+    db.auditLog(req.session.user.email, 'permissions_set', null,
+      `${req.params.email}: +[${g.join(',')}] -[${r.join(',')}]`);
+    const u = db.getUserRoleAnyCase(req.params.email);
+    res.json({ ok: true, effective: effectiveCaps(req.params.email, u ? u.role : 'viewer') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/comms/config', requireAuth, (req, res) => {
   let mailbox = null;
   try { mailbox = require('./graph').mailbox(); } catch (e) { /* unset */ }
@@ -2258,11 +2332,12 @@ app.get('/api/comms/config', requireAuth, (req, res) => {
     allowlistSize: comms.allowlist().length,
     dunningArmed: process.env.DUNNING_ARMED === '1',
     statementsArmed: process.env.STATEMENTS_ARMED === '1',
+    caps: effectiveCaps(req.session.user.email, req.session.user.role),
     sageCacheAgeMin: Math.round((sage.getCacheAge() || 0) / 60000),
   });
 });
 
-app.post('/api/comms/preview', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/comms/preview', requireAuth, requirePerm('email.send'), (req, res) => {
   try {
     const actor = commsRealActor(req);
     const p = commsPickBody(req.body);
@@ -2270,7 +2345,7 @@ app.post('/api/comms/preview', requireAuth, requireRole('admin', 'manager', 'ar_
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/comms/send', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), async (req, res) => {
+app.post('/api/comms/send', requireAuth, requirePerm('email.send'), async (req, res) => {
   try {
     const actor = commsRealActor(req);
     const p = commsPickBody(req.body);
@@ -2310,7 +2385,7 @@ app.get('/api/comms/templates', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/comms/templates', requireAuth, requireRole('admin'), (req, res) => {
+app.post('/api/comms/templates', requireAuth, requirePerm('templates.admin'), (req, res) => {
   try {
     const { key, name, kind, subject, body_html } = req.body;
     if (!key || !subject || !body_html) return res.status(400).json({ error: 'key, subject, body_html required' });
@@ -2406,7 +2481,7 @@ app.get('/api/comms/triage', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/comms/triage/:id/file', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/comms/triage/:id/file', requireAuth, requirePerm('triage.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const conv = db.getConversation(parseInt(req.params.id, 10));
@@ -2434,7 +2509,7 @@ app.post('/api/comms/triage/:id/file', requireAuth, requireRole('admin', 'manage
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/comms/triage/:id/dismiss', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/comms/triage/:id/dismiss', requireAuth, requirePerm('triage.manage'), (req, res) => {
   try {
     const user = req.session.user;
     const conv = db.getConversation(parseInt(req.params.id, 10));
@@ -2455,7 +2530,7 @@ app.get('/api/dunning/rules', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/dunning/rules', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/dunning/rules', requireAuth, requirePerm('dunning.run'), (req, res) => {
   try {
     const f = { ...req.body };
     if (!f.id && (!f.name || !f.template_key || f.trigger_days_past_due == null || f.sequence == null)) {
@@ -2481,7 +2556,7 @@ app.post('/api/dunning/rules', requireAuth, requireRole('admin', 'manager'), (re
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/dunning/rules/:id', requireAuth, requireRole('admin'), (req, res) => {
+app.delete('/api/dunning/rules/:id', requireAuth, requirePerm('dunning.admin'), (req, res) => {
   try {
     const rule = db.listDunningRules().find(r => r.id === parseInt(req.params.id, 10));
     if (!rule) return res.status(404).json({ error: 'Not found' });
@@ -2588,7 +2663,7 @@ app.get('/api/overview', requireAuth, async (req, res) => {
 });
 
 // ─── API: Invite a user (pre-provision + invitation email) ───────────────────
-app.post('/api/admin/invite', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/admin/invite', requireAuth, requirePerm('invites.send'), async (req, res) => {
   try {
     const { email, name, role, job_title } = req.body || {};
     const norm = String(email || '').trim().toLowerCase();
@@ -2862,7 +2937,7 @@ function buildVelocityCsv(rows) {
   return lines.join('\n') + '\n';
 }
 
-app.get('/api/velocity/pending', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.get('/api/velocity/pending', requireAuth, requirePerm('finance.view'), (req, res) => {
   try {
     const prefix = String(req.query.prefix || 'ECI').toUpperCase();
     const from = parseInt(req.query.from, 10), to = parseInt(req.query.to, 10);
@@ -2875,7 +2950,7 @@ app.get('/api/velocity/pending', requireAuth, requireRole('admin', 'manager'), (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/velocity/transmit', requireAuth, requirePerm('finance.transmit'), async (req, res) => {
   try {
     if (process.env.VELOCITY_TRANSMIT_ARMED !== '1') {
       return res.status(400).json({ error: 'VELOCITY_TRANSMIT_ARMED is not set — InterNex transmission is disabled.' });
@@ -2930,7 +3005,7 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
 
 // ─── One-button reconciliation: our open AR vs Velocity's open invoices ──────
 // ─── On-demand Velocity refresh (scrape now → sync → reconcile) ──────────────
-app.post('/api/velocity/refresh', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/velocity/refresh', requireAuth, requirePerm('finance.transmit'), async (req, res) => {
   try {
     const lock = await velocityBridge.lockState();
     if (lock.locked) return res.status(409).json({ error: `Velocity browser is busy (${lock.tool} since ${lock.since}). Try again shortly.` });
@@ -2944,7 +3019,7 @@ app.post('/api/velocity/refresh', requireAuth, requireRole('admin', 'manager'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/refresh-status', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/velocity/refresh-status', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     const before = parseInt(db.getCommState('velocity_refresh_before') || '0', 10);
     const startedAt = db.getCommState('velocity_refresh_started');
@@ -2964,7 +3039,7 @@ app.get('/api/velocity/refresh-status', requireAuth, requireRole('admin', 'manag
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/reconcile', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/velocity/reconcile', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
     if (!invoices.length) invoices = await sage.getInvoices();
@@ -3075,7 +3150,7 @@ async function velocityPaymentWorklist(user) {
   return rows;
 }
 
-app.get('/api/velocity/payment-worklist', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/velocity/payment-worklist', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     const rows = await velocityPaymentWorklist(req.session.user);
     res.json({
@@ -3087,7 +3162,7 @@ app.get('/api/velocity/payment-worklist', requireAuth, requireRole('admin', 'man
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/payment-worklist.csv', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/velocity/payment-worklist.csv', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     const rows = await velocityPaymentWorklist(req.session.user);
     const today = new Date();
@@ -3106,7 +3181,7 @@ app.get('/api/velocity/payment-worklist.csv', requireAuth, requireRole('admin', 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/status', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.get('/api/velocity/status', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     let uploader = null;
     try { uploader = await velocityBridge.status(); } catch (e) { uploader = 'iMac unreachable: ' + e.message; }
@@ -3150,7 +3225,7 @@ app.get('/api/velocity/status', requireAuth, requireRole('admin', 'manager'), as
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/velocity/sync-feed', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/velocity/sync-feed', requireAuth, requirePerm('finance.transmit'), async (req, res) => {
   try {
     const r = await velocityBridge.syncFeed(__dirname);
     _vNameMap = null;   // re-read the freshly synced map next use
@@ -3170,7 +3245,7 @@ app.get('/api/collection-status', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/invoice/:recordNo/collection-status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/invoice/:recordNo/collection-status', requireAuth, requirePerm('status.set'), (req, res) => {
   try {
     const { status, note } = req.body || {};
     if (!COLLECTION_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -3190,7 +3265,7 @@ app.get('/api/customers/:customerId/attachments', requireAuth, (req, res) => {
 });
 
 // JSON body {filename, contentType, dataBase64} — avoids a multipart dependency.
-app.post('/api/customers/:customerId/attachments', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/customers/:customerId/attachments', requireAuth, requirePerm('attachments.manage'), (req, res) => {
   try {
     const { filename, contentType, dataBase64 } = req.body || {};
     if (!filename || !dataBase64) return res.status(400).json({ error: 'filename and dataBase64 required' });
@@ -3220,7 +3295,7 @@ app.get('/api/attachments/:id/download', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/attachments/:id', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.delete('/api/attachments/:id', requireAuth, requirePerm('attachments.manage'), (req, res) => {
   try {
     const a = db.getCustomerAttachment(parseInt(req.params.id, 10));
     if (!a) return res.status(404).json({ error: 'Not found' });
@@ -3233,7 +3308,7 @@ app.delete('/api/attachments/:id', requireAuth, requireRole('admin', 'manager', 
 // ─── API: Scheduled statement delivery (statements.js) ───────────────────────
 const statements = require('./statements');
 
-app.get('/api/statements/schedules', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.get('/api/statements/schedules', requireAuth, requirePerm('statements.manage'), (req, res) => {
   try {
     res.json({
       armed: statements.armed(),
@@ -3242,7 +3317,7 @@ app.get('/api/statements/schedules', requireAuth, requireRole('admin', 'manager'
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/statements/schedules/:customerId', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/statements/schedules/:customerId', requireAuth, requirePerm('statements.manage'), (req, res) => {
   try {
     const { enabled, day_of_month, contact_ids, min_balance } = req.body || {};
     const f = { enabled: enabled === undefined ? 1 : (enabled ? 1 : 0), day_of_month, min_balance };
@@ -3254,13 +3329,13 @@ app.post('/api/statements/schedules/:customerId', requireAuth, requireRole('admi
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/statements/run', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/statements/run', requireAuth, requirePerm('statements.run'), async (req, res) => {
   try {
     res.json(await statements.runStatementSchedules({ triggeredBy: commsRealActor(req), force: !!req.body.force }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/dunning/generate', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/dunning/generate', requireAuth, requirePerm('dunning.run'), (req, res) => {
   try { res.json(dunning.generate({ triggeredBy: req.session.user.email })); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -3275,7 +3350,7 @@ app.get('/api/dunning/runs/:id/actions', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/dunning/actions/:id/skip', requireAuth, requireRole('admin', 'manager'), (req, res) => {
+app.post('/api/dunning/actions/:id/skip', requireAuth, requirePerm('dunning.run'), (req, res) => {
   try {
     db.updateDunningAction(parseInt(req.params.id, 10), { status: 'skipped', skip_reason: 'manual' });
     db.auditLog(req.session.user.email, 'dunning_skip', null, `action=${req.params.id}`);
@@ -3283,14 +3358,14 @@ app.post('/api/dunning/actions/:id/skip', requireAuth, requireRole('admin', 'man
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/dunning/runs/:id/execute', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
+app.post('/api/dunning/runs/:id/execute', requireAuth, requirePerm('dunning.run'), async (req, res) => {
   try {
     const result = await dunning.execute(parseInt(req.params.id, 10), { actorEmail: commsRealActor(req) });
     res.json(result);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/comms/conversations/:id/status', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+app.post('/api/comms/conversations/:id/status', requireAuth, requirePerm('triage.manage'), (req, res) => {
   try {
     const { status, assignEmail } = req.body;
     const conv = db.getConversation(parseInt(req.params.id, 10));
@@ -3698,7 +3773,7 @@ app.get('/api/users', requireAuth, (req, res) => {
 
 // ─── Admin: User Management ──────────────────────────────────────────────────
 
-app.get('/api/admin/users', requireAuth, requireRole('admin'), (req, res) => {
+app.get('/api/admin/users', requireAuth, requirePerm('users.admin'), (req, res) => {
   try {
     const users = db.listUsers(); // includes photo_data_url, job_title from schema
     res.json(users);
@@ -3707,7 +3782,7 @@ app.get('/api/admin/users', requireAuth, requireRole('admin'), (req, res) => {
   }
 });
 
-app.post('/api/admin/users', requireAuth, requireRole('admin'), (req, res) => {
+app.post('/api/admin/users', requireAuth, requirePerm('users.admin'), (req, res) => {
   try {
     const { email, name, role, job_title } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Invalid email' });
@@ -3724,7 +3799,7 @@ app.post('/api/admin/users', requireAuth, requireRole('admin'), (req, res) => {
   }
 });
 
-app.patch('/api/admin/users/:email', requireAuth, requireRole('admin'), (req, res) => {
+app.patch('/api/admin/users/:email', requireAuth, requirePerm('users.admin'), (req, res) => {
   try {
     const admin = req.session.user;
     const { role, location_filter, customer_filter, name } = req.body;
@@ -3752,7 +3827,7 @@ app.get('/api/regions', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/regions', requireAuth, requireRole('admin'), (req, res) => {
+app.post('/api/regions', requireAuth, requirePerm('regions.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const { regionCode, regionName, locationIds } = req.body || {};
@@ -3764,7 +3839,7 @@ app.post('/api/regions', requireAuth, requireRole('admin'), (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/regions/:regionCode', requireAuth, requireRole('admin'), (req, res) => {
+app.patch('/api/regions/:regionCode', requireAuth, requirePerm('regions.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const existing = db.getRegion(req.params.regionCode);
@@ -3781,7 +3856,7 @@ app.patch('/api/regions/:regionCode', requireAuth, requireRole('admin'), (req, r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/regions/:regionCode', requireAuth, requireRole('admin'), (req, res) => {
+app.delete('/api/regions/:regionCode', requireAuth, requirePerm('regions.admin'), (req, res) => {
   try {
     const user = req.session.user;
     db.deleteRegion(req.params.regionCode);

@@ -594,6 +594,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <div class="nav-group-menu">
         <div class="nav-drop-item" data-view="admin" onclick="navGo('admin')">👤 Users</div>
         <div class="nav-drop-item" onclick="commsInviteUser()">✉️ Invite user</div>
+        <div class="nav-drop-item" data-view="permissions" onclick="navGo('permissions')">🔑 Permissions</div>
       </div>
     </div>
   </div>
@@ -770,6 +771,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-velocity" class="view">
   <div id="velocity-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-permissions" class="view">
+  <div id="permissions-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-training" class="view">
@@ -2372,7 +2377,7 @@ const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections',
   'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
-  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance',
+  'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance', 'permissions': 'admin',
   'admin': 'admin',
 };
 
@@ -2415,6 +2420,7 @@ function switchView(name, el) {
   if (name === 'search' && typeof commsLoadSearch === 'function') { commsLoadSearch(); }
   if (name === 'training' && typeof commsLoadTraining === 'function') { commsLoadTraining(); }
   if (name === 'velocity' && typeof commsLoadVelocity === 'function') { commsLoadVelocity(); }
+  if (name === 'permissions' && typeof commsLoadPermissions === 'function') { commsLoadPermissions(); }
   if (name === 'stop-service-view' && typeof commsLoadStopService === 'function') { commsLoadStopService(); }
   if (name === 'service-centers' && typeof commsLoadServiceCenters === 'function') { commsLoadServiceCenters(); }
 }
@@ -5711,6 +5717,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260813l"></script>
+<script src="/comms.js?v=20260813m"></script>
 </body>
 </html>

@@ -14,12 +14,19 @@ function commsUser() {
   try { return (typeof currentUser !== 'undefined' && currentUser) || null; } catch (e) { return null; }
 }
 
-function commsCanEdit() {
-  return commsUser() && ['admin', 'manager', 'ar_specialist'].includes(commsUser().role);
+let _myCaps = null;
+async function commsFetchCaps() {
+  try { _myCaps = (await apiFetch('/api/comms/config')).caps || null; } catch (e) { /* keep role fallback */ }
 }
-function commsIsManager() {
-  return commsUser() && ['admin', 'manager'].includes(commsUser().role);
+function commsHasCap(cap) {
+  if (_myCaps) return _myCaps.includes(cap);
+  const u = commsUser();   // fallback to role tiers until caps load
+  if (!u) return false;
+  return u.role === 'admin' || (u.role === 'manager' && cap !== 'users.admin' && cap !== 'templates.admin') ||
+         (u.role === 'ar_specialist' && ['notes.write', 'status.set', 'contacts.manage', 'attachments.manage', 'email.send', 'triage.manage', 'statements.manage', 'po.edit'].includes(cap));
 }
+function commsCanEdit() { return commsHasCap('email.send') || commsHasCap('notes.write'); }
+function commsIsManager() { return commsHasCap('dunning.run') || commsHasCap('finance.transmit'); }
 
 // ─── Modal shell (injected once) ─────────────────────────────────────────────
 (function commsInjectModal() {
@@ -902,6 +909,63 @@ function commsLoadTraining() {
   `;
 }
 
+// ─── Permissions matrix (Admin → Permissions) ────────────────────────────────
+async function commsLoadPermissions() {
+  const root = document.getElementById('permissions-root');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const d = await apiFetch('/api/admin/permissions');
+    window._permData = d;
+    root.innerHTML = `
+      <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">Permissions</h1>
+      <div style="font-size:12.5px;color:#6b6458;margin-bottom:14px">Each cell is a capability. <span style="color:#3f7238;font-weight:700">●</span> from role default · <span style="color:#1d4ed8;font-weight:700">●</span> granted individually · <span style="color:#b32020;font-weight:700">○</span> revoked individually · gray = off. Click a cell to toggle an individual override; overrides survive role changes.</div>
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow-x:auto">
+        <table style="border-collapse:collapse;font-size:11px;min-width:100%">
+          <thead><tr>
+            <th style="padding:8px 10px;text-align:left;position:sticky;left:0;background:#faf8f3">User</th>
+            ${d.capabilities.map(cap => `<th style="padding:8px 4px;writing-mode:vertical-rl;transform:rotate(180deg);text-align:left;font-weight:600;color:#6b6458;white-space:nowrap">${escHtml(cap)}</th>`).join('')}
+          </tr></thead>
+          <tbody>${d.users.map(u => {
+            const defaults = d.roleDefaults[u.role] === null ? d.capabilities : (d.roleDefaults[u.role] || []);
+            return `<tr style="border-top:1px solid #f1ede3">
+              <td style="padding:8px 10px;position:sticky;left:0;background:#fff;white-space:nowrap"><b>${escHtml(u.name || u.email.split('@')[0])}</b> <span style="color:#a8a093;font-size:10px">${escHtml(u.role)}</span></td>
+              ${d.capabilities.map(cap => {
+                const byDefault = defaults.includes(cap);
+                const granted = (u.overrides.grant || []).includes(cap);
+                const revoked = (u.overrides.revoke || []).includes(cap);
+                const on = u.effective.includes(cap);
+                let dot, color;
+                if (revoked) { dot = '○'; color = '#b32020'; }
+                else if (granted) { dot = '●'; color = '#1d4ed8'; }
+                else if (byDefault) { dot = '●'; color = '#3f7238'; }
+                else { dot = '·'; color = '#d5cfc2'; }
+                return `<td style="padding:6px 4px;text-align:center;cursor:pointer;font-size:15px;color:${color}" title="${escHtml(u.email)} · ${escHtml(cap)} · ${on ? 'ON' : 'off'}${revoked ? ' (revoked)' : granted ? ' (granted)' : byDefault ? ' (role default)' : ''}"
+                  onclick="commsTogglePerm('${escHtml(u.email)}', '${escHtml(cap)}')">${dot}</td>`;
+              }).join('')}
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsTogglePerm(email, cap) {
+  const d = window._permData;
+  const u = d.users.find(x => x.email === email);
+  const defaults = d.roleDefaults[u.role] === null ? d.capabilities : (d.roleDefaults[u.role] || []);
+  const byDefault = defaults.includes(cap);
+  let grant = [...(u.overrides.grant || [])], revoke = [...(u.overrides.revoke || [])];
+  if (revoke.includes(cap)) revoke = revoke.filter(x => x !== cap);          // revoked -> back to default
+  else if (grant.includes(cap)) grant = grant.filter(x => x !== cap);        // granted -> back to default
+  else if (byDefault) revoke.push(cap);                                      // default-on -> revoke
+  else grant.push(cap);                                                      // default-off -> grant
+  try {
+    await apiFetch(`/api/admin/users/${encodeURIComponent(email)}/permissions`, { method: 'POST', body: JSON.stringify({ grant, revoke }) });
+    commsLoadPermissions();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
 // ─── Invite user (Admin) ─────────────────────────────────────────────────────
 async function commsInviteUser() {
   const email = prompt('Invite who? (@eastcoastfacilities.com email)');
@@ -1638,11 +1702,12 @@ async function commsUpdateFooter() {
     } catch (e) { /* quiet */ }
   };
   const roleGateNav = () => {
-    const u = commsUser();
-    if (!u) return;
+    if (!commsUser()) return;
     const fin = document.querySelector('.nav-group[data-group="finance"]');
-    if (fin) fin.style.display = ['admin', 'manager'].includes(u.role) ? '' : 'none';
+    if (fin) fin.style.display = commsHasCap('finance.view') ? '' : 'none';
   };
+  setTimeout(commsFetchCaps, 1500);
+  setInterval(commsFetchCaps, 10 * 60 * 1000);
   const tickAll = () => { tick(); commsUpdateFooter(); roleGateNav(); };
   setTimeout(tickAll, 5000);
   setInterval(tickAll, 2 * 60 * 1000);
