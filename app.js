@@ -2777,28 +2777,53 @@ function reconcileVelocity() {
     velocityFeedRow('__warm__');   // ensure feed cache is loaded/refreshed
     const feedIds = Object.keys(_vFeed.map);
     const confirmed = db.confirmVelocityTransmits(feedIds);
-    let feedMax = 0;
-    for (const id of feedIds) { const n = eciNum(id); if (n && n > feedMax) feedMax = n; }
-    const prev = parseInt(db.getCommState('velocity_last_number') || '0', 10) || 0;
-    let advancedTo = null;
-    if (feedMax > prev) { db.setCommState('velocity_last_number', String(feedMax)); advancedTo = feedMax; }
-    return { confirmed, advancedTo, feedMax, prev };
+    const maxima = {};
+    for (const id of feedIds) {
+      const p = parseInv(id);
+      if (p && (!maxima[p.prefix] || p.num > maxima[p.prefix])) maxima[p.prefix] = p.num;
+    }
+    const advanced = {};
+    for (const [pfx, mx] of Object.entries(maxima)) {
+      const key = 'velocity_last_' + pfx;
+      const prev = parseInt(db.getCommState(key) || '0', 10) || 0;
+      if (mx > prev) { db.setCommState(key, String(mx)); advanced[pfx] = mx; }
+    }
+    return { confirmed, advanced, maxima };
   } catch (e) { return { confirmed: 0, error: e.message }; }
 }
 
+function parseInv(invoiceId) {
+  const m = /^([A-Z]+)-(\d+)$/i.exec(String(invoiceId || '').trim());
+  return m ? { prefix: m[1].toUpperCase(), num: parseInt(m[2], 10) } : null;
+}
 function eciNum(invoiceId) {
-  const m = /^ECI-(\d+)$/i.exec(String(invoiceId || '').trim());
-  return m ? parseInt(m[1], 10) : null;
+  const p = parseInv(invoiceId);
+  return p && p.prefix === 'ECI' ? p.num : null;
+}
+// Per-prefix confirmed high-water marks (velocity_last_<PREFIX> in comm_state;
+// legacy velocity_last_number migrates to ECI on first read).
+function velocityMarks() {
+  const marks = {};
+  for (const p of ['ECI', 'AST', 'ASTM', 'S']) {
+    const v = parseInt(db.getCommState('velocity_last_' + p) || '0', 10) || 0;
+    if (v) marks[p] = v;
+  }
+  if (!marks.ECI) {
+    const legacy = parseInt(db.getCommState('velocity_last_number') || '0', 10) || 0;
+    if (legacy) { db.setCommState('velocity_last_ECI', String(legacy)); marks.ECI = legacy; }
+  }
+  return marks;
 }
 
-function velocityRows(from, to, user) {
+function velocityRows(prefix, from, to, user) {
   let invoices = applyUserFilter(sage.getCachedInvoices(), user);
   const payeeMod = require('./payee');
   const vtMap = db.getVelocityTransmitMap();
   const rows = [];
   for (const inv of invoices) {
-    const num = eciNum(inv.invoiceId);
-    if (num == null || num < from || num > to) continue;
+    const p = parseInv(inv.invoiceId);
+    if (!p || p.prefix !== prefix || p.num < from || p.num > to) continue;
+    const num = p.num;
     let line = 'LOC1';
     if (AMAZON_CUSTS.has(inv.customerId)) {
       let inPayee = false;
@@ -2838,11 +2863,12 @@ function buildVelocityCsv(rows) {
 
 app.get('/api/velocity/pending', requireAuth, (req, res) => {
   try {
+    const prefix = String(req.query.prefix || 'ECI').toUpperCase();
     const from = parseInt(req.query.from, 10), to = parseInt(req.query.to, 10);
     if (!from || !to || to < from || to - from > 2000) return res.status(400).json({ error: 'Give a sane from/to invoice number range' });
     res.json({
-      rows: velocityRows(from, to, req.session.user),
-      lastNumber: parseInt(db.getCommState('velocity_last_number') || '0', 10) || null,
+      rows: velocityRows(prefix, from, to, req.session.user),
+      marks: velocityMarks(),
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2853,7 +2879,8 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     if (process.env.VELOCITY_TRANSMIT_ARMED !== '1') {
       return res.status(400).json({ error: 'VELOCITY_TRANSMIT_ARMED is not set — InterNex transmission is disabled.' });
     }
-    const { from, to, includeRetransmit, line, confirmLoc2 } = req.body || {};
+    const { from, to, includeRetransmit, line, confirmLoc2, prefix: rawPrefix } = req.body || {};
+    const prefix = String(rawPrefix || 'ECI').toUpperCase();
     const f = parseInt(from, 10), t = parseInt(to, 10);
     if (!f || !t || t < f) return res.status(400).json({ error: 'from/to required' });
     const targetLine = line === 'LOC2' ? 'LOC2' : 'LOC1';
@@ -2862,16 +2889,16 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     if (targetLine === 'LOC2' && confirmLoc2 !== true) {
       return res.status(400).json({ error: 'LOC2 transmission requires the express confirmation' });
     }
-    let rows = velocityRows(f, t, req.session.user).filter(r => r.line === targetLine);
+    let rows = velocityRows(prefix, f, t, req.session.user).filter(r => r.line === targetLine);
     const skippedRetrans = rows.filter(r => r.transmitted && !includeRetransmit).length;
     if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);
     if (!rows.length) return res.status(400).json({ error: `Nothing to transmit${skippedRetrans ? ` (${skippedRetrans} already transmitted — enable retransmit to resend)` : ''}` });
     const csv = buildVelocityCsv(rows);
-    const tmp = path.join('/tmp', `velocity-batch-${String(f).padStart(6, '0')}-${String(t).padStart(6, '0')}.csv`);
+    const tmp = path.join('/tmp', `velocity-batch-${prefix}-${String(f).padStart(6, '0')}-${String(t).padStart(6, '0')}.csv`);
     fs.writeFileSync(tmp, csv);
     const user = commsRealActor(req);
     const result = await velocityBridge.transmitFile(tmp, { dryRun: false, account: targetLine });
-    const batch = `${f}-${t}`;
+    const batch = `${prefix} ${f}-${t}`;
     for (const r of rows) db.insertVelocityTransmit(r.recordNo, r.invoiceId, r.line, batch, result.ok ? 'OK' : 'FAIL', user);
     // High-water mark advances only on CONFIRMED acceptance (feed reconcile),
     // never at transmit time — and never moves for retransmits/backfills.
@@ -2889,7 +2916,7 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
     try { feedAge = Math.round((Date.now() - fs.statSync(path.join(__dirname, 'velocity-feed.spark.json')).mtimeMs) / 3600000); } catch (e) {}
     res.json({
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
-      lastNumber: parseInt(db.getCommState('velocity_last_number') || '0', 10) || null,
+      marks: velocityMarks(),
       recent: db.listVelocityTransmits(60),
       pendingConfirmation: db.countUnconfirmedVelocity(),
       uploader, feedAgeHours: feedAge,
@@ -3641,7 +3668,7 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     .then(r => {
       if (r.feed) console.log('[velocity] feed synced');
       const rec = reconcileVelocity();
-      if (rec.confirmed || rec.advancedTo) console.log(`[velocity] reconcile: ${rec.confirmed} confirmed${rec.advancedTo ? ', high-water -> ECI-0' + rec.advancedTo : ''}`);
+      if (rec.confirmed || Object.keys(rec.advanced || {}).length) console.log(`[velocity] reconcile: ${rec.confirmed} confirmed`, rec.advanced || {});
     })
     .catch(e => console.warn(`[velocity] feed sync failed: ${e.message}`));
   setTimeout(doVelocitySync, 5 * 60 * 1000);

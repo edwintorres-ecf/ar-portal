@@ -1018,20 +1018,26 @@ async function commsLoadVelocity() {
   root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
   try {
     const s = await apiFetch('/api/velocity/status');
-    const nextFrom = s.lastNumber ? s.lastNumber + 1 : '';
+    const marks = s.marks || {};
+    const nextFrom = marks.ECI ? String(marks.ECI + 1).padStart(6, '0') : '';
+    window._velMarks = marks;
+    const marksLabel = Object.entries(marks).map(([p, n]) => `${p}-${String(n).padStart(6, '0')}`).join(' · ') || 'not tracked yet';
     root.innerHTML = `
       <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">InterNex Capital (Velocity)</h1>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <span style="background:${s.armed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b32020'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${s.armed ? '🟢 ARMED — live uploads enabled' : '🔒 UNARMED — preview only'}</span>
-        <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last confirmed on Velocity: <strong>${s.lastNumber ? 'ECI-' + String(s.lastNumber).padStart(6, '0') : 'not tracked yet'}</strong>${s.pendingConfirmation ? ` · <span style=\"color:#8a6d1a\">${s.pendingConfirmation} awaiting confirmation</span>` : ''}</span>
+        <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last confirmed on Velocity: <strong>${marksLabel}</strong>${s.pendingConfirmation ? ` · <span style=\"color:#8a6d1a\">${s.pendingConfirmation} awaiting confirmation</span>` : ''}</span>
         ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
         ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
       </div>
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <label style="font-size:12px;color:#6b6458">From ECI- <input id="vel-from" type="number" value="${nextFrom}" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
-          <label style="font-size:12px;color:#6b6458">To ECI- <input id="vel-to" type="number" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px"></label>
+          <label style="font-size:12px;color:#6b6458">Series <select id="vel-prefix" onchange="(function(){const m=(window._velMarks||{})[document.getElementById('vel-prefix').value];document.getElementById('vel-from').value=m?String(m+1).padStart(6,'0'):'';document.getElementById('vel-to').value='';})()" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
+            ${['ECI', 'AST', 'ASTM', 'S'].map(p => `<option value="${p}">${p}-</option>`).join('')}
+          </select></label>
+          <label style="font-size:12px;color:#6b6458">From <input id="vel-from" type="text" inputmode="numeric" value="${nextFrom}" placeholder="025424" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
+          <label style="font-size:12px;color:#6b6458">To <input id="vel-to" type="text" inputmode="numeric" placeholder="same for single" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="vel-retrans"> include already-transmitted (retransmit)</label>
           <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsVelocityPreview()">Preview</button>
         </div>
@@ -1052,12 +1058,13 @@ async function commsLoadVelocity() {
 }
 
 async function commsVelocityPreview() {
-  const from = document.getElementById('vel-from').value, to = document.getElementById('vel-to').value || from;
+  const prefix = document.getElementById('vel-prefix').value;
+  const from = parseInt(document.getElementById('vel-from').value, 10), to = parseInt(document.getElementById('vel-to').value, 10) || from;
   const out = document.getElementById('vel-preview');
-  if (!from) { alert('Enter a starting ECI number.'); return; }
+  if (!from) { alert('Enter a starting invoice number.'); return; }
   out.innerHTML = '<div style="padding:14px;color:#6b6458">Loading…</div>';
   try {
-    const p = await apiFetch(`/api/velocity/pending?from=${from}&to=${to}`);
+    const p = await apiFetch(`/api/velocity/pending?prefix=${prefix}&from=${from}&to=${to}`);
     const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
     const loc1 = p.rows.filter(r => r.line === 'LOC1'), loc2 = p.rows.filter(r => r.line === 'LOC2');
     const total = loc1.reduce((s, r) => s + r.amount, 0);
@@ -1066,8 +1073,8 @@ async function commsVelocityPreview() {
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#faf8f3;font-size:12.5px;flex-wrap:wrap;gap:8px">
           <span><strong>${loc1.length}</strong> LOC1 invoice(s) · ${fmt$(total)}${loc2.length ? ` · <span style="color:#b0472a">${loc2.length} LOC2 (Amazon, held — see below)</span>` : ''}</span>
           <span style="display:flex;gap:6px;flex-wrap:wrap">
-          ${commsIsManager() && loc1.length ? `<button class="btn-sm" style="background:${p.armed ? '#1a1814' : '#e2e8f0'};color:${p.armed ? '#fff' : '#94a3b8'};border:none;padding:6px 16px;border-radius:8px;cursor:${p.armed ? 'pointer' : 'not-allowed'};font-weight:600" ${p.armed ? `onclick="commsVelocityTransmit(${from}, ${to}, this, 'LOC1')"` : 'title="Set VELOCITY_TRANSMIT_ARMED=1 to enable"'}>🚀 Transmit LOC1${p.armed ? '' : ' (unarmed)'}</button>` : ''}
-          ${commsIsManager() && loc2.length && p.armed ? `<button class="btn-sm" style="background:#fff;border:2px solid #b0472a;color:#b0472a;padding:5px 14px;border-radius:8px;cursor:pointer;font-weight:700" onclick="commsVelocityTransmit(${from}, ${to}, this, 'LOC2')">⚠ Express LOC2 (${loc2.length})</button>` : ''}
+          ${commsIsManager() && loc1.length ? `<button class="btn-sm" style="background:${p.armed ? '#1a1814' : '#e2e8f0'};color:${p.armed ? '#fff' : '#94a3b8'};border:none;padding:6px 16px;border-radius:8px;cursor:${p.armed ? 'pointer' : 'not-allowed'};font-weight:600" ${p.armed ? `onclick="commsVelocityTransmit('${prefix}', ${from}, ${to}, this, 'LOC1')"` : 'title="Set VELOCITY_TRANSMIT_ARMED=1 to enable"'}>🚀 Transmit LOC1${p.armed ? '' : ' (unarmed)'}</button>` : ''}
+          ${commsIsManager() && loc2.length && p.armed ? `<button class="btn-sm" style="background:#fff;border:2px solid #b0472a;color:#b0472a;padding:5px 14px;border-radius:8px;cursor:pointer;font-weight:700" onclick="commsVelocityTransmit('${prefix}', ${from}, ${to}, this, 'LOC2')">⚠ Express LOC2 (${loc2.length})</button>` : ''}
           </span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -1087,17 +1094,17 @@ async function commsVelocityPreview() {
   } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
 }
 
-async function commsVelocityTransmit(from, to, btn, line) {
+async function commsVelocityTransmit(prefix, from, to, btn, line) {
   const retrans = document.getElementById('vel-retrans').checked;
   let confirmLoc2 = false;
   if (line === 'LOC2') {
     const typed = prompt('EXPRESS LOC2 TRANSMIT — these Amazon invoices upload to Line of Credit 2 (facility 144).\n\nType LOC2 to confirm:');
     if (typed !== 'LOC2') { alert('Cancelled — LOC2 requires typing LOC2 exactly.'); return; }
     confirmLoc2 = true;
-  } else if (!confirm(`Transmit ECI-${from}${to !== from ? ' through ECI-' + to : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
+  } else if (!confirm(`Transmit ${prefix}-${String(from).padStart(6,'0')}${to !== from ? ' through ' + prefix + '-' + String(to).padStart(6,'0') : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
   btn.disabled = true; btn.textContent = '🚀 Transmitting…';
   try {
-    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ from, to, includeRetransmit: retrans, line, confirmLoc2 }) });
+    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ prefix, from, to, includeRetransmit: retrans, line, confirmLoc2 }) });
     alert(`${r.ok ? 'Success' : 'FAILED'} — batch ${r.batch}: ${r.count} invoice(s)${r.skippedRetrans ? `, ${r.skippedRetrans} skipped (already sent)` : ''}\n\nUploader output tail:\n${(r.output || '').slice(-400)}`);
     commsLoadVelocity();
   } catch (e) { alert('Transmit failed: ' + e.message); btn.disabled = false; btn.textContent = '🚀 Transmit to InterNex'; }
