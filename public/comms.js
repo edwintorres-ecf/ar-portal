@@ -488,6 +488,7 @@ let _custPageId = null;
 
 async function commsOpenCustomerPage(customerId) {
   _custPageId = customerId;
+  try { history.replaceState(null, '', '#customer-page/' + encodeURIComponent(customerId)); } catch (e) {}
   if (typeof switchView === 'function') switchView('customer-page');
   commsLoadCustomerPage();
 }
@@ -1476,11 +1477,38 @@ async function commsUpdateFooter() {
   } catch (e) { /* quiet */ }
 }
 
-// First paint: the overview is the landing view; load it once the shell is up.
-setTimeout(() => {
-  const v = document.getElementById('view-overview');
-  if (v && v.classList.contains('active')) commsLoadOverview();
-}, 900);
+// ─── URL routing: the address bar tracks the current view so refresh and
+// back/forward keep your place (Edwin 2026-08-13: refresh was resetting to
+// the dashboard). Hash format: #view or #customer-page/C-00576.
+(function commsRouting() {
+  const orig = typeof switchView === 'function' ? switchView : null;
+  if (orig) {
+    switchView = function (name, el) {
+      orig(name, el);
+      try {
+        if (name !== 'customer-page') history.replaceState(null, '', '#' + name);
+      } catch (e) {}
+    };
+  }
+  const restore = () => {
+    const h = (location.hash || '').slice(1);
+    if (!h) { commsLoadOverview(); return; }
+    const [view, param] = h.split('/');
+    if (view === 'customer-page' && param) { commsOpenCustomerPage(decodeURIComponent(param)); return; }
+    if (document.getElementById('view-' + view)) { navGo(view); return; }
+    commsLoadOverview();
+  };
+  setTimeout(restore, 900);
+  window.addEventListener('hashchange', () => {
+    const h = (location.hash || '').slice(1);
+    const [view, param] = h.split('/');
+    const active = document.querySelector('.view.active');
+    if (view && active && active.id !== 'view-' + view) {
+      if (view === 'customer-page' && param) commsOpenCustomerPage(decodeURIComponent(param));
+      else if (document.getElementById('view-' + view)) navGo(view);
+    }
+  });
+})();
 
 // Badge refresher: the Comms nav badge is the "you have action items" signal
 // on every screen — replies awaiting response + triage, with a breakdown in
