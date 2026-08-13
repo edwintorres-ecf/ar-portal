@@ -2241,9 +2241,9 @@ app.get('/api/customers/:customerId/contacts', requireAuth, (req, res) => {
 app.post('/api/customers/:customerId/contacts', requireAuth, requirePerm('contacts.manage'), (req, res) => {
   try {
     const user = req.session.user;
-    const { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes } = req.body;
+    const { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes, contact_type } = req.body;
     const contact = db.addCustomerContact(req.params.customerId,
-      { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes }, user.email);
+      { name, email, phone, title, is_primary, consent_email, dunning_enabled, notes, contact_type }, user.email);
     db.auditLog(user.email, 'comm_contact_add', req.params.customerId, `${contact.email}${name ? ' (' + name + ')' : ''}`);
     res.json(contact);
   } catch (e) {

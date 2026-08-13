@@ -270,6 +270,14 @@ function initSchema() {
   // set once and preserved even when ceiling_amount is later revised
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN stated_amount REAL DEFAULT NULL"); } catch(e) { /* already exists */ }
 
+  // Contact purpose (Edwin 2026-08-13): Sage-synced addresses are invoice-
+  // DELIVERY (AP inboxes); collections contacts are captured separately.
+  try {
+    db.exec("ALTER TABLE customer_contacts ADD COLUMN contact_type TEXT DEFAULT 'billing'");
+    // one-time: existing manual rows were added by humans doing collections
+    db.exec("UPDATE customer_contacts SET contact_type='collections' WHERE source='manual'");
+  } catch(e) {}
+
   // Per-user granular permission overrides: JSON {grant:[caps], revoke:[caps]}
   try { db.exec("ALTER TABLE user_roles ADD COLUMN permissions TEXT DEFAULT NULL"); } catch(e) {}
   // Phone for the comms signature renderer (pulled from Graph /me at login)
@@ -905,11 +913,12 @@ function addCustomerContact(customerId, fields, createdBy) {
   const email = _normCEmail(fields.email);
   if (!_validEmail(email)) throw new Error('invalid email');
   d.prepare(`
-    INSERT INTO customer_contacts (customer_id, name, email, phone, title, source, is_primary, consent_email, dunning_enabled, notes, created_by, updated_by)
-    VALUES (?,?,?,?,?,'manual',?,?,?,?,?,?)
+    INSERT INTO customer_contacts (customer_id, name, email, phone, title, source, is_primary, consent_email, dunning_enabled, notes, contact_type, created_by, updated_by)
+    VALUES (?,?,?,?,?,'manual',?,?,?,?,?,?,?)
   `).run(customerId, fields.name || null, email, fields.phone || null, fields.title || null,
     fields.is_primary ? 1 : 0, fields.consent_email === 0 ? 0 : 1, fields.dunning_enabled ? 1 : 0,
-    fields.notes || null, createdBy || null, createdBy || null);
+    fields.notes || null, fields.contact_type === 'billing' ? 'billing' : 'collections',
+    createdBy || null, createdBy || null);
   const row = d.prepare('SELECT * FROM customer_contacts WHERE customer_id=? AND email=?').get(customerId, email);
   if (fields.is_primary) setContactPrimary(customerId, row.id);
   return getCustomerContact(row.id);
@@ -931,6 +940,7 @@ function updateCustomerContact(id, fields, updatedBy) {
     if (!_validEmail(email)) throw new Error('invalid email');
     sets.push('email=?'); vals.push(email);
   }
+  if (fields.contact_type !== undefined)    { sets.push('contact_type=?');    vals.push(fields.contact_type === 'billing' ? 'billing' : 'collections'); }
   if (fields.consent_email !== undefined)   { sets.push('consent_email=?');   vals.push(fields.consent_email ? 1 : 0); }
   if (fields.dunning_enabled !== undefined) { sets.push('dunning_enabled=?'); vals.push(fields.dunning_enabled ? 1 : 0); }
   if (fields.is_active !== undefined)       { sets.push('is_active=?');       vals.push(fields.is_active ? 1 : 0); }

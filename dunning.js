@@ -107,8 +107,11 @@ function ruleImpact(f) {
 }
 
 function dunningContacts(customerId) {
+  // Collections contacts first — Sage-synced billing addresses are invoice
+  // delivery inboxes, not the people to chase (Edwin 2026-08-13).
   return db.listCustomerContacts(customerId)
-    .filter(c => c.dunning_enabled && c.consent_email);
+    .filter(c => c.dunning_enabled && c.consent_email)
+    .sort((a, b) => (a.contact_type === 'collections' ? 0 : 1) - (b.contact_type === 'collections' ? 0 : 1));
 }
 
 function lastDunningSentAt(customerId) {

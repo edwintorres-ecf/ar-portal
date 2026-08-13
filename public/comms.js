@@ -105,7 +105,7 @@ function commsRenderContactList(contacts) {
   list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
       <th style="padding:6px 8px"></th><th style="padding:6px 8px">Name</th><th style="padding:6px 8px">Email</th>
-      <th style="padding:6px 8px">Phone</th><th style="padding:6px 8px">Source</th>
+      <th style="padding:6px 8px">Phone</th><th style="padding:6px 8px">Type</th><th style="padding:6px 8px">Source</th>
       <th style="padding:6px 8px" title="May be emailed at all">Email OK</th>
       <th style="padding:6px 8px" title="Approved for automated dunning">Dunning</th>
       <th style="padding:6px 8px"></th>
@@ -117,6 +117,9 @@ function commsRenderContactList(contacts) {
         <td style="padding:6px 8px">${escHtml(c.name || '—')}${c.title ? `<div style="font-size:11px;color:var(--gray-500)">${escHtml(c.title)}</div>` : ''}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:12px">${escHtml(c.email)}</td>
         <td style="padding:6px 8px">${escHtml(c.phone || '—')}</td>
+        <td style="padding:6px 8px">${canEdit
+          ? `<span style="cursor:pointer;background:${c.contact_type === 'collections' ? '#ddefd9;color:#3f7238' : '#fdf4d5;color:#8a6d1a'};padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700" title="Click to switch billing/collections" onclick="commsToggleContactType(${c.id}, '${c.contact_type === 'collections' ? 'billing' : 'collections'}')">${c.contact_type === 'collections' ? '📞 Collections' : '📨 Billing'}</span>`
+          : `<span style="background:${c.contact_type === 'collections' ? '#ddefd9;color:#3f7238' : '#fdf4d5;color:#8a6d1a'};padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700">${c.contact_type === 'collections' ? '📞 Collections' : '📨 Billing'}</span>`}</td>
         <td style="padding:6px 8px"><span style="background:${c.source === 'intacct' ? '#e0f2fe' : '#f3e8ff'};color:${c.source === 'intacct' ? '#0c4a6e' : '#6b21a8'};padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600">${c.source === 'intacct' ? 'Intacct' : 'Manual'}</span></td>
         <td style="padding:6px 8px">${commsToggle(c.id, 'consent_email', c.consent_email, canEdit)}</td>
         <td style="padding:6px 8px">${isAmazon ? '<span style="font-size:11px;color:var(--gray-400)">n/a</span>' : commsToggle(c.id, 'dunning_enabled', c.dunning_enabled, canEdit)}</td>
@@ -142,6 +145,13 @@ async function commsToggleFlag(id, field, newVal) {
   } catch (e) { alert('Update failed: ' + e.message); }
 }
 
+async function commsToggleContactType(id, newType) {
+  try {
+    await apiFetch(`/api/contacts/${id}`, { method: 'PUT', body: JSON.stringify({ contact_type: newType }) });
+    await commsReloadContacts();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
 async function commsSetPrimary(id) {
   try {
     await apiFetch(`/api/contacts/${id}`, { method: 'PUT', body: JSON.stringify({ is_primary: 1 }) });
@@ -162,6 +172,10 @@ function commsRenderContactForm(edit) {
         <input id="cc-email" placeholder="email@company.com" value="${escHtml(v.email || '')}" style="flex:1.4;min-width:180px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px">
         <input id="cc-phone" placeholder="Phone" value="${escHtml(v.phone || '')}" style="flex:0.8;min-width:110px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px">
         <input id="cc-title" placeholder="Title" value="${escHtml(v.title || '')}" style="flex:0.8;min-width:110px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px">
+        <select id="cc-type" style="padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px">
+          <option value="collections" ${(v.contact_type || 'collections') === 'collections' ? 'selected' : ''}>📞 Collections</option>
+          <option value="billing" ${v.contact_type === 'billing' ? 'selected' : ''}>📨 Billing</option>
+        </select>
         <button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsSaveContact()">${edit ? 'Save' : '+ Add'}</button>
         ${edit ? `<button class="btn-sm" style="background:#f1f5f9;border:none;padding:6px 10px;border-radius:6px;cursor:pointer" onclick="commsRenderContactForm()">Cancel</button>` : ''}
       </div>
@@ -176,6 +190,7 @@ async function commsSaveContact() {
     email: document.getElementById('cc-email').value.trim(),
     phone: document.getElementById('cc-phone').value.trim(),
     title: document.getElementById('cc-title').value.trim(),
+    contact_type: document.getElementById('cc-type').value,
   };
   if (!body.email) { alert('Email is required'); return; }
   try {
@@ -279,7 +294,7 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
     : '';
   document.getElementById('composer-to-wrap').innerHTML = contacts.length
     ? 'To: ' + contacts.map(c => `<label style="margin-right:12px;display:inline-flex;align-items:center;gap:4px">
-        <input type="checkbox" class="composer-to" value="${escHtml(c.email)}" ${c.is_primary ? 'checked' : ''}>
+        <input type="checkbox" class="composer-to" value="${escHtml(c.email)}" ${(contacts.some(x => x.contact_type === 'collections') ? c.contact_type === 'collections' : c.is_primary) ? 'checked' : ''}>
         ${escHtml(c.name || c.email)}${c.is_primary ? ' ⭐' : ''}${c.consent_email ? '' : ' <span style="color:#b91c1c;font-size:10px">(consent off)</span>'}</label>`).join('')
       + ` <input id="composer-to-extra" placeholder="add address…" style="padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;width:180px">`
     : `To: <input id="composer-to-extra" placeholder="recipient@company.com" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;width:260px">
