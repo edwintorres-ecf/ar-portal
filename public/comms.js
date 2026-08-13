@@ -1012,6 +1012,8 @@ function commsToggleTheme() {
 
 // ─── InterNex Capital / Velocity (Finance) ───────────────────────────────────
 
+function velPad(prefix, n) { return String(n).padStart(prefix === 'S' ? 4 : 6, '0'); }
+
 async function commsLoadVelocity() {
   const root = document.getElementById('velocity-root');
   if (!root) return;
@@ -1019,9 +1021,9 @@ async function commsLoadVelocity() {
   try {
     const s = await apiFetch('/api/velocity/status');
     const marks = s.marks || {};
-    const nextFrom = marks.ECI ? String(marks.ECI + 1).padStart(6, '0') : '';
+    const nextFrom = marks.ECI ? velPad('ECI', marks.ECI + 1) : '';
     window._velMarks = marks;
-    const marksLabel = Object.entries(marks).map(([p, n]) => `${p}-${String(n).padStart(6, '0')}`).join(' · ') || 'not tracked yet';
+    const marksLabel = Object.entries(marks).map(([p, n]) => `${p}-${velPad(p, n)}`).join(' · ') || 'not tracked yet';
     root.innerHTML = `
       <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">InterNex Capital (Velocity)</h1>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
@@ -1039,7 +1041,13 @@ async function commsLoadVelocity() {
               <span style="font-size:10.5px;color:#a8a093">${f.capturedAt ? 'as of ' + escHtml(f.capturedAt.slice(0, 16).replace('T', ' ')) : ''}</span>
             </div>
             ${f.error ? `<div style="font-size:12px;color:#b32020">Harvest error: ${escHtml(f.error)}</div>`
-              : (f.pairs || []).filter(p => p.label).slice(0, 8).map(p => `
+              : f.borrowingBase ? [['Borrowing Base', f.borrowingBase], ['Principal Balance', f.principalBalance], ['Available', f.available], ['Total Unpaid Invoices', f.totalUnpaid]]
+                  .filter(x => x[1]).map(x => `
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid #f5f1e8">
+                  <span style="color:#6b6458">${x[0]}</span>
+                  <span style="font-variant-numeric:tabular-nums;font-weight:700${x[0] === 'Available' ? ';color:#3f7238' : x[0] === 'Principal Balance' ? ';color:#b32020' : ''}">${escHtml(x[1])}</span>
+                </div>`).join('')
+              : (f.rawPairs || []).map(p => `
                 <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid #f5f1e8">
                   <span style="color:#6b6458">${escHtml(p.label)}</span>
                   <span style="font-variant-numeric:tabular-nums;font-weight:700">${escHtml(p.value)}</span>
@@ -1049,7 +1057,7 @@ async function commsLoadVelocity() {
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <label style="font-size:12px;color:#6b6458">Series <select id="vel-prefix" onchange="(function(){const m=(window._velMarks||{})[document.getElementById('vel-prefix').value];document.getElementById('vel-from').value=m?String(m+1).padStart(6,'0'):'';document.getElementById('vel-to').value='';})()" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
+          <label style="font-size:12px;color:#6b6458">Series <select id="vel-prefix" onchange="(function(){const m=(window._velMarks||{})[document.getElementById('vel-prefix').value];document.getElementById('vel-from').value=m?velPad(document.getElementById('vel-prefix').value,m+1):'';document.getElementById('vel-to').value='';})()" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
             ${(s.prefixes || ['ECI', 'AST', 'ASTM', 'S', 'SPI', 'SS']).map(p => `<option value="${p}">${p}-</option>`).join('')}
           </select></label>
           <label style="font-size:12px;color:#6b6458">From <input id="vel-from" type="text" inputmode="numeric" value="${nextFrom}" placeholder="025424" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
@@ -1165,7 +1173,7 @@ async function commsVelocityTransmit(prefix, from, to, btn, line) {
     const typed = prompt('EXPRESS LOC2 TRANSMIT — these Amazon invoices upload to Line of Credit 2 (facility 144).\n\nType LOC2 to confirm:');
     if (typed !== 'LOC2') { alert('Cancelled — LOC2 requires typing LOC2 exactly.'); return; }
     confirmLoc2 = true;
-  } else if (!confirm(`Transmit ${prefix}-${String(from).padStart(6,'0')}${to !== from ? ' through ' + prefix + '-' + String(to).padStart(6,'0') : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
+  } else if (!confirm(`Transmit ${prefix}-${velPad(prefix, from)}${to !== from ? ' through ' + prefix + '-' + velPad(prefix, to) : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
   btn.disabled = true; btn.textContent = '🚀 Transmitting…';
   try {
     const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ prefix, from, to, includeRetransmit: retrans, line, confirmLoc2 }) });

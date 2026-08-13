@@ -2895,7 +2895,8 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);
     if (!rows.length) return res.status(400).json({ error: `Nothing to transmit${skippedRetrans ? ` (${skippedRetrans} already transmitted — enable retransmit to resend)` : ''}` });
     const csv = buildVelocityCsv(rows);
-    const tmp = path.join('/tmp', `velocity-batch-${prefix}-${String(f).padStart(6, '0')}-${String(t).padStart(6, '0')}.csv`);
+    const padW = prefix === 'S' ? 4 : 6;
+    const tmp = path.join('/tmp', `velocity-batch-${prefix}-${String(f).padStart(padW, '0')}-${String(t).padStart(padW, '0')}.csv`);
     fs.writeFileSync(tmp, csv);
     const user = commsRealActor(req);
     const result = await velocityBridge.transmitFile(tmp, { dryRun: false, account: targetLine });
@@ -2977,7 +2978,32 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
       marks: velocityMarks(),
       prefixes: VELOCITY_PREFIXES,
-      facilities: (() => { try { const f = JSON.parse(fs.readFileSync(path.join(__dirname, 'velocity-feed.spark.json'), 'utf8')); return f.facilities || null; } catch (e) { return null; } })(),
+      facilities: (() => {
+        // Decode the generic dashboard harvest into named metrics. The portal
+        // renders a Borrowing Base / Principal Balance / Available header trio
+        // whose values chain through consecutive pairs; Total Unpaid Invoices
+        // is labeled directly. Raw pairs kept as fallback.
+        try {
+          const f = JSON.parse(fs.readFileSync(path.join(__dirname, 'velocity-feed.spark.json'), 'utf8'));
+          if (!f.facilities) return null;
+          const out = {};
+          for (const [loc, fac] of Object.entries(f.facilities)) {
+            const m = { account: fac.account, capturedAt: fac.capturedAt, error: fac.error || null };
+            const pairs = fac.pairs || [];
+            const bbIdx = pairs.findIndex(p => /borrowing base/i.test(p.label || ''));
+            if (bbIdx >= 0) {
+              m.borrowingBase = pairs[bbIdx].value;
+              m.principalBalance = (pairs[bbIdx + 1] || {}).value || null;
+              m.available = (pairs[bbIdx + 2] || {}).value || null;
+            }
+            const tu = pairs.find(p => /total unpaid/i.test(p.label || ''));
+            if (tu) m.totalUnpaid = tu.value;
+            if (!m.borrowingBase && !m.error) m.rawPairs = pairs.slice(0, 6);
+            out[loc] = m;
+          }
+          return out;
+        } catch (e) { return null; }
+      })(),
       recent: db.listVelocityTransmits(60),
       pendingConfirmation: db.countUnconfirmedVelocity(),
       uploader, feedAgeHours: feedAge,

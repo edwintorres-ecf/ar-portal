@@ -1,12 +1,10 @@
 {
-  "generatedAt": "2026-08-13T17:11:04.083Z",
+  "generatedAt": "2026-08-13T18:04:25.268Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1168,
-  "scraped": 1168,
-  "ok": 1168,
+  "openTotal": 1169,
+  "ok": 75,
   "failed": 0,
-  "failRatio": 0,
-  "trustworthy": true,
+  "partial": true,
   "details": {
     "2D-22065956": {
       "available": 198137.27,
@@ -15,7 +13,7 @@
       "site": "DBC3",
       "desc": "DBC3 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22065475": {
@@ -25,7 +23,7 @@
       "site": "DYY5",
       "desc": "DYY5 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22055124": {
@@ -35,7 +33,7 @@
       "site": "MTN2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22033285": {
@@ -45,7 +43,7 @@
       "site": "DKY5",
       "desc": "DKY5 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22033446": {
@@ -55,7 +53,7 @@
       "site": "WSM9",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22033214": {
@@ -65,7 +63,7 @@
       "site": "DKY9",
       "desc": "DKY9 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22024720": {
@@ -75,7 +73,7 @@
       "site": null,
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22028435": {
@@ -85,7 +83,7 @@
       "site": "CMH4",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22023458": {
@@ -95,7 +93,7 @@
       "site": "BOI2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22021041": {
@@ -105,7 +103,7 @@
       "site": "BOS3",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22015892": {
@@ -115,7 +113,7 @@
       "site": "WGR1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22013251": {
@@ -125,7 +123,7 @@
       "site": "AKC1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22012858": {
@@ -135,7 +133,7 @@
       "site": "MTN1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22007833": {
@@ -145,7 +143,7 @@
       "site": "ORD5",
       "desc": "ORD5 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22007832": {
@@ -155,7 +153,7 @@
       "site": "CHO1",
       "desc": "CHO1 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22003744": {
@@ -165,7 +163,7 @@
       "site": "DTB4",
       "desc": "DTB4 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-21997244": {
@@ -11115,7 +11113,7 @@
       "site": "DBK6",
       "desc": "DBK6 - 2026 - Snow Removal EPO Season Closure Offsite",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22078285": {
@@ -11125,7 +11123,7 @@
       "site": "DAB8",
       "desc": "DAB8 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22077582": {
@@ -11135,7 +11133,7 @@
       "site": "RMN3",
       "desc": "RMN3 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22079003": {
@@ -11145,7 +11143,7 @@
       "site": "DCY9",
       "desc": "DCY9 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22077581": {
@@ -11155,7 +11153,7 @@
       "site": "QYY4",
       "desc": "QYY4 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22075792": {
@@ -11165,7 +11163,7 @@
       "site": "DBL1",
       "desc": "DBL1 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22084923": {
@@ -11175,7 +11173,7 @@
       "site": "HLU2",
       "desc": "HLU2 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22092292": {
@@ -11185,7 +11183,7 @@
       "site": "DLT8",
       "desc": "DLT8 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22090626": {
@@ -11195,7 +11193,7 @@
       "site": "RMN3",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22096946": {
@@ -11205,7 +11203,7 @@
       "site": "DMD8",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22094430": {
@@ -11215,7 +11213,7 @@
       "site": "DMD2",
       "desc": "DMD2 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22093946": {
@@ -11225,7 +11223,7 @@
       "site": null,
       "desc": "DHS2 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22093893": {
@@ -11235,7 +11233,7 @@
       "site": "DYY9",
       "desc": "DYY9 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22099842": {
@@ -11245,7 +11243,7 @@
       "site": "DMO6",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22105584": {
@@ -11255,7 +11253,7 @@
       "site": null,
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22106866": {
@@ -11265,7 +11263,7 @@
       "site": "DRT7",
       "desc": "DRT7 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22106865": {
@@ -11275,7 +11273,7 @@
       "site": "DRT3",
       "desc": "DRT3 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22115197": {
@@ -11285,7 +11283,7 @@
       "site": "RMN3",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22115882": {
@@ -11295,7 +11293,7 @@
       "site": "HPT1",
       "desc": "HPT1 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22116191": {
@@ -11305,7 +11303,7 @@
       "site": "DYY4",
       "desc": "DYY4 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22126709": {
@@ -11315,7 +11313,7 @@
       "site": "IGQ1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22126373": {
@@ -11325,7 +11323,7 @@
       "site": null,
       "desc": "DCD8 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22124038": {
@@ -11335,7 +11333,7 @@
       "site": "ORF2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22127619": {
@@ -11345,7 +11343,7 @@
       "site": "PPO4",
       "desc": "PPO4 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22132110": {
@@ -11355,7 +11353,7 @@
       "site": "HNY2",
       "desc": "HNY2 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22135510": {
@@ -11365,7 +11363,7 @@
       "site": "DRC6",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22150404": {
@@ -11375,7 +11373,7 @@
       "site": "SPA1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22148916": {
@@ -11385,7 +11383,7 @@
       "site": "DCY2",
       "desc": "DCY2 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22153155": {
@@ -11395,7 +11393,7 @@
       "site": "DMF3",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22158890": {
@@ -11405,7 +11403,7 @@
       "site": "WOH2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22160020": {
@@ -11415,7 +11413,7 @@
       "site": "BDL2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22161233": {
@@ -11425,7 +11423,7 @@
       "site": "PVD2",
       "desc": "PVD2 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22166238": {
@@ -11435,7 +11433,7 @@
       "site": null,
       "desc": "TPA5 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22176390": {
@@ -11445,7 +11443,7 @@
       "site": "FSD1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22176771": {
@@ -11455,7 +11453,7 @@
       "site": "HPT1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22182190": {
@@ -11465,7 +11463,7 @@
       "site": "DMD8",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22180657": {
@@ -11475,7 +11473,7 @@
       "site": "BDL5",
       "desc": "BDL5 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "B997-22182169": {
@@ -11485,7 +11483,7 @@
       "site": null,
       "desc": "DUJ3 - 2026 - Landscaping AdHoc Services",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22192542": {
@@ -11495,7 +11493,7 @@
       "site": "OOH9",
       "desc": "OOH9 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22198223": {
@@ -11505,7 +11503,7 @@
       "site": "DFH3",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22202766": {
@@ -11515,7 +11513,7 @@
       "site": "DWD6",
       "desc": "DWD6 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22207930": {
@@ -11525,7 +11523,7 @@
       "site": "BDL4",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22237806": {
@@ -11535,7 +11533,7 @@
       "site": "EWR9",
       "desc": "EWR9 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22237935": {
@@ -11545,7 +11543,7 @@
       "site": "ORD2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22238008": {
@@ -11555,7 +11553,7 @@
       "site": "DNK5",
       "desc": "DNK5 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22236546": {
@@ -11565,7 +11563,7 @@
       "site": "ICT2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22242858": {
@@ -11575,7 +11573,7 @@
       "site": "ICT2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22255341": {
@@ -11585,7 +11583,7 @@
       "site": "DMD8",
       "desc": "DMD8 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22257257": {
@@ -11595,7 +11593,7 @@
       "site": "DAE1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22257258": {
@@ -11605,7 +11603,7 @@
       "site": "DAE1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22231286": {
@@ -11615,7 +11613,7 @@
       "site": "SEA94",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22266872": {
@@ -11625,7 +11623,7 @@
       "site": "RIC4",
       "desc": "Bi-monthly Retention Pond Cleanup at",
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22269487": {
@@ -11635,7 +11633,7 @@
       "site": "MKC4",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22275779": {
@@ -11645,7 +11643,7 @@
       "site": "RFD2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22281634": {
@@ -11655,7 +11653,7 @@
       "site": "OKC2",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22295951": {
@@ -11665,7 +11663,7 @@
       "site": "EWR8",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22294984": {
@@ -11675,7 +11673,7 @@
       "site": "AKR1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     },
     "2D-22299668": {
@@ -11685,7 +11683,17 @@
       "site": "MDW7",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-13T17:11:04.083Z",
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
+      "stale": false
+    },
+    "2D-22308452": {
+      "available": 5035.5,
+      "poAmount": 5035.5,
+      "status": "Open",
+      "site": "AKC1",
+      "desc": null,
+      "masked": false,
+      "scrapedAt": "2026-08-13T18:04:25.268Z",
       "stale": false
     }
   }
