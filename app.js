@@ -2919,6 +2919,7 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
       marks: velocityMarks(),
       prefixes: VELOCITY_PREFIXES,
+      facilities: (() => { try { const f = JSON.parse(fs.readFileSync(path.join(__dirname, 'velocity-feed.spark.json'), 'utf8')); return f.facilities || null; } catch (e) { return null; } })(),
       recent: db.listVelocityTransmits(60),
       pendingConfirmation: db.countUnconfirmedVelocity(),
       uploader, feedAgeHours: feedAge,

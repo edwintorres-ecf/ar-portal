@@ -1030,6 +1030,21 @@ async function commsLoadVelocity() {
         ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
         ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
       </div>
+      ${s.facilities ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        ${Object.values(s.facilities).map(f => `
+          <div style="flex:1;min-width:280px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span class="sc-chip ${f.account === 'LOC1' ? 'sc-BSC' : 'sc-HSC'}">${escHtml(f.account)}</span>
+              <span style="font-size:10.5px;color:#a8a093">${f.capturedAt ? 'as of ' + escHtml(f.capturedAt.slice(0, 16).replace('T', ' ')) : ''}</span>
+            </div>
+            ${f.error ? `<div style="font-size:12px;color:#b32020">Harvest error: ${escHtml(f.error)}</div>`
+              : (f.pairs || []).filter(p => p.label).slice(0, 8).map(p => `
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid #f5f1e8">
+                  <span style="color:#6b6458">${escHtml(p.label)}</span>
+                  <span style="font-variant-numeric:tabular-nums;font-weight:700">${escHtml(p.value)}</span>
+                </div>`).join('') || '<div style="font-size:12px;color:#a8a093">No metrics captured yet — populates after the next Velocity scrape.</div>'}
+          </div>`).join('')}
+      </div>` : ''}
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
