@@ -1057,6 +1057,7 @@ async function commsLoadVelocity() {
                 </div>`).join('') || '<div style="font-size:12px;color:#a8a093">No metrics captured yet — populates after the next Velocity scrape.</div>'}
           </div>`).join('')}
       </div>` : ''}
+      <div id="vel-payapp" style="margin-bottom:14px"></div>
       ${s.lock && s.lock.locked ? `<div style="background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:10px;font-size:12.5px;font-weight:600;margin-bottom:14px">⏳ Safeguard active: the Velocity browser is in use by the <strong>${escHtml(s.lock.tool)}</strong> (since ${escHtml((s.lock.since || '').slice(11, 16))} UTC). Transmits and refreshes are paused until it finishes — usually a few minutes. This protects both systems from driving the same session.</div>` : ''}
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">SELECT INVOICES (ECI number range — same number for a single invoice)</div>
@@ -1082,7 +1083,50 @@ async function commsLoadVelocity() {
           <td style="padding:7px 12px;color:#6b6458">${escHtml((t.transmitted_at || '').slice(0, 16))}</td></tr>`).join('')}</tbody></table></div>`
         : '<div style="font-size:12.5px;color:#6b6458">No portal transmits yet. Earlier uploads live in the iMac manifest.</div>'}
       <div style="font-size:11.5px;color:#6b6458;margin-top:10px;white-space:pre-wrap">${escHtml(String(s.uploader || '').slice(0, 500))}</div>`;
+    commsLoadPaymentWorklist();
   } catch (e) { root.innerHTML = `<div style="padding:40px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsLoadPaymentWorklist() {
+  const el = document.getElementById('vel-payapp');
+  if (!el) return;
+  try {
+    const w = await apiFetch('/api/velocity/payment-worklist');
+    if (!w.count) { el.innerHTML = ''; return; }
+    const fmt$ = (n) => '$' + Math.round(n || 0).toLocaleString();
+    el.innerHTML = `
+      <div style="background:#fff;border:1px solid #e0862f;border-radius:14px;padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:700;font-size:14px">💸 Payments to apply on Velocity: ${w.count} invoice(s) · ${fmt$(w.total)}</div>
+            <div style="font-size:11.5px;color:#6b6458">Paid into our lockbox (closed or reduced in Sage) but still carried open on the lender side. Apply these in Velocity so the borrowing base stays honest. Credits/discounts: classify in the export until automated.</div>
+          </div>
+          <span style="display:flex;gap:8px">
+            <a class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600;text-decoration:none" href="/api/velocity/payment-worklist.csv?t=${Date.now()}">⬇ Download apply-list CSV</a>
+            <button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsTogglePayList()">View list</button>
+          </span>
+        </div>
+        <div id="vel-payapp-list" style="display:none;margin-top:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="text-align:left;color:#6b6458;font-size:10px;text-transform:uppercase"><th style="padding:5px 10px">Invoice</th><th style="padding:5px 10px">Customer</th><th style="padding:5px 10px">Account</th><th style="padding:5px 10px">Status here</th><th style="padding:5px 10px;text-align:right">Velocity balance</th><th style="padding:5px 10px;text-align:right">Apply</th></tr></thead>
+            <tbody>${w.rows.slice(0, 60).map(r => `<tr style="border-top:1px solid #f5f1e8">
+              <td style="padding:5px 10px;font-weight:600">${escHtml(r.invoiceId)}</td>
+              <td style="padding:5px 10px">${escHtml(r.customer || '')}</td>
+              <td style="padding:5px 10px">${escHtml(r.account || '')}</td>
+              <td style="padding:5px 10px;font-size:11px;color:#6b6458">${escHtml(r.kind)}</td>
+              <td style="padding:5px 10px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.velocityBalance)}</td>
+              <td style="padding:5px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">${fmt$(r.amountToApply)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+          ${w.rows.length > 60 ? '<div style="font-size:11px;color:#6b6458;padding:6px 10px">Showing 60 — full list in the CSV.</div>' : ''}
+        </div>
+      </div>`;
+  } catch (e) { el.innerHTML = ''; }
+}
+
+function commsTogglePayList() {
+  const l = document.getElementById('vel-payapp-list');
+  if (l) l.style.display = l.style.display === 'none' ? '' : 'none';
 }
 
 async function commsVelocityPreview() {

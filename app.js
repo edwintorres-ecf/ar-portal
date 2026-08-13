@@ -3021,6 +3021,66 @@ app.get('/api/velocity/reconcile', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Payment application worklist ────────────────────────────────────────────
+// Receivables paid into OUR lockbox close in Sage but stay open on Velocity;
+// this derives what needs applying on the lender side. Balance-delta based
+// for now (open-vs-closed measuring per Edwin 2026-08-13); credits/discounts
+// classified by the team until Sage payment detail is wired. Export matches
+// the reconcile-CSV vocabulary (INVOICE_NUMBER, PAID_AMOUNT, PAID_DATE,
+// NOTE, CLASSIFICATION) so the team can work it in Velocity directly.
+function velocityPaymentWorklist(user) {
+  let invoices = applyUserFilter(sage.getCachedInvoices(), user);
+  velocityFeedRow('__warm__');
+  const ourByid = new Map(invoices.map(i => [i.invoiceId, i]));
+  const rows = [];
+  for (const [id, f] of Object.entries(_vFeed.map)) {
+    if (f.status !== 'open') continue;
+    const ours = ourByid.get(id);
+    const ourBalance = ours ? ours.totalDue : 0;
+    const delta = (f.balance || 0) - ourBalance;
+    if (delta > 0.01) {
+      rows.push({
+        invoiceId: id, customer: f.customer, account: f.account,
+        velocityBalance: f.balance, ourBalance,
+        amountToApply: Math.round(delta * 100) / 100,
+        kind: ourBalance < 0.01 ? 'fully paid here' : 'partially paid here',
+      });
+    }
+  }
+  rows.sort((a, b) => b.amountToApply - a.amountToApply);
+  return rows;
+}
+
+app.get('/api/velocity/payment-worklist', requireAuth, (req, res) => {
+  try {
+    const rows = velocityPaymentWorklist(req.session.user);
+    res.json({
+      feedGeneratedAt: _vFeed.generatedAt || null,
+      count: rows.length,
+      total: Math.round(rows.reduce((s, r) => s + r.amountToApply, 0) * 100) / 100,
+      rows: rows.slice(0, 300),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/velocity/payment-worklist.csv', requireAuth, (req, res) => {
+  try {
+    const rows = velocityPaymentWorklist(req.session.user);
+    const today = new Date();
+    const d = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
+    const lines = ['INVOICE_NUMBER,PAID_AMOUNT,PAID_DATE,NOTE,CLASSIFICATION'];
+    for (const r of rows) {
+      lines.push(`${r.invoiceId},${r.amountToApply.toFixed(2)},${d},${(r.kind + ' per Sage').replace(/,/g, ' ')},Payment`);
+    }
+    db.auditLog(req.session.user.email, 'velocity_payment_export', null, `${rows.length} rows`);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="velocity-payments-to-apply-${today.toISOString().slice(0, 10)}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.send(lines.join('\n') + '\n');
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/velocity/status', requireAuth, async (req, res) => {
   try {
     let uploader = null;
