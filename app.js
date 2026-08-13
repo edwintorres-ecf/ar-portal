@@ -3059,6 +3059,7 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
       })(),
       recent: db.listVelocityTransmits(60),
       pendingConfirmation: db.countUnconfirmedVelocity(),
+      lock: await velocityBridge.lockState(),
       uploader, feedAgeHours: feedAge,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }

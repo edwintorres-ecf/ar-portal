@@ -159,116 +159,95 @@ function renderTemplate(subjectTpl, bodyTpl, facts, signatureHtml) {
   return { subject, body, tokenValues };
 }
 
+let _logoUri = null;
+function ecfLogoUri() {
+  if (_logoUri === null) {
+    try {
+      const fsx = require('fs');
+      _logoUri = 'data:image/png;base64,' + fsx.readFileSync(require('path').join(__dirname, 'public', 'ecf-logo.png')).toString('base64');
+    } catch (e) { _logoUri = ''; }
+  }
+  return _logoUri;
+}
+
 // ─── Statement HTML (shared with /api/customer-statement) ────────────────────
 // autoPrint=true keeps the legacy print-on-open behavior for the route;
 // attachments must NOT auto-print.
 function buildStatementHtml(customerId, custInvoices, { autoPrint = false } = {}) {
+  // OFFICIAL ECF statement format (rebuilt verbatim from the CyrusOne sample
+  // Edwin supplied 2026-08-13): logo + green serif STATEMENT, Total Due,
+  // Bill To / Remit To (Philadelphia lockbox), five-column invoice table with
+  // green header bars, contact footer. Chromium adds "Page X of Y" when
+  // rendered via htmlToPdf(html, { pageNumbers: true }).
   const sorted = [...custInvoices].sort((a, b) => (a.whenCreated || '').localeCompare(b.whenCreated || ''));
   const custName = sorted.length ? (sorted[0].customerName || customerId) : customerId;
-  const totalAR = sorted.reduce((s, i) => s + i.totalDue, 0);
-  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const bucketColor = (b) => {
-    if (!b || b === 'current') return '#16a34a';
-    if (b === '1-30') return '#d97706';
-    if (b === '31-60') return '#ea580c';
-    return '#dc2626';
+  const totalDue = sorted.reduce((s2, i) => s2 + i.totalDue, 0);
+  const dmy = (d) => {
+    const dt = new Date(d);
+    return isNaN(dt) ? '' : `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}/${dt.getFullYear()}`;
   };
-  const rows = sorted.map(inv => `
-      <tr>
-        <td>${escHtml(inv.invoiceId || inv.recordNo)}</td>
-        <td>${escHtml(inv.locationName || inv.locationId || '')}</td>
-        <td>${fmtDate(inv.whenCreated)}</td>
-        <td>${fmtDate(inv.whenDue || inv.dueDate)}</td>
-        <td style="color:${bucketColor(inv.bucket)};font-weight:600">${inv.bucket === 'current' ? 'Current' : (inv.bucket || '')}</td>
-        <td style="text-align:right">${fmtMoney(inv.totalDue)}</td>
-      </tr>`).join('');
-  const buckets = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '91+': 0 };
-  for (const inv of sorted) buckets[inv.bucket || 'current'] = (buckets[inv.bucket || 'current'] || 0) + inv.totalDue;
-  const agingRows = Object.entries(buckets)
-    .filter(([, v]) => v > 0)
-    .map(([k, v]) => `<tr><td>${k === 'current' ? 'Current' : k + ' days past due'}</td><td style="text-align:right;font-weight:600;color:${bucketColor(k)}">${fmtMoney(v)}</td></tr>`)
-    .join('');
+  const money = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Statement — ${escHtml(custName)}</title>
+<title>Statement - ${escHtml(custName)}</title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #1e293b; margin: 0; padding: 32px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; }
-  .header-left h1 { font-size: 22px; color: #1e3a5f; margin: 0 0 4px; }
-  .header-left p { margin: 2px 0; color: #64748b; font-size: 12px; }
-  .header-right { text-align: right; }
-  .header-right .total-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-  .header-right .total-amount { font-size: 28px; font-weight: 700; color: #1e3a5f; }
-  .section-title { font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; margin: 24px 0 10px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-  th { background: #f1f5f9; padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
-  td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
-  tr:last-child td { border-bottom: none; }
-  .aging-table { max-width: 360px; }
-  .aging-table td:last-child { color: #dc2626; }
-  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-  @media print { body { padding: 20px; } }
+  body { font-family: Verdana, Geneva, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 26px 30px; }
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start; }
+  .hdr img { height: 52px; }
+  .doc-title { font-family: Georgia, 'Times New Roman', serif; font-size: 40px; color: #3FAE49; letter-spacing: 1px; }
+  .addr { margin-top: 14px; font-size: 11.5px; line-height: 1.45; }
+  .totaldue { text-align: right; font-size: 15px; font-weight: bold; margin-top: 10px; }
+  .parties { display: flex; justify-content: space-between; margin: 34px 0 26px; font-size: 11.5px; }
+  .parties b { font-size: 11.5px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #3FAE49; color: #fff; font-size: 10.5px; font-weight: bold; padding: 6px 8px; border: 1px solid #2d8a37; }
+  thead { display: table-header-group; }
+  tbody td { padding: 14px 8px; font-size: 11.5px; text-align: center; }
+  td.bal { text-align: right; }
+  tr { page-break-inside: avoid; }
+  .footnote { text-align: center; font-size: 10.5px; margin-top: 26px; }
 </style>
 </head>
 <body>
-<div class="header">
-  <div class="header-left">
-    <h1>East Coast Facilities Inc.</h1>
-    <p>Accounts Receivable Statement</p>
-    <p style="margin-top:16px;font-size:14px;font-weight:600;color:#1e3a5f">${escHtml(custName)}</p>
-    <p>Statement Date: ${today}</p>
+<div class="hdr">
+  <div>
+    ${ecfLogoUri() ? `<img src="${ecfLogoUri()}" alt="East Coast Facilities">` : '<div style="font-size:20px;font-weight:bold">East Coast Facilities</div>'}
+    <div class="addr">1324 North Sherman Street<br>Allentown, PA 18109</div>
   </div>
-  <div class="header-right">
-    <div class="total-label">Total Outstanding</div>
-    <div class="total-amount">${fmtMoney(totalAR)}</div>
-    <div style="font-size:12px;color:#64748b;margin-top:4px">${sorted.length} open invoice${sorted.length !== 1 ? 's' : ''}</div>
+  <div style="text-align:right">
+    <div class="doc-title">STATEMENT</div>
+    <div class="totaldue">Total Due: ${money(totalDue)}</div>
   </div>
 </div>
 
-<div class="section-title">Aging Summary</div>
-<table class="aging-table">
-  <thead><tr><th>Aging Bucket</th><th style="text-align:right">Amount</th></tr></thead>
-  <tbody>${agingRows}<tr style="border-top:2px solid #e2e8f0;font-weight:700"><td>Total Outstanding</td><td style="text-align:right;color:#1e3a5f">${fmtMoney(totalAR)}</td></tr></tbody>
-</table>
+<div class="parties">
+  <div><b>Bill To:</b>&nbsp;&nbsp; <b>${escHtml(custName)}</b></div>
+  <div style="display:flex;gap:10px"><b>Remit To:</b>
+    <span><b>EAST COAST FACILITIES, INC.</b><br>P.O. BOX 823967<br>PHILADELPHIA, PA 19182-3969</span>
+  </div>
+</div>
 
-<div class="section-title">Open Invoices</div>
 <table>
-  <thead><tr><th>Invoice #</th><th>Location</th><th>Invoice Date</th><th>Due Date</th><th>Aging</th><th style="text-align:right">Balance Due</th></tr></thead>
-  <tbody>${rows}</tbody>
-  <tfoot><tr style="font-weight:700;background:#f8fafc"><td colspan="5">Total</td><td style="text-align:right">${fmtMoney(totalAR)}</td></tr></tfoot>
+  <thead><tr>
+    <th>INVOICE DATE</th><th>DUE DATE</th><th>INVOICE NUMBER</th><th>CUST. REFERENCE #</th><th>INVOICE BALANCE</th>
+  </tr></thead>
+  <tbody>
+    ${sorted.map(inv => `<tr>
+      <td>${dmy(inv.whenCreated)}</td>
+      <td>${dmy(inv.whenDue)}</td>
+      <td>${escHtml(inv.invoiceId || inv.recordNo)}</td>
+      <td>${escHtml(inv.poNumber || '')}</td>
+      <td class="bal">${money(inv.totalDue)}</td>
+    </tr>`).join('')}
+  </tbody>
 </table>
 
-<div class="footer">
-  East Coast Facilities Inc. &nbsp;|&nbsp; Generated ${today} via ECF AR Portal &nbsp;|&nbsp; Please remit payment to your designated account representative
-</div>
+<div class="footnote">Please contact 844-ECF-CORP if you have any questions regarding this statement.</div>
 ${autoPrint ? '<script>window.onload = function() { window.print(); }</script>' : ''}
 </body>
 </html>`;
-}
-
-// ─── HTML → PDF (statement attachments) ──────────────────────────────────────
-// Customers get statements as PDF, never as an .html attachment (looks like
-// junk and many clients block it). Renders via the same playwright-core +
-// system Chromium the payee scrapers use. ~1-2s per render; sends are
-// infrequent so a fresh browser per call is fine.
-async function htmlToPdf(html) {
-  const { chromium } = require('playwright-core');
-  const browser = await chromium.launch({
-    executablePath: '/usr/bin/chromium-browser',
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'load' });
-    return await page.pdf({
-      format: 'Letter', printBackground: true,
-      margin: { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' },
-    });
-  } finally {
-    await browser.close();
-  }
 }
 
 // ─── Recipient guard ─────────────────────────────────────────────────────────
@@ -423,7 +402,7 @@ async function sendMessage(opts) {
     const invoices = sage.getCachedInvoices().filter(i => i.customerId === customerId);
     if (invoices.length) {
       const html = buildStatementHtml(customerId, invoices, { autoPrint: false });
-      const pdf = await htmlToPdf(html);
+      const pdf = await htmlToPdf(html, { pageNumbers: true });
       const name = `Statement-${customerId}-${new Date().toISOString().slice(0, 10)}.pdf`;
       draftPayload.attachments = [{
         '@odata.type': '#microsoft.graph.fileAttachment',
@@ -643,6 +622,6 @@ function seedTemplates() {
 }
 
 module.exports = {
-  sendMessage, previewMessage, seedTemplates, buildStatementHtml,
+  sendMessage, previewMessage, seedTemplates, buildStatementHtml, htmlToPdf, ecfLogoUri,
   signToken, verifyToken, TOKEN_RE, allowlist, extractTokens, renderSignature,
 };

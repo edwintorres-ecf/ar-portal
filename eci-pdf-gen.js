@@ -1,203 +1,136 @@
 'use strict';
-/**
- * generateEciPdf(inv, lines) → Buffer (PDF)
- * Renders an ECI- invoice as an ECF-branded PDF using pdfkit.
- */
+// ─── eci-pdf-gen.js — official ECF invoice PDF (rebuilt 2026-08-13) ──────────
+// Verbatim to the ECI-025238 sample Edwin supplied: logo + green INVOICE,
+// company block, BILL TO / SHIP TO, green reference/terms bar, line-item
+// table with subtotal/tax/total, three-column remit footer (US Mail /
+// Overnight / ACH-Wire), italic thank-you line. Rendered via the shared
+// Chromium htmlToPdf (replaces the June pdfkit layout, which was invented).
+// Signature unchanged: generateEciPdf(inv, lines) -> Buffer.
 
-const PDFDocument = require('pdfkit');
-
-const ECF_NAVY   = '#1a2744';
-const ECF_GRAY   = '#4a5568';
-const ECF_LIGHT  = '#e2e8f0';
-const ECF_ORANGE = '#e65c00';
-const ECF_ROW_ALT = '#f7fafc';
-
-const fmt = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDate = (s) => {
-  if (!s) return '—';
-  const d = new Date(s);
-  return isNaN(d) ? s : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dmy = (d) => {
+  const dt = new Date(d);
+  return isNaN(dt) ? '' : `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}/${dt.getFullYear()}`;
 };
 
 async function generateEciPdf(inv, lines) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: 'LETTER', margin: 50,
-      info: { Title: inv.invoiceId, Author: 'East Coast Facilities Inc.' }
-    });
-    const chunks = [];
-    doc.on('data', c => chunks.push(c));
-    doc.on('end',  () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
+  const comms = require('./comms-service');
 
-    const ML = 50;
-    const MR = 50;
-    const PW = doc.page.width;   // 612
-    const W  = PW - ML - MR;    // 512
+  const items = (lines && lines.length ? lines : [{
+    itemId: '', description: inv.description || 'Services Rendered',
+    quantity: 1, price: inv.totalEntered, total: inv.totalEntered,
+  }]).map(l => ({
+    code: l.itemId || '',
+    desc: l.description || l.itemName || l.memo || l.deptName || 'Services',
+    qty: Number(l.quantity) || 1,
+    price: Number(l.price != null ? l.price : l.total) || 0,
+    amount: Number(l.total != null ? l.total : l.price) || 0,
+  }));
+  const subtotal = items.reduce((s, l) => s + l.amount, 0);
+  const total = Number(inv.totalEntered) || subtotal;
+  const tax = Math.max(0, total - subtotal);
 
-    // ─── HEADER BANNER ───────────────────────────────────────────────────────
-    doc.rect(ML, 40, W, 70).fill(ECF_NAVY);
+  // Payment terms from the invoice's own dates (30 days -> Net30)
+  let terms = '';
+  if (inv.whenCreated && inv.whenDue) {
+    const days = Math.round((new Date(inv.whenDue) - new Date(inv.whenCreated)) / 86400000);
+    if (days > 0) terms = 'Net' + days;
+  }
 
-    doc.fillColor('white').font('Helvetica-Bold').fontSize(20)
-       .text('EAST COAST FACILITIES INC.', ML + 14, 52, { width: 300, lineBreak: false });
-    doc.fillColor('#94a3b8').font('Helvetica').fontSize(8.5)
-       .text('Facilities Management & Janitorial Services', ML + 14, 76, { width: 300, lineBreak: false });
+  const logo = comms.ecfLogoUri();
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${esc(inv.invoiceId)}</title>
+<style>
+  body { font-family: Verdana, Geneva, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 20px 28px; }
+  .toprule { border-top: 2px solid #555; margin-bottom: 14px; }
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start; }
+  .hdr img { height: 46px; }
+  .doc-title { font-size: 44px; font-weight: bold; color: #2EB14B; letter-spacing: 1px; }
+  .invmeta { text-align: right; font-size: 11px; margin-top: 6px; }
+  .invmeta b { font-weight: bold; }
+  .company { margin-top: 22px; font-size: 11px; line-height: 1.5; }
+  .parties { display: flex; margin-top: 30px; font-size: 11px; }
+  .party { display: flex; gap: 8px; width: 46%; }
+  .party .lbl { font-weight: bold; font-size: 9.5px; }
+  .party .who { line-height: 1.45; }
+  table { width: 100%; border-collapse: collapse; margin-top: 26px; }
+  th { background: #8DC63F; background: linear-gradient(#9BCE52, #7DBB35); font-size: 10px; font-weight: bold; padding: 7px 8px; border: 1px solid #1F3864; }
+  td { border: 1px solid #1F3864; padding: 6px 8px; font-size: 10.5px; text-align: center; }
+  td.desc { text-align: center; }
+  td.num { text-align: right; }
+  .totals td { border: 1px solid #1F3864; font-weight: bold; }
+  .noborder { border: none !important; }
+  .remit { display: flex; justify-content: space-between; margin-top: 120px; font-size: 10.5px; text-align: center; line-height: 1.5; }
+  .remit .col { flex: 1; }
+  .remit b { font-size: 11px; }
+  .thanks { text-align: center; font-style: italic; font-size: 11px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="toprule"></div>
+<div class="hdr">
+  <div>${logo ? `<img src="${logo}" alt="East Coast Facilities">` : '<div style="font-size:18px;font-weight:bold">East Coast Facilities</div>'}</div>
+  <div>
+    <div class="doc-title">INVOICE</div>
+    <div class="invmeta">INVOICE #: <b>${esc(inv.invoiceId)}</b><br>DATE: <b>${dmy(inv.whenCreated)}</b></div>
+  </div>
+</div>
 
-    // Right: INVOICE label
-    doc.fillColor('white').font('Helvetica-Bold').fontSize(20)
-       .text('INVOICE', ML + W - 98, 52, { width: 98, align: 'right', lineBreak: false });
-    doc.fillColor('#94a3b8').font('Helvetica').fontSize(8.5)
-       .text(inv.invoiceId || '', ML + W - 98, 76, { width: 98, align: 'right', lineBreak: false });
+<div class="company">
+  749 Roble Rd<br>Suite 2<br>Allentown, PA 18109<br>Phone 844-ECF-CORP<br>ARClerk@eastcoastfacilities.com
+</div>
 
-    // ─── BILL TO / DETAILS ───────────────────────────────────────────────────
-    let y = 128;
-    const halfW = 240;
-    const rightX = ML + W - 220;
+<div class="parties">
+  <div class="party">
+    <span class="lbl">BILL<br>TO:</span>
+    <span class="who"><b>${esc(inv.customerName)}</b>${inv.locationName ? '<br>' + esc(inv.locationName) : ''}</span>
+  </div>
+  <div class="party">
+    <span class="lbl">SHIP<br>TO:</span>
+    <span class="who"><b>${esc(inv.siteCode || inv.customerName)}</b>${inv.locationName && !inv.siteCode ? '<br>' + esc(inv.locationName) : ''}</span>
+  </div>
+</div>
 
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(ECF_NAVY)
-       .text('BILL TO', ML, y);
-    y += 12;
-    doc.font('Helvetica').fontSize(9).fillColor(ECF_GRAY)
-       .text(inv.customerName || inv.customerId || '', ML, y, { width: halfW, lineBreak: false });
-    y += 13;
-    if (inv.locationName) {
-      doc.font('Helvetica').fontSize(8.5).fillColor(ECF_GRAY)
-         .text(inv.locationName, ML, y, { width: halfW, lineBreak: false });
-      y += 13;
-    }
+<table>
+  <tr><th style="width:27%">REFERENCE #</th><th style="width:33%">ACCOUNTING CONTACT</th><th style="width:17%">PAYMENT TERMS</th><th style="width:23%">DUE DATE</th></tr>
+  <tr><td>${esc(inv.poNumber || 'Contract')}</td><td>arclerk@eastcoastfacilities.com</td><td>${esc(terms)}</td><td>${dmy(inv.whenDue)}</td></tr>
+</table>
 
-    // Right details
-    const detailRows = [
-      ['Invoice #:',    inv.invoiceId || ''],
-      ['Invoice Date:', fmtDate(inv.whenCreated)],
-      ['Due Date:',     fmtDate(inv.whenDue)],
-      ['Customer ID:',  inv.customerId || ''],
-    ];
-    if (inv.poNumber) detailRows.push(['PO Number:', inv.poNumber]);
+<table>
+  <tr><th style="width:10%">ITEM #</th><th style="width:50%">DESCRIPTION</th><th style="width:8%">QTY</th><th style="width:16%">PRICE</th><th style="width:16%">AMOUNT</th></tr>
+  ${items.map(l => `<tr>
+    <td>${esc(l.code)}</td>
+    <td class="desc">${esc(l.desc)}</td>
+    <td>${l.qty}</td>
+    <td class="num">${money(l.price)}</td>
+    <td class="num">${money(l.amount)}</td>
+  </tr>`).join('')}
+  <tr class="totals"><td class="noborder" colspan="3"></td><td class="num">Subtotal</td><td class="num">${money(subtotal)}</td></tr>
+  ${tax > 0.005 ? `<tr class="totals"><td class="noborder" colspan="3"></td><td class="num">Sales Tax</td><td class="num">${money(tax)}</td></tr>` : ''}
+  <tr class="totals"><td class="noborder" colspan="3"></td><td class="num">Total</td><td class="num">${money(total)}</td></tr>
+</table>
 
-    let dy = 128;
-    for (const [label, val] of detailRows) {
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(ECF_NAVY)
-         .text(label, rightX, dy, { width: 78, lineBreak: false });
-      doc.font('Helvetica').fontSize(8).fillColor(ECF_GRAY)
-         .text(val, rightX + 80, dy, { width: 140, align: 'right', lineBreak: false });
-      dy += 13;
-    }
+<div class="remit">
+  <div class="col">
+    <b>US Mail</b><br>East Coast Facilities, Inc.<br>P.O. BOX 855821.<br>Minneapolis MN 55485-5821
+  </div>
+  <div class="col">
+    <b>Remit to:</b><br><b>Overnight Mail</b><br>East Coast Facilities, Inc.<br>LOCKBOX - 855821<br>Wells Fargo Bank<br>1801 Parkview Drive, 1<sup>ST</sup> Floor<br>Shoreview, MN 55126
+  </div>
+  <div class="col">
+    <b>ACH/Wire</b><br>East Coast Facilities, Inc.<br>Wells Fargo Bank N.A.<br>Account Number 4943718155<br>ABA Number 121000248<br>SWIFT Code: WFBIUS6S
+  </div>
+</div>
 
-    y = Math.max(y, dy) + 18;
+<div class="thanks">Thank you for your business, please feel free to contact us at 844-ECF-CORP if you have any questions!</div>
+</body>
+</html>`;
 
-    // ─── TABLE ───────────────────────────────────────────────────────────────
-    // Columns: Description (left, wide) | Item Code (center) | Amount (right, fixed)
-    const COL_AMOUNT_W = 88;
-    const COL_ITEM_W   = 100;
-    const COL_DESC_W   = W - COL_ITEM_W - COL_AMOUNT_W - 2;
-
-    const colX = {
-      desc:   ML,
-      item:   ML + COL_DESC_W + 1,
-      amount: ML + COL_DESC_W + COL_ITEM_W + 2,
-    };
-
-    const drawHeader = (yh) => {
-      doc.rect(ML, yh, W, 18).fill(ECF_NAVY);
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('white')
-         .text('Description', colX.desc + 4, yh + 5, { width: COL_DESC_W - 8, lineBreak: false });
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('white')
-         .text('Item Code', colX.item + 4, yh + 5, { width: COL_ITEM_W - 8, align: 'center', lineBreak: false });
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('white')
-         .text('Amount', colX.amount, yh + 5, { width: COL_AMOUNT_W - 4, align: 'right', lineBreak: false });
-      return yh + 18;
-    };
-    y = drawHeader(y);
-
-    const rowLines = (lines && lines.length > 0) ? lines : [{
-      itemId: '',
-      description: inv.description || 'Services Rendered',
-      total: inv.totalEntered || inv.totalDue || 0,
-    }];
-
-    let subtotal = 0;
-    for (let idx = 0; idx < rowLines.length; idx++) {
-      const l = rowLines[idx];
-      const desc   = l.description || l.itemName || l.deptName || 'Miscellaneous';
-      const code   = l.itemId || '';
-      const amount = Number(l.total || l.price || 0);
-      subtotal += amount;
-
-      const rowH = 18;
-      if (y + rowH > doc.page.height - 130) {
-        doc.addPage();
-        y = 50;
-        y = drawHeader(y);
-      }
-
-      const fill = idx % 2 === 0 ? ECF_ROW_ALT : 'white';
-      doc.rect(ML, y, W, rowH).fill(fill).stroke(ECF_LIGHT);
-
-      doc.font('Helvetica').fontSize(8.5).fillColor(ECF_GRAY)
-         .text(desc, colX.desc + 4, y + 5, { width: COL_DESC_W - 8, lineBreak: false, ellipsis: true });
-      doc.font('Helvetica').fontSize(8.5).fillColor(ECF_GRAY)
-         .text(code, colX.item + 4, y + 5, { width: COL_ITEM_W - 8, align: 'center', lineBreak: false });
-      doc.font('Helvetica').fontSize(8.5).fillColor(ECF_GRAY)
-         .text(fmt(amount), colX.amount, y + 5, { width: COL_AMOUNT_W - 4, align: 'right', lineBreak: false });
-      y += rowH;
-    }
-
-    doc.moveTo(ML, y).lineTo(ML + W, y).strokeColor(ECF_LIGHT).lineWidth(0.5).stroke();
-    y += 10;
-
-    // ─── TOTALS ───────────────────────────────────────────────────────────────
-    const totLX = ML + W - 230;
-    const totVX = ML + W - 92;
-    const totVW = 92;
-
-    const addRow = (label, val, bold) => {
-      if (y + 14 > doc.page.height - 110) { doc.addPage(); y = 50; }
-      const fn = bold ? 'Helvetica-Bold' : 'Helvetica';
-      doc.font(fn).fontSize(bold ? 9 : 8.5).fillColor(ECF_GRAY)
-         .text(label, totLX, y, { width: 138, lineBreak: false });
-      doc.font(fn).fontSize(bold ? 9 : 8.5).fillColor(ECF_GRAY)
-         .text(val, totVX, y, { width: totVW, align: 'right', lineBreak: false });
-      y += 14;
-    };
-
-    addRow('Subtotal:', fmt(subtotal));
-    const paid = subtotal - (inv.totalDue || 0);
-    if (paid > 0.005) addRow('Payments Applied:', '(' + fmt(paid) + ')');
-
-    doc.moveTo(totLX, y).lineTo(ML + W, y).strokeColor(ECF_LIGHT).lineWidth(0.5).stroke();
-    y += 5;
-
-    const dueAmt = inv.totalDue || subtotal;
-    doc.rect(totLX - 6, y - 2, (ML + W) - totLX + 6, 24).fill(ECF_NAVY);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('white')
-       .text('AMOUNT DUE:', totLX, y + 4, { width: 138, lineBreak: false });
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('white')
-       .text(fmt(dueAmt), totVX, y + 4, { width: totVW, align: 'right', lineBreak: false });
-    y += 30;
-
-    // ─── AGING BADGE ─────────────────────────────────────────────────────────
-    if (inv.bucket) {
-      const isOverdue = inv.bucket === '91+';
-      doc.roundedRect(ML, y, 140, 20, 4).fill(isOverdue ? ECF_ORANGE : ECF_NAVY);
-      const label = inv.daysOverdue != null ? `${inv.daysOverdue} days overdue` : `Aging: ${inv.bucket}`;
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('white')
-         .text(label, ML + 8, y + 6, { width: 124, lineBreak: false });
-      y += 28;
-    }
-
-    // ─── FOOTER ──────────────────────────────────────────────────────────────
-    const footY = doc.page.height - 52;
-    doc.rect(ML, footY, W, 0.5).fill(ECF_LIGHT);
-    doc.font('Helvetica').fontSize(7.5).fillColor(ECF_GRAY)
-       .text('East Coast Facilities Inc.  •  Please remit payment by due date.  •  Contact your account representative with questions.',
-             ML, footY + 8, { width: W, align: 'center', lineBreak: false });
-    doc.font('Helvetica').fontSize(7).fillColor('#94a3b8')
-       .text(`${inv.invoiceId}  •  Generated ${new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`,
-             ML, footY + 22, { width: W, align: 'center', lineBreak: false });
-
-    doc.end();
-  });
+  return comms.htmlToPdf(html);
 }
 
 module.exports = { generateEciPdf };
