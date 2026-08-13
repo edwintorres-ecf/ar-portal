@@ -3052,6 +3052,13 @@ async function velocityPaymentWorklist(user) {
   // Invoices absent from the open cache (fully paid) have no recordNo here;
   // those keep delta-only data until a record lookup path exists.
   try {
+    // Fully-paid invoices are absent from the open cache — resolve their
+    // RECORDNOs directly from Sage so they enrich too.
+    const missing = rows.filter(r => !r.recordNo).map(r => r.invoiceId);
+    if (missing.length) {
+      const found = await sage.getRecordNosForInvoiceIds(missing);
+      for (const r of rows) if (!r.recordNo && found[r.invoiceId]) r.recordNo = found[r.invoiceId];
+    }
     const withRec = rows.filter(r => r.recordNo);
     const pays = await sage.getPaymentsForRecordNos(withRec.map(r => r.recordNo));
     for (const r of withRec) {

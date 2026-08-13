@@ -776,6 +776,32 @@ async function getCustomerContacts() {
   return rows;
 }
 
+// ─── RECORDNO lookup for invoices outside the open cache (paid/closed) ──────
+async function getRecordNosForInvoiceIds(invoiceIds) {
+  const out = {};
+  const chunks = [];
+  for (let i = 0; i < invoiceIds.length; i += 40) chunks.push(invoiceIds.slice(i, i + 40));
+  for (const chunk of chunks) {
+    const values = chunk.map(r => `<value>${escXml(String(r))}</value>`).join('');
+    const xml = buildXml(`
+      <query>
+        <object>ARINVOICE</object>
+        <select><field>RECORDNO</field><field>RECORDID</field></select>
+        <filter><in><field>RECORDID</field>${values}</in></filter>
+        <pagesize>1000</pagesize>
+      </query>
+    `);
+    const resp = await sagePost(xml);
+    if (extractTag(resp, 'status') !== 'success') continue;
+    for (const m of resp.matchAll(/<ARINVOICE>([\s\S]*?)<\/ARINVOICE>/gi)) {
+      const id = extractTag(m[1], 'RECORDID');
+      const no = extractTag(m[1], 'RECORDNO');
+      if (id && no) out[id] = no;
+    }
+  }
+  return out;
+}
+
 // ─── Payment detail (ARPYMTDETAIL) ──────────────────────────────────────────
 // Real payment dates/amounts per invoice RECORDNO, with adjustments and
 // credit-style amounts separated (feeds the Velocity payment worklist).
@@ -1093,6 +1119,7 @@ module.exports = {
   getCustomers,
   getCustomerContacts,
   getPaymentsForRecordNos,
+  getRecordNosForInvoiceIds,
   getItems,
   getLocations,
   createInvoice,
