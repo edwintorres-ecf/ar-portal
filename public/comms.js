@@ -1108,12 +1108,13 @@ async function commsLoadPaymentWorklist() {
         </div>
         <div id="vel-payapp-list" style="display:none;margin-top:10px">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="text-align:left;color:#6b6458;font-size:10px;text-transform:uppercase"><th style="padding:5px 10px">Invoice</th><th style="padding:5px 10px">Customer</th><th style="padding:5px 10px">Account</th><th style="padding:5px 10px">Status here</th><th style="padding:5px 10px;text-align:right">Velocity balance</th><th style="padding:5px 10px;text-align:right">Apply</th></tr></thead>
+            <thead><tr style="text-align:left;color:#6b6458;font-size:10px;text-transform:uppercase"><th style="padding:5px 10px">Invoice</th><th style="padding:5px 10px">Customer</th><th style="padding:5px 10px">Account</th><th style="padding:5px 10px">Status here</th><th style="padding:5px 10px">Paid date</th><th style="padding:5px 10px;text-align:right">Velocity balance</th><th style="padding:5px 10px;text-align:right">Apply</th></tr></thead>
             <tbody>${w.rows.slice(0, 60).map(r => `<tr style="border-top:1px solid #f5f1e8">
               <td style="padding:5px 10px;font-weight:600">${escHtml(r.invoiceId)}</td>
               <td style="padding:5px 10px">${escHtml(r.customer || '')}</td>
               <td style="padding:5px 10px">${escHtml(r.account || '')}</td>
               <td style="padding:5px 10px;font-size:11px;color:#6b6458">${escHtml(r.kind)}</td>
+              <td style="padding:5px 10px;font-size:11px">${r.paidDate ? escHtml(String(r.paidDate).slice(0, 10)) : '—'}</td>
               <td style="padding:5px 10px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.velocityBalance)}</td>
               <td style="padding:5px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">${fmt$(r.amountToApply)}</td>
             </tr>`).join('')}</tbody>

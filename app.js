@@ -3028,7 +3028,7 @@ app.get('/api/velocity/reconcile', requireAuth, async (req, res) => {
 // classified by the team until Sage payment detail is wired. Export matches
 // the reconcile-CSV vocabulary (INVOICE_NUMBER, PAID_AMOUNT, PAID_DATE,
 // NOTE, CLASSIFICATION) so the team can work it in Velocity directly.
-function velocityPaymentWorklist(user) {
+async function velocityPaymentWorklist(user) {
   let invoices = applyUserFilter(sage.getCachedInvoices(), user);
   velocityFeedRow('__warm__');
   const ourByid = new Map(invoices.map(i => [i.invoiceId, i]));
@@ -3040,20 +3040,37 @@ function velocityPaymentWorklist(user) {
     const delta = (f.balance || 0) - ourBalance;
     if (delta > 0.01) {
       rows.push({
-        invoiceId: id, customer: f.customer, account: f.account,
+        invoiceId: id, recordNo: ours ? ours.recordNo : null,
+        customer: f.customer, account: f.account,
         velocityBalance: f.balance, ourBalance,
         amountToApply: Math.round(delta * 100) / 100,
         kind: ourBalance < 0.01 ? 'fully paid here' : 'partially paid here',
       });
     }
   }
+  // Real payment dates/amounts + credit detection from Sage ARPYMTDETAIL.
+  // Invoices absent from the open cache (fully paid) have no recordNo here;
+  // those keep delta-only data until a record lookup path exists.
+  try {
+    const withRec = rows.filter(r => r.recordNo);
+    const pays = await sage.getPaymentsForRecordNos(withRec.map(r => r.recordNo));
+    for (const r of withRec) {
+      const ps = pays[r.recordNo] || [];
+      if (!ps.length) continue;
+      r.payments = ps;
+      r.paidDate = ps.map(p => p.date).filter(Boolean).sort().slice(-1)[0] || null;
+      r.paidAmount = Math.round(ps.reduce((s2, p) => s2 + (p.amount || 0), 0) * 100) / 100;
+      const adj = ps.reduce((s2, p) => s2 + (p.adjustment || 0) + (p.negativeInvoice || 0), 0);
+      if (adj > 0.01) { r.kind += ' (credit/adjustment)'; r.classification = 'Credit/Adjustment'; r.adjustmentAmount = Math.round(adj * 100) / 100; }
+    }
+  } catch (e) { /* enrichment only */ }
   rows.sort((a, b) => b.amountToApply - a.amountToApply);
   return rows;
 }
 
-app.get('/api/velocity/payment-worklist', requireAuth, (req, res) => {
+app.get('/api/velocity/payment-worklist', requireAuth, async (req, res) => {
   try {
-    const rows = velocityPaymentWorklist(req.session.user);
+    const rows = await velocityPaymentWorklist(req.session.user);
     res.json({
       feedGeneratedAt: _vFeed.generatedAt || null,
       count: rows.length,
@@ -3063,14 +3080,15 @@ app.get('/api/velocity/payment-worklist', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/velocity/payment-worklist.csv', requireAuth, (req, res) => {
+app.get('/api/velocity/payment-worklist.csv', requireAuth, async (req, res) => {
   try {
-    const rows = velocityPaymentWorklist(req.session.user);
+    const rows = await velocityPaymentWorklist(req.session.user);
     const today = new Date();
     const d = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
+    const dmy2 = (x) => { const dt = new Date(x); return isNaN(dt) ? d : `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')}/${dt.getFullYear()}`; };
     const lines = ['INVOICE_NUMBER,PAID_AMOUNT,PAID_DATE,NOTE,CLASSIFICATION'];
     for (const r of rows) {
-      lines.push(`${r.invoiceId},${r.amountToApply.toFixed(2)},${d},${(r.kind + ' per Sage').replace(/,/g, ' ')},Payment`);
+      lines.push(`${r.invoiceId},${r.amountToApply.toFixed(2)},${r.paidDate ? dmy2(r.paidDate) : d},${(r.kind + ' per Sage').replace(/,/g, ' ')},${r.classification || 'Payment'}`);
     }
     db.auditLog(req.session.user.email, 'velocity_payment_export', null, `${rows.length} rows`);
     res.setHeader('Content-Type', 'text/csv');

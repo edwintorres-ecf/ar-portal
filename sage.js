@@ -776,6 +776,48 @@ async function getCustomerContacts() {
   return rows;
 }
 
+// ─── Payment detail (ARPYMTDETAIL) ──────────────────────────────────────────
+// Real payment dates/amounts per invoice RECORDNO, with adjustments and
+// credit-style amounts separated (feeds the Velocity payment worklist).
+async function getPaymentsForRecordNos(recordNos) {
+  const out = {};
+  const chunks = [];
+  for (let i = 0; i < recordNos.length; i += 40) chunks.push(recordNos.slice(i, i + 40));
+  for (const chunk of chunks) {
+    const values = chunk.map(r => `<value>${escXml(String(r))}</value>`).join('');
+    const xml = buildXml(`
+      <query>
+        <object>ARPYMTDETAIL</object>
+        <select>
+          <field>RECORDKEY</field>
+          <field>PAYMENTDATE</field>
+          <field>PAYMENTAMOUNT</field>
+          <field>ADJUSTMENTAMOUNT</field>
+          <field>NEGATIVEINVOICEAMOUNT</field>
+          <field>STATE</field>
+        </select>
+        <filter><in><field>RECORDKEY</field>${values}</in></filter>
+        <pagesize>1000</pagesize>
+      </query>
+    `);
+    const resp = await sagePost(xml);
+    if (extractTag(resp, 'status') !== 'success') continue;
+    for (const m of resp.matchAll(/<ARPYMTDETAIL>([\s\S]*?)<\/ARPYMTDETAIL>/gi)) {
+      const b = m[1];
+      const key = extractTag(b, 'RECORDKEY');
+      if (!key) continue;
+      (out[key] = out[key] || []).push({
+        date: extractTag(b, 'PAYMENTDATE'),
+        amount: parseFloat2(extractTag(b, 'PAYMENTAMOUNT')),
+        adjustment: parseFloat2(extractTag(b, 'ADJUSTMENTAMOUNT')),
+        negativeInvoice: parseFloat2(extractTag(b, 'NEGATIVEINVOICEAMOUNT')),
+        state: extractTag(b, 'STATE'),
+      });
+    }
+  }
+  return out;
+}
+
 // ─── Item lookup ─────────────────────────────────────────────────────────────
 async function getItems() {
   const allItems = [];
@@ -1050,6 +1092,7 @@ module.exports = {
   computeAgingBucket,
   getCustomers,
   getCustomerContacts,
+  getPaymentsForRecordNos,
   getItems,
   getLocations,
   createInvoice,

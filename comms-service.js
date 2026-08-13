@@ -225,7 +225,8 @@ function buildStatementHtml(customerId, custInvoices, { autoPrint = false } = {}
 <div class="parties">
   <div><b>Bill To:</b>&nbsp;&nbsp; <b>${escHtml(custName)}</b></div>
   <div style="display:flex;gap:10px"><b>Remit To:</b>
-    <span><b>EAST COAST FACILITIES, INC.</b><br>P.O. BOX 823967<br>PHILADELPHIA, PA 19182-3969</span>
+    <span><b>EAST COAST FACILITIES, INC.</b><br>P.O. BOX 855821<br>MINNEAPOLIS, MN 55485-5821<br>
+    <span style="font-size:10px;color:#333">ACH/Wire: Wells Fargo Bank N.A. · Acct 4943718155 · ABA 121000248</span></span>
   </div>
 </div>
 
