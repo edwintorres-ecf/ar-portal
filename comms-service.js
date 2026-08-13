@@ -250,6 +250,32 @@ ${autoPrint ? '<script>window.onload = function() { window.print(); }</script>' 
 </html>`;
 }
 
+// ─── HTML → PDF (documents) ──────────────────────────────────────────────────
+// Chromium render via playwright-core + system chromium (same stack as the
+// payee scrapers). pageNumbers adds "Page X of Y" footers (statements).
+async function htmlToPdf(html, opts = {}) {
+  const { chromium } = require('playwright-core');
+  const browser = await chromium.launch({
+    executablePath: '/usr/bin/chromium-browser',
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load' });
+    return await page.pdf({
+      format: 'Letter', printBackground: true,
+      margin: { top: '0.45in', bottom: '0.55in', left: '0.5in', right: '0.5in' },
+      ...(opts.pageNumbers ? {
+        displayHeaderFooter: true,
+        headerTemplate: '<span></span>',
+        footerTemplate: '<div style="font-size:9px;width:100%;text-align:right;padding-right:36px;font-family:Verdana,sans-serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+      } : {}),
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
 // ─── Recipient guard ─────────────────────────────────────────────────────────
 // Dedupe + normalize; block contacts with consent revoked; enforce allowlist.
 function resolveRecipients(customerId, toEmails, ccEmails) {
