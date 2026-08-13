@@ -47,10 +47,10 @@ async function status() {
 
 // Ship a portal-built CSV and run the uploader against it. dryRun validates
 // transport + CSV without opening the browser flow.
-async function transmitFile(localCsvPath, { dryRun = false } = {}) {
+async function transmitFile(localCsvPath, { dryRun = false, account = 'LOC1' } = {}) {
   const remote = `/tmp/velocity-portal-${Date.now()}-${path.basename(localCsvPath)}`;
   await scpTo(localCsvPath, remote);
-  const flags = `--file=${remote}${dryRun ? ' --dry-run' : ''}`;
+  const flags = `--file=${remote}${account === 'LOC2' ? ' --account=LOC2' : ''}${dryRun ? ' --dry-run' : ''}`;
   const r = await ssh(`cd ${FIN} && ${NODE} velocity-uploader.js upload ${flags}`, 420000);
   const out = (r.stdout + '\n' + r.stderr).trim();
   const ok = dryRun ? /DRY RUN complete/i.test(out) : /success|uploaded/i.test(out) && !/error|fail/i.test(out.split('\n').slice(-8).join('\n'));

@@ -1065,10 +1065,13 @@ async function commsVelocityPreview() {
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#faf8f3;font-size:12.5px;flex-wrap:wrap;gap:8px">
           <span><strong>${loc1.length}</strong> LOC1 invoice(s) · ${fmt$(total)}${loc2.length ? ` · <span style="color:#b0472a">${loc2.length} LOC2 (Amazon, held — see below)</span>` : ''}</span>
-          ${commsIsManager() && loc1.length ? `<button class="btn-sm" style="background:${p.armed ? '#1a1814' : '#e2e8f0'};color:${p.armed ? '#fff' : '#94a3b8'};border:none;padding:6px 16px;border-radius:8px;cursor:${p.armed ? 'pointer' : 'not-allowed'};font-weight:600" ${p.armed ? `onclick="commsVelocityTransmit(${from}, ${to}, this)"` : 'title="Set VELOCITY_TRANSMIT_ARMED=1 to enable"'}>🚀 Transmit to InterNex${p.armed ? '' : ' (unarmed)'}</button>` : ''}
+          <span style="display:flex;gap:6px;flex-wrap:wrap">
+          ${commsIsManager() && loc1.length ? `<button class="btn-sm" style="background:${p.armed ? '#1a1814' : '#e2e8f0'};color:${p.armed ? '#fff' : '#94a3b8'};border:none;padding:6px 16px;border-radius:8px;cursor:${p.armed ? 'pointer' : 'not-allowed'};font-weight:600" ${p.armed ? `onclick="commsVelocityTransmit(${from}, ${to}, this, 'LOC1')"` : 'title="Set VELOCITY_TRANSMIT_ARMED=1 to enable"'}>🚀 Transmit LOC1${p.armed ? '' : ' (unarmed)'}</button>` : ''}
+          ${commsIsManager() && loc2.length && p.armed ? `<button class="btn-sm" style="background:#fff;border:2px solid #b0472a;color:#b0472a;padding:5px 14px;border-radius:8px;cursor:pointer;font-weight:700" onclick="commsVelocityTransmit(${from}, ${to}, this, 'LOC2')">⚠ Express LOC2 (${loc2.length})</button>` : ''}
+          </span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase"><th style="padding:7px 12px">Invoice</th><th style="padding:7px 12px">Customer (Velocity name)</th><th style="padding:7px 12px">Line</th><th style="padding:7px 12px;text-align:right">Amount</th><th style="padding:7px 12px;text-align:right">Balance</th><th style="padding:7px 12px">Prior transmit</th></tr></thead>
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase"><th style="padding:7px 12px">Invoice</th><th style="padding:7px 12px">Customer (Velocity name)</th><th style="padding:7px 12px">Line</th><th style="padding:7px 12px;text-align:right">Amount</th><th style="padding:7px 12px;text-align:right">Balance</th><th style="padding:7px 12px">Prior transmit</th><th style="padding:7px 12px">InterNex status</th></tr></thead>
           <tbody>${p.rows.map(r => `<tr style="border-top:1px solid #f1ede3;${r.line === 'LOC2' ? 'opacity:.6' : ''}">
             <td style="padding:7px 12px;font-weight:600">${escHtml(r.invoiceId)}</td>
             <td style="padding:7px 12px">${escHtml(r.velocityCustomer)}${r.velocityCustomer !== r.customer ? ` <span style="color:#a8a093;font-size:10.5px">(${escHtml(r.customer)})</span>` : ''}</td>
@@ -1076,19 +1079,25 @@ async function commsVelocityPreview() {
             <td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.amount)}</td>
             <td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.balance)}</td>
             <td style="padding:7px 12px;font-size:11px;color:#6b6458">${r.transmitted ? '✓ ' + r.transmitted.times + 'x, last ' + (r.transmitted.at || '').slice(0, 10) : '—'}</td>
+            <td style="padding:7px 12px;font-size:11px">${r.feed ? `<span style="color:${r.feed.status === 'open' ? '#3763a0' : r.feed.status === 'closed' ? '#3f7238' : '#8a6d1a'};font-weight:600">${escHtml(r.feed.account)} ${escHtml(r.feed.status)}</span>` : '<span style="color:#a8a093">not on portal</span>'}</td>
           </tr>`).join('')}</tbody>
         </table>
-        ${loc2.length ? '<div style="padding:9px 16px;font-size:11.5px;color:#b0472a;border-top:1px solid #f1ede3">LOC2 rows (Amazon invoices not in Payee) are shown for review but held from transmit until the uploader\'s account switcher is mapped.</div>' : ''}
+        ${loc2.length ? '<div style="padding:9px 16px;font-size:11.5px;color:#b0472a;border-top:1px solid #f1ede3">LOC2 rows (Amazon invoices not in Payee) are shown for review but transmitted ONLY via the express LOC2 button with typed confirmation.</div>' : ''}
       </div>`;
   } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
 }
 
-async function commsVelocityTransmit(from, to, btn) {
+async function commsVelocityTransmit(from, to, btn, line) {
   const retrans = document.getElementById('vel-retrans').checked;
-  if (!confirm(`Transmit ECI-${from}${to !== from ? ' through ECI-' + to : ''} to InterNex Capital?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
+  let confirmLoc2 = false;
+  if (line === 'LOC2') {
+    const typed = prompt('EXPRESS LOC2 TRANSMIT — these Amazon invoices upload to Line of Credit 2 (facility 144).\n\nType LOC2 to confirm:');
+    if (typed !== 'LOC2') { alert('Cancelled — LOC2 requires typing LOC2 exactly.'); return; }
+    confirmLoc2 = true;
+  } else if (!confirm(`Transmit ECI-${from}${to !== from ? ' through ECI-' + to : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
   btn.disabled = true; btn.textContent = '🚀 Transmitting…';
   try {
-    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ from, to, includeRetransmit: retrans }) });
+    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ from, to, includeRetransmit: retrans, line, confirmLoc2 }) });
     alert(`${r.ok ? 'Success' : 'FAILED'} — batch ${r.batch}: ${r.count} invoice(s)${r.skippedRetrans ? `, ${r.skippedRetrans} skipped (already sent)` : ''}\n\nUploader output tail:\n${(r.output || '').slice(-400)}`);
     commsLoadVelocity();
   } catch (e) { alert('Transmit failed: ' + e.message); btn.disabled = false; btn.textContent = '🚀 Transmit to InterNex'; }

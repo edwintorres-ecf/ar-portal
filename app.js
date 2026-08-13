@@ -2744,6 +2744,20 @@ const velocityBridge = require('./velocity-bridge');
 const AMAZON_CUSTS = new Set(['C-00403', 'C-00566']);
 
 let _vNameMap = null;
+let _vFeed = { mtime: 0, map: {} };
+function velocityFeedRow(invoiceId) {
+  try {
+    const p = path.join(__dirname, 'velocity-feed.spark.json');
+    const mt = fs.statSync(p).mtimeMs;
+    if (mt !== _vFeed.mtime) {
+      const f = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const map = {};
+      for (const i of (f.invoices || [])) map[i.invoiceNumber] = i;
+      _vFeed = { mtime: mt, map, generatedAt: f.generatedAt };
+    }
+    return _vFeed.map[invoiceId] || null;
+  } catch (e) { return null; }
+}
 function velocityName(customerName) {
   try {
     if (_vNameMap === null) {
@@ -2780,6 +2794,7 @@ function velocityRows(from, to, user) {
       amount: inv.totalEntered || inv.totalDue, balance: inv.totalDue,
       whenCreated: inv.whenCreated, whenDue: inv.whenDue, daysOverdue: inv.daysOverdue || 0,
       line, transmitted: vtMap[inv.recordNo] || null,
+      feed: (() => { const f = velocityFeedRow(inv.invoiceId); return f ? { account: f.account, status: f.status, balance: f.balance } : null; })(),
     });
   }
   rows.sort((a, b) => a.num - b.num);
@@ -2821,10 +2836,16 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     if (process.env.VELOCITY_TRANSMIT_ARMED !== '1') {
       return res.status(400).json({ error: 'VELOCITY_TRANSMIT_ARMED is not set — InterNex transmission is disabled.' });
     }
-    const { from, to, includeRetransmit } = req.body || {};
+    const { from, to, includeRetransmit, line, confirmLoc2 } = req.body || {};
     const f = parseInt(from, 10), t = parseInt(to, 10);
     if (!f || !t || t < f) return res.status(400).json({ error: 'from/to required' });
-    let rows = velocityRows(f, t, req.session.user).filter(r => r.line === 'LOC1');
+    const targetLine = line === 'LOC2' ? 'LOC2' : 'LOC1';
+    // LOC2 is EXPRESS-ONLY (Edwin 2026-08-12): a dedicated request with an
+    // explicit confirmation flag; never part of a default transmit.
+    if (targetLine === 'LOC2' && confirmLoc2 !== true) {
+      return res.status(400).json({ error: 'LOC2 transmission requires the express confirmation' });
+    }
+    let rows = velocityRows(f, t, req.session.user).filter(r => r.line === targetLine);
     const skippedRetrans = rows.filter(r => r.transmitted && !includeRetransmit).length;
     if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);
     if (!rows.length) return res.status(400).json({ error: `Nothing to transmit${skippedRetrans ? ` (${skippedRetrans} already transmitted — enable retransmit to resend)` : ''}` });
@@ -2832,7 +2853,7 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     const tmp = path.join('/tmp', `velocity-batch-${String(f).padStart(6, '0')}-${String(t).padStart(6, '0')}.csv`);
     fs.writeFileSync(tmp, csv);
     const user = commsRealActor(req);
-    const result = await velocityBridge.transmitFile(tmp, { dryRun: false });
+    const result = await velocityBridge.transmitFile(tmp, { dryRun: false, account: targetLine });
     const batch = `${f}-${t}`;
     for (const r of rows) db.insertVelocityTransmit(r.recordNo, r.invoiceId, r.line, batch, result.ok ? 'OK' : 'FAIL', user);
     if (result.ok) {
@@ -2841,7 +2862,7 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
       if (maxNum > prev) db.setCommState('velocity_last_number', String(maxNum));
     }
     db.auditLog(user, 'velocity_transmit', rows[0].recordNo,
-      `batch ${batch}: ${rows.length} invoice(s) -> ${result.ok ? 'OK' : 'FAIL'}${skippedRetrans ? `, ${skippedRetrans} retransmit-skipped` : ''}`);
+      `[${targetLine}] batch ${batch}: ${rows.length} invoice(s) -> ${result.ok ? 'OK' : 'FAIL'}${skippedRetrans ? `, ${skippedRetrans} retransmit-skipped` : ''}`);
     res.json({ ok: result.ok, count: rows.length, batch, skippedRetrans, output: result.output });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3596,6 +3617,14 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         .catch(e => console.warn(`[statements] scheduled run failed: ${e.message}`));
     } catch (e) { console.warn(`[statements] scheduler error: ${e.message}`); }
   }, 15 * 60 * 1000);
+
+  // Velocity feed sync — pull InterNex status + name map from the iMac at
+  // startup (+5 min) and every 6 hours.
+  const doVelocitySync = () => velocityBridge.syncFeed(__dirname)
+    .then(r => { if (r.feed) console.log('[velocity] feed synced'); })
+    .catch(e => console.warn(`[velocity] feed sync failed: ${e.message}`));
+  setTimeout(doVelocitySync, 5 * 60 * 1000);
+  setInterval(doVelocitySync, 6 * 60 * 60 * 1000);
 
   // Dunning scheduler: weekdays 09:05 ET it GENERATES A PREVIEW run (never
   // sends). Humans review and execute from the console; live sends are gated
