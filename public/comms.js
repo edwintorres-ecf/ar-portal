@@ -1029,6 +1029,7 @@ async function commsLoadVelocity() {
         <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last confirmed on Velocity: <strong>${marksLabel}</strong>${s.pendingConfirmation ? ` · <span style=\"color:#8a6d1a\">${s.pendingConfirmation} awaiting confirmation</span>` : ''}</span>
         ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
         ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
+        <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsVelocityReconcile(this)">⚖ Reconcile</button>
       </div>
       ${s.facilities ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
         ${Object.values(s.facilities).map(f => `
@@ -1107,6 +1108,54 @@ async function commsVelocityPreview() {
         ${loc2.length ? '<div style="padding:9px 16px;font-size:11.5px;color:#b0472a;border-top:1px solid #f1ede3">LOC2 rows (Amazon invoices not in Payee) are shown for review but transmitted ONLY via the express LOC2 button with typed confirmation.</div>' : ''}
       </div>`;
   } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+async function commsVelocityReconcile(btn) {
+  btn.disabled = true; btn.textContent = '⚖ Reconciling…';
+  const out = document.getElementById('vel-preview');
+  try {
+    const r = await apiFetch('/api/velocity/reconcile');
+    const fmt$ = (n) => '$' + Math.round(n || 0).toLocaleString();
+    const s = r.summary;
+    const tile = (label, v, sub, warn) => `
+      <div style="flex:1;min-width:170px;background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px">
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:.05em;color:#6b6458;text-transform:uppercase">${label}</div>
+        <div style="font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;${warn ? 'color:#b32020' : ''}">${v}</div>
+        <div style="font-size:11.5px;color:#6b6458">${sub}</div>
+      </div>`;
+    const table = (title, rows, cols, note) => rows.length ? `
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden;margin-top:12px">
+        <div style="padding:9px 14px;background:#faf8f3;font-size:12.5px;font-weight:700">${title} (${rows.length}${rows.length === 100 ? '+' : ''})</div>
+        ${note ? `<div style="padding:6px 14px;font-size:11.5px;color:#6b6458;border-bottom:1px solid #f1ede3">${note}</div>` : ''}
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10px;text-transform:uppercase">${cols.map(x => `<th style="padding:6px 12px">${x[0]}</th>`).join('')}</tr></thead>
+          <tbody>${rows.slice(0, 50).map(row => `<tr style="border-top:1px solid #f1ede3">${cols.map(x => `<td style="padding:6px 12px${x[2] ? ';text-align:right;font-variant-numeric:tabular-nums' : ''}">${x[1](row)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>${rows.length > 50 ? '<div style="padding:6px 14px;font-size:11px;color:#6b6458">Showing 50.</div>' : ''}
+      </div>` : '';
+    out.innerHTML = `
+      <div style="font-size:11.5px;color:#6b6458;margin-bottom:8px">Reconciled against the Velocity feed generated ${escHtml((r.feedGeneratedAt || '?').slice(0, 16).replace('T', ' '))}. Sync the feed first for the freshest comparison.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${tile('Open on our side', s.ourOpenCount.toLocaleString(), fmt$(s.ourOpenTotal))}
+        ${tile('Open on Velocity', s.velocityOpenCount.toLocaleString(), fmt$(s.velocityOpenTotal))}
+        ${tile('Matched open', s.matched.toLocaleString(), 'open both sides')}
+        ${tile('Ours only', s.oursOnly.toLocaleString(), fmt$(s.oursOnlyTotal) + ' not open on Velocity', s.oursOnly > 0)}
+        ${tile('Velocity only', s.velocityOnly.toLocaleString(), fmt$(s.velocityOnlyTotal) + ' likely paid — close there', s.velocityOnly > 0)}
+        ${tile('Balance mismatches', s.balanceMismatch.toLocaleString(), 'differ by > $1', s.balanceMismatch > 0)}
+      </div>
+      ${table('Open here, not open on Velocity', r.oursOnly, [
+        ['Invoice', x => escHtml(x.invoiceId)], ['Customer', x => escHtml(x.customer || '')],
+        ['Velocity status', x => escHtml(x.velocityStatus)], ['Our balance', x => fmt$(x.balance), 1]],
+        'Candidates to transmit, or intentionally unsubmitted.')}
+      ${table('Open on Velocity, not open here', r.velocityOnly, [
+        ['Invoice', x => escHtml(x.invoiceId)], ['Customer', x => escHtml(x.customer || '')],
+        ['Account', x => escHtml(x.account || '')], ['Velocity balance', x => fmt$(x.velocityBalance), 1]],
+        'Paid or closed in Sage but still open on the lender side — these should be closed on Velocity.')}
+      ${table('Balance mismatches', r.balanceMismatch, [
+        ['Invoice', x => escHtml(x.invoiceId)], ['Customer', x => escHtml(x.customer || '')],
+        ['Ours', x => fmt$(x.ourBalance), 1], ['Velocity', x => fmt$(x.velocityBalance), 1],
+        ['Diff', x => fmt$(x.ourBalance - x.velocityBalance), 1]])}`;
+  } catch (e) { out.innerHTML = `<div style="padding:14px;color:var(--red)">${escHtml(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = '⚖ Reconcile';
 }
 
 async function commsVelocityTransmit(prefix, from, to, btn, line) {

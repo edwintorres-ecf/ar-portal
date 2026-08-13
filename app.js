@@ -2909,6 +2909,64 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── One-button reconciliation: our open AR vs Velocity's open invoices ──────
+app.get('/api/velocity/reconcile', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (!invoices.length) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    velocityFeedRow('__warm__');
+    const feedMap = _vFeed.map;
+
+    const ours = new Map();
+    for (const i of invoices) if (i.totalDue > 0.01) ours.set(i.invoiceId, i);
+
+    const matched = [], velocityOnly = [], oursOnly = [], balanceMismatch = [];
+    let ourTotal = 0, velTotal = 0;
+
+    for (const [id, inv] of ours) {
+      ourTotal += inv.totalDue;
+      const f = feedMap[id];
+      if (f && f.status === 'open') {
+        matched.push(id);
+        if (Math.abs((f.balance || 0) - inv.totalDue) > 1) {
+          balanceMismatch.push({ invoiceId: id, customer: inv.customerName, ourBalance: inv.totalDue, velocityBalance: f.balance, account: f.account });
+        }
+      } else {
+        oursOnly.push({ invoiceId: id, customer: inv.customerName, balance: inv.totalDue, daysOverdue: inv.daysOverdue || 0, velocityStatus: f ? f.status : 'never submitted' });
+      }
+    }
+    for (const [id, f] of Object.entries(feedMap)) {
+      if (f.status !== 'open') continue;
+      velTotal += f.balance || 0;
+      if (!ours.has(id)) {
+        // Open on Velocity but closed/absent in Sage — likely paid; needs closing there.
+        velocityOnly.push({ invoiceId: id, customer: f.customer, velocityBalance: f.balance, account: f.account, submittedDate: f.submittedDate });
+      }
+    }
+    oursOnly.sort((a, b) => b.balance - a.balance);
+    velocityOnly.sort((a, b) => (b.velocityBalance || 0) - (a.velocityBalance || 0));
+    balanceMismatch.sort((a, b) => Math.abs(b.ourBalance - b.velocityBalance) - Math.abs(a.ourBalance - a.velocityBalance));
+
+    db.auditLog(req.session.user.email, 'velocity_reconcile', null,
+      `matched=${matched.length} oursOnly=${oursOnly.length} velocityOnly=${velocityOnly.length} mismatch=${balanceMismatch.length}`);
+    res.json({
+      feedGeneratedAt: _vFeed.generatedAt || null,
+      summary: {
+        ourOpenCount: ours.size, ourOpenTotal: ourTotal,
+        velocityOpenCount: Object.values(feedMap).filter(f => f.status === 'open').length, velocityOpenTotal: velTotal,
+        matched: matched.length,
+        oursOnly: oursOnly.length, oursOnlyTotal: oursOnly.reduce((s, x) => s + x.balance, 0),
+        velocityOnly: velocityOnly.length, velocityOnlyTotal: velocityOnly.reduce((s, x) => s + (x.velocityBalance || 0), 0),
+        balanceMismatch: balanceMismatch.length,
+      },
+      oursOnly: oursOnly.slice(0, 100),
+      velocityOnly: velocityOnly.slice(0, 100),
+      balanceMismatch: balanceMismatch.slice(0, 100),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/velocity/status', requireAuth, async (req, res) => {
   try {
     let uploader = null;
