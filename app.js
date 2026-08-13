@@ -2769,6 +2769,23 @@ function velocityName(customerName) {
   return _vNameMap[customerName] || customerName;
 }
 
+// Feed-driven confirmation + advance-only high-water mark (Edwin 2026-08-13):
+// an invoice counts once Velocity's scrape shows it; retransmits and sends
+// below the mark never move it (Math.max only).
+function reconcileVelocity() {
+  try {
+    velocityFeedRow('__warm__');   // ensure feed cache is loaded/refreshed
+    const feedIds = Object.keys(_vFeed.map);
+    const confirmed = db.confirmVelocityTransmits(feedIds);
+    let feedMax = 0;
+    for (const id of feedIds) { const n = eciNum(id); if (n && n > feedMax) feedMax = n; }
+    const prev = parseInt(db.getCommState('velocity_last_number') || '0', 10) || 0;
+    let advancedTo = null;
+    if (feedMax > prev) { db.setCommState('velocity_last_number', String(feedMax)); advancedTo = feedMax; }
+    return { confirmed, advancedTo, feedMax, prev };
+  } catch (e) { return { confirmed: 0, error: e.message }; }
+}
+
 function eciNum(invoiceId) {
   const m = /^ECI-(\d+)$/i.exec(String(invoiceId || '').trim());
   return m ? parseInt(m[1], 10) : null;
@@ -2856,11 +2873,8 @@ app.post('/api/velocity/transmit', requireAuth, requireRole('admin', 'manager'),
     const result = await velocityBridge.transmitFile(tmp, { dryRun: false, account: targetLine });
     const batch = `${f}-${t}`;
     for (const r of rows) db.insertVelocityTransmit(r.recordNo, r.invoiceId, r.line, batch, result.ok ? 'OK' : 'FAIL', user);
-    if (result.ok) {
-      const maxNum = Math.max(...rows.map(r => r.num));
-      const prev = parseInt(db.getCommState('velocity_last_number') || '0', 10) || 0;
-      if (maxNum > prev) db.setCommState('velocity_last_number', String(maxNum));
-    }
+    // High-water mark advances only on CONFIRMED acceptance (feed reconcile),
+    // never at transmit time — and never moves for retransmits/backfills.
     db.auditLog(user, 'velocity_transmit', rows[0].recordNo,
       `[${targetLine}] batch ${batch}: ${rows.length} invoice(s) -> ${result.ok ? 'OK' : 'FAIL'}${skippedRetrans ? `, ${skippedRetrans} retransmit-skipped` : ''}`);
     res.json({ ok: result.ok, count: rows.length, batch, skippedRetrans, output: result.output });
@@ -2877,6 +2891,7 @@ app.get('/api/velocity/status', requireAuth, async (req, res) => {
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
       lastNumber: parseInt(db.getCommState('velocity_last_number') || '0', 10) || null,
       recent: db.listVelocityTransmits(60),
+      pendingConfirmation: db.countUnconfirmedVelocity(),
       uploader, feedAgeHours: feedAge,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2886,6 +2901,8 @@ app.post('/api/velocity/sync-feed', requireAuth, requireRole('admin', 'manager')
   try {
     const r = await velocityBridge.syncFeed(__dirname);
     _vNameMap = null;   // re-read the freshly synced map next use
+    _vFeed = { mtime: 0, map: {} };
+    r.reconcile = reconcileVelocity();
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3621,7 +3638,11 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // Velocity feed sync — pull InterNex status + name map from the iMac at
   // startup (+5 min) and every 6 hours.
   const doVelocitySync = () => velocityBridge.syncFeed(__dirname)
-    .then(r => { if (r.feed) console.log('[velocity] feed synced'); })
+    .then(r => {
+      if (r.feed) console.log('[velocity] feed synced');
+      const rec = reconcileVelocity();
+      if (rec.confirmed || rec.advancedTo) console.log(`[velocity] reconcile: ${rec.confirmed} confirmed${rec.advancedTo ? ', high-water -> ECI-0' + rec.advancedTo : ''}`);
+    })
     .catch(e => console.warn(`[velocity] feed sync failed: ${e.message}`));
   setTimeout(doVelocitySync, 5 * 60 * 1000);
   setInterval(doVelocitySync, 6 * 60 * 60 * 1000);

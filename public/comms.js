@@ -1023,7 +1023,7 @@ async function commsLoadVelocity() {
       <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">InterNex Capital (Velocity)</h1>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <span style="background:${s.armed ? '#dcfce7;color:#15803d' : '#fee2e2;color:#b32020'};padding:4px 12px;border-radius:12px;font-size:12px;font-weight:700">${s.armed ? '🟢 ARMED — live uploads enabled' : '🔒 UNARMED — preview only'}</span>
-        <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last transmitted: <strong>${s.lastNumber ? 'ECI-' + String(s.lastNumber).padStart(6, '0') : 'not tracked yet'}</strong></span>
+        <span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Last confirmed on Velocity: <strong>${s.lastNumber ? 'ECI-' + String(s.lastNumber).padStart(6, '0') : 'not tracked yet'}</strong>${s.pendingConfirmation ? ` · <span style=\"color:#8a6d1a\">${s.pendingConfirmation} awaiting confirmation</span>` : ''}</span>
         ${s.feedAgeHours != null ? `<span style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:4px 12px;border-radius:12px;font-size:12px">Velocity feed: ${s.feedAgeHours}h old</span>` : ''}
         ${commsIsManager() ? `<button class="btn-sm" style="background:#fff;border:1px solid var(--line,#e7e1d4);padding:6px 12px;border-radius:8px;cursor:pointer" onclick="commsVelocitySync(this)">⟳ Sync feed from iMac</button>` : ''}
       </div>
@@ -1043,7 +1043,7 @@ async function commsLoadVelocity() {
         <tbody>${s.recent.map(t => `<tr style="border-top:1px solid #f1ede3">
           <td style="padding:7px 12px;font-weight:600">${escHtml(t.invoice_id)}</td><td style="padding:7px 12px">${escHtml(t.batch || '')}</td>
           <td style="padding:7px 12px">${escHtml(t.line)}</td>
-          <td style="padding:7px 12px"><span style="color:${t.result === 'OK' ? '#15803d' : '#b32020'};font-weight:700">${escHtml(t.result || '')}</span></td>
+          <td style="padding:7px 12px">${t.result === 'OK' ? (t.confirmed_at ? '<span style="color:#15803d;font-weight:700">✓ Confirmed</span>' : '<span style="color:#8a6d1a;font-weight:700">Sent — awaiting Velocity</span>') : `<span style="color:#b32020;font-weight:700">${escHtml(t.result || '')}</span>`}</td>
           <td style="padding:7px 12px">${escHtml((t.transmitted_by || '').split('@')[0])}</td>
           <td style="padding:7px 12px;color:#6b6458">${escHtml((t.transmitted_at || '').slice(0, 16))}</td></tr>`).join('')}</tbody></table></div>`
         : '<div style="font-size:12.5px;color:#6b6458">No portal transmits yet. Earlier uploads live in the iMac manifest.</div>'}

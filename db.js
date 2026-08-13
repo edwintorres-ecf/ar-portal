@@ -500,6 +500,10 @@ function initCommsSchema() {
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_ca_att_cust ON customer_attachments(customer_id)');
 
+  // Velocity confirmation: transmits count toward the high-water mark only
+  // once the invoice appears in the scraped feed (accepted on the portal).
+  try { db.exec("ALTER TABLE velocity_transmits ADD COLUMN confirmed_at TEXT DEFAULT NULL"); } catch (e) {}
+
   // Per-rule customer TARGETING (2026-08-12, Edwin): JSON array of customer
   // ids. Combined with target_mode: 'all' (ignore list), 'only' (rule applies
   // ONLY to listed customers), 'except' (applies to everyone BUT the listed).
@@ -1189,6 +1193,19 @@ function getVelocityTransmitMap() {
   return map;
 }
 
+function confirmVelocityTransmits(invoiceIds) {
+  if (!invoiceIds.length) return 0;
+  const d2 = getDb();
+  const stmt = d2.prepare("UPDATE velocity_transmits SET confirmed_at=datetime('now') WHERE invoice_id=? AND result='OK' AND confirmed_at IS NULL");
+  let n = 0;
+  for (const id of invoiceIds) n += stmt.run(id).changes;
+  return n;
+}
+
+function countUnconfirmedVelocity() {
+  return getDb().prepare("SELECT COUNT(*) AS c FROM velocity_transmits WHERE result='OK' AND confirmed_at IS NULL").get().c;
+}
+
 function listVelocityTransmits(limit = 100) {
   return getDb().prepare('SELECT * FROM velocity_transmits ORDER BY id DESC LIMIT ?').all(limit);
 }
@@ -1693,6 +1710,8 @@ module.exports = {
   insertVelocityTransmit,
   getVelocityTransmitMap,
   listVelocityTransmits,
+  confirmVelocityTransmits,
+  countUnconfirmedVelocity,
   getAllCollectionStatuses,
   setCollectionStatus,
   listCustomerAttachments,
