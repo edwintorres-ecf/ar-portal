@@ -90,6 +90,8 @@ header h1, .logo, .app-title, .brand { color: var(--ink) !important; }
 .sc-SCSC { background: #dbe7f7; color: #3b5f9e; }
 .sc-SSC  { background: #d9eef0; color: #2f7680; }
 .sc-TSC  { background: #f7eecf; color: #8a7422; }
+.sc-RTSC { background: #dcd9f2; color: #4d4a92; }
+.sc-PTSC { background: #f2d9e8; color: #92406f; }
 .sc-chip.sc-unknown { background: #eeeae0; color: var(--ink-soft); }
 
 /* ── Aging day pills (their yellow→red severity) ──

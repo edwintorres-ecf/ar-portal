@@ -1600,7 +1600,7 @@ function commsAgePillClass(days) {
 }
 
 function commsScChips(codes) {
-  const KNOWN = ['ASC','BSC','BTSC','CTSC','FC','HSC','HTSC','SCSC','SSC','TSC'];
+  const KNOWN = ['ASC','BSC','BTSC','CTSC','FC','HSC','HTSC','SCSC','SSC','TSC','RTSC','PTSC'];
   return (codes || []).map(c =>
     `<span class="sc-chip ${KNOWN.includes(c) ? 'sc-' + c : 'sc-unknown'}">${escHtml(c)}</span>`).join(' ');
 }

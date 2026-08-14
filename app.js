@@ -2588,7 +2588,7 @@ const SC_BY_LOCATION = {
   'L-ECF-SCSC': 'SCSC', // South Chicago
   'L-ECF-SRN': 'SSC',   // Scranton
   'L-ECF-TRN': 'TSC',   // Trenton
-  'L-ECF-WPB': 'WPB',   // Palm Beach — no code observed on their platform yet
+  'L-ECF-WPB': 'PTSC',  // Palm Beach (PTSC per Edwin 2026-08-14; RTSC pending its Intacct location)
   'E-ECF': 'ECF',       // corporate
 };
 function scCodeFromLocation(locationIdOrName, name) {
