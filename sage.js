@@ -802,6 +802,37 @@ async function getRecordNosForInvoiceIds(invoiceIds) {
   return out;
 }
 
+// ─── Full invoice lookup by RECORDID, any state (incl. paid/closed) ─────────
+async function getInvoicesByIds(invoiceIds) {
+  const out = [];
+  for (let i = 0; i < invoiceIds.length; i += 40) {
+    const chunk = invoiceIds.slice(i, i + 40);
+    const values = chunk.map(r => `<value>${escXml(String(r))}</value>`).join('');
+    const xml = buildXml(`
+      <query>
+        <object>ARINVOICE</object>
+        <select><field>RECORDNO</field><field>RECORDID</field><field>CUSTOMERID</field><field>CUSTOMERNAME</field>
+          <field>WHENCREATED</field><field>WHENDUE</field><field>TOTALENTERED</field><field>TOTALDUE</field><field>STATE</field></select>
+        <filter><in><field>RECORDID</field>${values}</in></filter>
+        <pagesize>1000</pagesize>
+      </query>
+    `);
+    const resp = await sagePost(xml);
+    if (extractTag(resp, 'status') !== 'success') continue;
+    for (const m of resp.matchAll(/<ARINVOICE>([\s\S]*?)<\/ARINVOICE>/gi)) {
+      const b = m[1];
+      out.push({
+        recordNo: extractTag(b, 'RECORDNO'), invoiceId: extractTag(b, 'RECORDID'),
+        customerId: extractTag(b, 'CUSTOMERID'), customerName: extractTag(b, 'CUSTOMERNAME'),
+        whenCreated: extractTag(b, 'WHENCREATED'), whenDue: extractTag(b, 'WHENDUE'),
+        totalEntered: parseFloat2(extractTag(b, 'TOTALENTERED')), totalDue: parseFloat2(extractTag(b, 'TOTALDUE')),
+        state: extractTag(b, 'STATE'),
+      });
+    }
+  }
+  return out;
+}
+
 // ─── Payment detail (ARPYMTDETAIL) ──────────────────────────────────────────
 // Real payment dates/amounts per invoice RECORDNO, with adjustments and
 // credit-style amounts separated (feeds the Velocity payment worklist).
@@ -1120,6 +1151,7 @@ module.exports = {
   getCustomerContacts,
   getPaymentsForRecordNos,
   getRecordNosForInvoiceIds,
+  getInvoicesByIds,
   getItems,
   getLocations,
   createInvoice,

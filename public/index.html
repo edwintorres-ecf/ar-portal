@@ -5199,20 +5199,27 @@ function rePreviewEdi() {
 
 // Pre-flight checklist: everything that has ever made a transmission fail or
 // vanish, shown BEFORE the button. Returns true when any hard-red check fails.
-function renderEdiPreflight(recordNo) {
+function renderEdiPreflight(recordNo, x12) {
   const el = document.getElementById('edi-preflight');
   if (!el) return false;
   const row = (_poNeedsUpload || []).find(x => x.recordNo === recordNo);
   if (!row) { el.style.display = 'none'; return false; }
   const checks = [];
+  // Amazon funds POs on the pre-tax subtotal — the 810's TXI tax rides on top
+  // of the PO and never draws headroom. Once the generated 810 is in hand,
+  // exclude its tax from the headroom compare.
+  let tax = 0;
+  if (x12) for (const m of x12.matchAll(/(?:^|~|\n)\s*TXI\*[^*~\n]*\*([0-9.]+)/g)) tax += parseFloat(m[1]) || 0;
+  const chargeAmt = Math.round((row.amount - tax) * 100) / 100;
+  const overage = row.poAvailable != null ? (row.poAvailable - chargeAmt) < -0.005 : row.wouldOverage;
   // PO open on Amazon?
   if (row.poStatus === 'OPEN_FOR_INVOICING') checks.push(['ok', `PO ${escHtml(row.assignedPo)} is open for invoicing on Amazon`]);
   else if (row.poStatus) checks.push(['bad', `PO ${escHtml(row.assignedPo)} status is ${escHtml(row.poStatus)} — Amazon will not accept invoices against it`]);
   else checks.push(['bad', `PO ${escHtml(row.assignedPo || '—')} is NOT in Amazon's open-PO list — submissions to it vanish without an error (the Jul 17 failure mode)`]);
   // Funds
   if (row.poZeroFunds) checks.push(['bad', `PO has $0 remaining value — the submission will be dropped or held with no funds to pay it`]);
-  else if (row.wouldOverage) checks.push(['warn', `Invoice ${fmt$(row.amount)} exceeds the PO's ${row.poAvailable != null ? fmt$(row.poAvailable) : 'unknown'} headroom — expect Insufficient Amazon PO Manager Hold`]);
-  else if (row.poAvailable != null) checks.push(['ok', `PO headroom ${fmt$(row.poAvailable)} covers this ${fmt$(row.amount)} invoice`]);
+  else if (overage) checks.push(['warn', `Invoice ${fmt$(chargeAmt)}${tax ? ' pre-tax (tax ' + fmt$(tax) + ' excluded)' : ''} exceeds the PO's ${row.poAvailable != null ? fmt$(row.poAvailable) : 'unknown'} headroom — expect Insufficient Amazon PO Manager Hold`]);
+  else if (row.poAvailable != null) checks.push(['ok', `PO headroom ${fmt$(row.poAvailable)} covers this ${fmt$(chargeAmt)}${tax ? ' pre-tax invoice (tax ' + fmt$(tax) + ' rides on top, not charged to PO funds)' : ' invoice'}`]);
   else checks.push(['warn', 'PO ceiling untracked — funds coverage unknown']);
   // Duplicate risk
   if (row.recentTransmitAt) checks.push(['bad', `Already transmitted ${escHtml(row.recentTransmitAt)} UTC — a re-send will bounce off Amazon as a duplicate invoice number`]);
@@ -5251,6 +5258,7 @@ async function previewEdi(recordNo, po, as) {
       : '';
     document.getElementById('edi-preview-info').innerHTML = `Invoice <strong>${escHtml(r.invoiceId)}</strong> → EDI number <strong>${escHtml(r.ediNumber)}</strong>${po ? ' · PO <strong>' + escHtml(po) + '</strong>' : ''}${resub}`;
     document.getElementById('edi-preview-body').textContent = r.x12;
+    _ediPreviewTarget.preflightBad = renderEdiPreflight(recordNo, r.x12);
     if (currentUser && ['admin','manager'].includes(currentUser.role)) {
       const bad = _ediPreviewTarget && _ediPreviewTarget.preflightBad;
       document.getElementById('edi-transmit-slot').innerHTML = bad
@@ -5723,6 +5731,6 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260814b"></script>
+<script src="/comms.js?v=20260814c"></script>
 </body>
 </html>
