@@ -194,7 +194,8 @@ function syncConsumptionFromIndex() {
   const upd = d.prepare(`UPDATE po_consumption SET amount=?, status_last=?, last_seen_at=datetime('now'), released_at=?, released_reason=? WHERE id=?`);
   const rev = d.prepare(`INSERT INTO po_consumption_review (po_number, kind, detail, proposed_delta) VALUES (?,?,?,?)`);
   const index = payee.getIndex();
-  const tx = d.transaction(() => {
+  d.exec('BEGIN');
+  try {
     for (const item of Object.values(index)) {
       const po = (item.po || '').trim();
       const invNo = String(item.invoice || item.invoiceNumber || item.id || '').trim();
@@ -218,8 +219,8 @@ function syncConsumptionFromIndex() {
       const released = nonConsuming ? (row.released_at || new Date().toISOString()) : null;
       upd.run(newAmt, item.status || row.status_last, released, nonConsuming ? item.status : null, row.id);
     }
-  });
-  tx();
+    d.exec('COMMIT');
+  } catch (e) { d.exec('ROLLBACK'); throw e; }
 }
 
 function buildConsumedByPo() {
