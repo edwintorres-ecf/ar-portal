@@ -82,8 +82,15 @@ async function scrapeOne(page, po) {
   try {
     const tab = page.getByText('Matched invoices', { exact: false }).first();
     await tab.click({ timeout: 4000 });
-    await page.waitForTimeout(700);
+    // Rows render async after the tab click; the "Showing N invoices" banner
+    // is the ready signal. A PO with zero matches never shows it — the catch
+    // falls through to a parse that finds no rows, which is correct.
+    await page.locator('text=/Showing \\d+ invoice/').first().waitFor({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
     const rows = await page.evaluate(() => {
+      // Amazon renders a header-only shell table plus the real data table with
+      // identical headers — take the matching table with the most body rows.
+      let best = null;
       for (const t of document.querySelectorAll('table')) {
         const heads = Array.from(t.querySelectorAll('th')).map(h => (h.textContent || '').trim().toLowerCase());
         const iInv = heads.findIndex(h => h.startsWith('invoice #'));
@@ -97,9 +104,9 @@ async function scrapeOne(page, po) {
           if (!tds[iInv]) continue;
           out.push({ inv: tds[iInv], date: iDt >= 0 ? tds[iDt] : null, amountRaw: tds[iAmt], status: iSt >= 0 ? tds[iSt] : null });
         }
-        return out;
+        if (!best || out.length > best.length) best = out;
       }
-      return null;
+      return best;
     });
     if (rows) {
       rec.matched = rows.map(m => ({ inv: m.inv, date: m.date, amount: money(m.amountRaw), status: m.status }))
