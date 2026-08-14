@@ -57,6 +57,15 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (exceptions.length) throw new Error(`${exceptions.length} transmitted invoice(s) missing from Payee past grace: ${exceptions.slice(0, 5).map(x => x.invoiceId).join(', ')}`);
     return duplicates.length ? `no vanished submissions (${duplicates.length} duplicate-send records on watch)` : 'clean';
   });
+  // 5b. PO consumption reconciliation: ledger vs Amazon implied consumed
+  check('po-consumption-recon', () => {
+    const poLedger = require('./po-ledger');
+    const r = poLedger.getConsumptionRecon();
+    const drift = r.autoFixable.filter(x => Math.abs(x.gap || 0) > 500);
+    const openReviews = db.get("SELECT COUNT(*) AS c FROM po_consumption_review WHERE resolved_at IS NULL").c;
+    if (drift.length > 5) throw new Error(`${drift.length} POs drifted >$500 below Amazon implied consumed — run consumption-backfill`);
+    return `${r.ok.length} reconciled, ${r.overdrawn.length} over-drawn, ${r.overLedger.length} over-ledger, ${openReviews} open reviews`;
+  });
   // 6. Comms platform: inbound poller alive, no failed sends, dunning clean
   check('comms-platform', () => {
     if (!process.env.AR_MAILBOX) return 'AR_MAILBOX unset — comms checks skipped';

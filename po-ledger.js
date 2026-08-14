@@ -190,7 +190,7 @@ function syncConsumptionFromIndex() {
   const d = db.getDb();
   const ins = d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last)
     VALUES (?,?,?,?) ON CONFLICT(po_number, invoice_number) DO NOTHING`);
-  const sel = d.prepare('SELECT id, amount, status_last, released_at FROM po_consumption WHERE po_number=? AND invoice_number=?');
+  const sel = d.prepare('SELECT id, amount, status_last, released_at, source FROM po_consumption WHERE po_number=? AND invoice_number=?');
   const upd = d.prepare(`UPDATE po_consumption SET amount=?, status_last=?, last_seen_at=datetime('now'), released_at=?, released_reason=? WHERE id=?`);
   const rev = d.prepare(`INSERT INTO po_consumption_review (po_number, kind, detail, proposed_delta) VALUES (?,?,?,?)`);
   const index = payee.getIndex();
@@ -212,15 +212,61 @@ function syncConsumptionFromIndex() {
         continue;
       }
       let newAmt = row.amount;
-      if (amt > row.amount + 0.005) newAmt = amt;
-      else if (amt < row.amount - 0.005 && amt > 0) {
-        rev.run(po, 'amount-decrease', `${invNo}: ledger $${row.amount} vs feed $${amt} — not applied, confirm manually`, amt - row.amount);
+      // Matched-tab amounts are Amazon's own pre-tax "Amount matched to PO" —
+      // authoritative. The feed's tax-inclusive figure must never overwrite them.
+      if (row.source !== 'matched-tab') {
+        if (amt > row.amount + 0.005) newAmt = amt;
+        else if (amt < row.amount - 0.005 && amt > 0) {
+          rev.run(po, 'amount-decrease', `${invNo}: ledger $${row.amount} vs feed $${amt} — not applied, confirm manually`, amt - row.amount);
+        }
       }
       const released = nonConsuming ? (row.released_at || new Date().toISOString()) : null;
       upd.run(newAmt, item.status || row.status_last, released, nonConsuming ? item.status : null, row.id);
     }
     d.exec('COMMIT');
   } catch (e) { d.exec('ROLLBACK'); throw e; }
+}
+
+// Apply Amazon's Matched-invoices tab rows (captured by the detail scraper)
+// as the authoritative per-invoice consumption amounts. These are pre-tax and
+// split-payment aware, so they replace feed amounts in either direction —
+// that's correction to Amazon's own figure, not a data decrease. Afterwards the
+// backfill retargets its adjustment rows and any review whose gap closed is
+// auto-resolved.
+function applyMatchedFromDetails() {
+  ensureConsumptionTables();
+  const d = db.getDb();
+  const detailsMap = getPoDetailsMap();
+  const up = d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last, source)
+    VALUES (?,?,?,?,'matched-tab')
+    ON CONFLICT(po_number, invoice_number) DO UPDATE SET
+      amount=excluded.amount, status_last=excluded.status_last, source='matched-tab', last_seen_at=datetime('now')`);
+  let pos = 0, invs = 0;
+  d.exec('BEGIN');
+  try {
+    for (const [po, det] of Object.entries(detailsMap)) {
+      if (!Array.isArray(det.matched) || !det.matched.length) continue;
+      pos++;
+      for (const m of det.matched) {
+        if (!m.inv || m.amount == null) continue;
+        up.run(po, String(m.inv).trim(), m.amount, m.status || null);
+        invs++;
+      }
+    }
+    d.exec('COMMIT');
+  } catch (e) { d.exec('ROLLBACK'); throw e; }
+  const backfill = runConsumptionBackfill();
+  // Auto-resolve reviews whose PO now reconciles with Amazon.
+  const recon = getConsumptionRecon();
+  const okSet = new Set(recon.ok.map(r => r.po));
+  const open = db.all(`SELECT id, po_number FROM po_consumption_review WHERE resolved_at IS NULL`);
+  let resolved = 0;
+  for (const rv of open) {
+    if (!okSet.has(rv.po_number)) continue;
+    d.prepare(`UPDATE po_consumption_review SET resolved_at=datetime('now'), resolved_by='system', resolution='auto: matched-tab scrape reconciled' WHERE id=?`).run(rv.id);
+    resolved++;
+  }
+  return { posWithMatched: pos, matchedInvoices: invs, reviewsAutoResolved: resolved, ...backfill };
 }
 
 function buildConsumedByPo() {
@@ -404,6 +450,10 @@ function getPoLedger(invoices) {
     const available = amazonAvailable != null ? amazonAvailable : computedAvailable;
     const availableSource = amazonAvailable != null ? 'amazon' : (computedAvailable != null ? 'computed' : null);
     const availableStale = !!(detail && detail.stale);
+    // Ledger-vs-Amazon consumed drift for the UI: implied = PO amount − Available.
+    const impliedConsumed = detail && detail.available != null && detail.poAmount != null
+      ? detail.poAmount - detail.available : null;
+    const reconGap = impliedConsumed != null ? Math.round((impliedConsumed - consumed) * 100) / 100 : null;
 
     const poClosed = scraped && scraped.status && scraped.status !== 'OPEN_FOR_INVOICING';
     const doc = poDocsMap[poNumber.toUpperCase()] || null;
@@ -480,6 +530,8 @@ function getPoLedger(invoices) {
       discrepancyFlag: !!po?.discrepancy_flag || ceilingDiscrepancy,
       consumed,
       consumedInvoiceCount: consumedByPo[poNumber]?.invoiceCount || 0,
+      consumedBackfill: Math.round((consumedByPo[poNumber]?.backfillAmount || 0) * 100) / 100,
+      reconGap,
       pendingUpload,
       pendingUploadInvoiceCount: pendingByPo[poNumber]?.invoiceCount || 0,
       available,
@@ -888,4 +940,4 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
 }
 
 module.exports = {
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };

@@ -4709,7 +4709,7 @@ function renderPoLedger() {
       : '<span style="color:var(--gray-400)">—</span>';
     let statusLabel, statusColor;
     if (!row.tracked) { statusLabel = 'Untracked'; statusColor = '#6b7280'; }
-    else if (row.available != null && row.available < 0) { statusLabel = 'Overage'; statusColor = '#dc2626'; }
+    else if (row.available != null && row.available < 0) { statusLabel = 'Over-drawn'; statusColor = '#dc2626'; }
     else if (row.available != null && row.available < (row.ceilingAmount || 0) * 0.1) { statusLabel = 'Low'; statusColor = '#d97706'; }
     else { statusLabel = 'OK'; statusColor = '#16a34a'; }
     const discrepancy = row.ceilingDiscrepancy
@@ -4722,10 +4722,10 @@ function renderPoLedger() {
       <td style="padding:10px 14px">${escHtml(row.siteCode || '—')}</td>
       <td style="padding:10px 14px">${escHtml(row.locationId || '—')}</td>
       <td style="padding:10px 14px" class="amount">${renderCeilingCell(row)}${discrepancy}</td>
-      <td style="padding:10px 14px" class="amount">${fmt$(row.consumed)}<div style="font-size:11px;color:var(--gray-400)">${row.consumedInvoiceCount} invoice${row.consumedInvoiceCount!==1?'s':''}</div></td>
+      <td style="padding:10px 14px" class="amount">${fmt$(row.consumed)}${row.reconGap != null && Math.abs(row.reconGap) > 500 ? ` <span title="Ledger consumed differs from Amazon's implied consumed (PO amount − Available) by ${fmt$(row.reconGap)} — matched-invoice scrape or backfill will reconcile" style="cursor:help">⚠</span>` : ''}<div style="font-size:11px;color:var(--gray-400)">${row.consumedInvoiceCount} invoice${row.consumedInvoiceCount!==1?'s':''}${row.consumedBackfill ? ` <span title="includes ${fmt$(row.consumedBackfill)} of pre-feed history backfilled from Amazon's own figure (settled invoices that aged off the feed)" style="cursor:help;color:#8a6d1a">+hist</span>` : ''}</div></td>
       <td style="padding:10px 14px" class="amount">${fmt$(row.pendingUpload)}<div style="font-size:11px;color:var(--gray-400)">${row.pendingUploadInvoiceCount} invoice${row.pendingUploadInvoiceCount!==1?'s':''}</div></td>
       <td style="padding:10px 14px">${available}</td>
-      <td style="padding:10px 14px"><span style="color:${statusColor};font-weight:600">${statusLabel}</span></td>
+      <td style="padding:10px 14px"><span style="color:${statusColor};font-weight:600" ${statusLabel === 'Over-drawn' ? `title="Amazon reports more invoiced than the PO's value — an invoice is likely sitting unfunded in In-Progress hold. Request a PO fund increase from Amazon."` : ''}>${statusLabel}</span></td>
       <td style="padding:10px 14px">${renderDocCell(row)}</td>
       <td style="padding:10px 14px;white-space:nowrap">${canEditPo ? `
         ${row.isPlaceholder ? `<button class="btn-sm" style="background:#fef3c7;color:#92400e;font-weight:600" title="Roll all ${row.pendingUploadInvoiceCount} invoice(s) under this placeholder onto a real PO" onclick="openRollModal('${escHtml(row.poNumber)}')">↪ Roll into PO</button>` : ''}

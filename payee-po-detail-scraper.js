@@ -76,6 +76,41 @@ async function scrapeOne(page, po) {
   if (/signin|\/ap\//i.test(page.url())) throw new Error('bounced to signin');
   const txt = await page.locator('body').innerText().catch(() => '');
   const rec = extractFromText(po, txt);
+  // Matched-invoices tab: Amazon's per-invoice pre-tax "Amount matched to PO"
+  // (split-payment aware) — the authoritative consumption per match. Best
+  // effort: a PO with no matches (or a masked page) just yields matched:null.
+  try {
+    const tab = page.getByText('Matched invoices', { exact: false }).first();
+    await tab.click({ timeout: 4000 });
+    await page.waitForTimeout(700);
+    const rows = await page.evaluate(() => {
+      for (const t of document.querySelectorAll('table')) {
+        const heads = Array.from(t.querySelectorAll('th')).map(h => (h.textContent || '').trim().toLowerCase());
+        const iInv = heads.findIndex(h => h.startsWith('invoice #'));
+        const iAmt = heads.findIndex(h => h.startsWith('amount matched'));
+        if (iInv === -1 || iAmt === -1) continue;
+        const iSt = heads.findIndex(h => h.startsWith('status'));
+        const iDt = heads.findIndex(h => h.startsWith('invoice date'));
+        const out = [];
+        for (const tr of t.querySelectorAll('tbody tr')) {
+          const tds = Array.from(tr.querySelectorAll('td')).map(td => (td.textContent || '').trim());
+          if (!tds[iInv]) continue;
+          out.push({ inv: tds[iInv], date: iDt >= 0 ? tds[iDt] : null, amountRaw: tds[iAmt], status: iSt >= 0 ? tds[iSt] : null });
+        }
+        return out;
+      }
+      return null;
+    });
+    if (rows) {
+      rec.matched = rows.map(m => ({ inv: m.inv, date: m.date, amount: money(m.amountRaw), status: m.status }))
+        .filter(m => m.inv && m.amount != null);
+      rec.matchedCount = rec.matched.length;
+      // Sanity: "Showing N invoices" header vs rows captured (pagination guard).
+      const shown = (txtShown => txtShown ? parseInt(txtShown[1], 10) : null)(
+        (await page.locator('body').innerText().catch(() => '')).match(/Showing (\d+) invoices/));
+      if (shown != null && shown !== rec.matched.length) rec.matchedPartial = { shown, captured: rec.matched.length };
+    }
+  } catch (e) { /* no matched tab (unmatched PO) — fine */ }
   // masked => Amazon rendered the page but hides the figure (permanent, fine).
   // available present => got the real number. Neither => genuine load failure.
   if (rec.available == null && !rec.masked) throw new Error('no Available amount on page');
@@ -174,6 +209,15 @@ async function scrapePoDetails({ staleOnly = false, maxAgeH = 20, limit = 0 } = 
   };
   writeOut(out);
   console.log(`[po-detail] DONE ok=${ok} failed=${failed} failRatio=${(failRatio * 100).toFixed(1)}%`);
+
+  // Feed the matched-invoice amounts into the permanent consumption ledger and
+  // auto-resolve reviews whose gap this scrape closed.
+  if (failRatio <= FAIL_ALERT_RATIO) {
+    try {
+      const applied = require('./po-ledger').applyMatchedFromDetails();
+      console.log('[po-detail] consumption ledger:', JSON.stringify(applied));
+    } catch (e) { console.error('[po-detail] ledger apply failed:', e.message); }
+  }
 
   if (failRatio > FAIL_ALERT_RATIO) {
     try {
