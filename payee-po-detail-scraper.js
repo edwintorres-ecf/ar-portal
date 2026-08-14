@@ -85,7 +85,7 @@ async function scrapeOne(page, po) {
     // Rows render async after the tab click; the "Showing N invoices" banner
     // is the ready signal. A PO with zero matches never shows it — the catch
     // falls through to a parse that finds no rows, which is correct.
-    await page.locator('text=/Showing \\d+ invoice/').first().waitFor({ timeout: 10000 }).catch(() => {});
+    await page.locator('text=/Showing \\d+ invoice|No items found/').first().waitFor({ timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(600);
     const rows = await page.evaluate(() => {
       // Amazon renders a header-only shell table plus the real data table with
