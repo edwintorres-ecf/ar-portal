@@ -2588,11 +2588,16 @@ const SC_BY_LOCATION = {
   'L-ECF-SCSC': 'SCSC', // South Chicago
   'L-ECF-SRN': 'SSC',   // Scranton
   'L-ECF-TRN': 'TSC',   // Trenton
-  'L-ECF-WPB': 'PTSC',  // Palm Beach (PTSC per Edwin 2026-08-14; RTSC pending its Intacct location)
+  'L-ECF-WPB': 'WPB',   // Palm Beach — no SC code on the team platform
   'E-ECF': 'ECF',       // corporate
 };
 function scCodeFromLocation(locationIdOrName, name) {
   if (SC_BY_LOCATION[locationIdOrName]) return SC_BY_LOCATION[locationIdOrName];
+  // New SCs map by name until their Intacct ids are known
+  // (Edwin 2026-08-14: PTSC = Pittsburgh, RTSC = Rochester).
+  const n = String(name || '');
+  if (/pittsburgh/i.test(n)) return 'PTSC';
+  if (/rochester/i.test(n)) return 'RTSC';
   const words = String(name || locationIdOrName || '').replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/).filter(Boolean);
   if (!words.length) return null;
   const code = words.map(w => w[0].toUpperCase()).join('');
