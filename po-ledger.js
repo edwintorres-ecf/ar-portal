@@ -196,9 +196,9 @@ function syncConsumptionFromIndex() {
   const index = payee.getIndex();
   d.exec('BEGIN');
   try {
-    for (const item of Object.values(index)) {
+    for (const [key, item] of Object.entries(index)) {
       const po = (item.po || '').trim();
-      const invNo = String(item.invoice || item.invoiceNumber || item.id || '').trim();
+      const invNo = String(key).trim();   // payee index is keyed by invoice number
       if (!po || !invNo) continue;
       const amt = parseAmount(item.amount);
       const nonConsuming = NON_CONSUMING_STATUSES.has(item.status);
@@ -288,6 +288,17 @@ function runConsumptionBackfill() {
   }
   const already = new Set(db.all(`SELECT po_number FROM po_consumption_review WHERE resolved_at IS NULL`).map(x => x.po_number));
   for (const r of recon.overLedger) {
+    // Shrinking the anonymous 'amazon-implied' adjustment row is re-attribution
+    // (named feed rows now cover that draw), not a consumption decrease — safe
+    // to do automatically, floored at $0. Only a residual excess needs a human.
+    if ((r.backfillAmount || 0) > 0) {
+      const shrink = Math.min(r.backfillAmount, -r.gap);
+      d.prepare(`UPDATE po_consumption SET amount=amount-?, last_seen_at=datetime('now')
+        WHERE po_number=? AND invoice_number=? AND source='amazon-implied'`)
+        .run(Math.round(shrink * 100) / 100, r.po, BACKFILL_INV);
+      adjusted++;
+      if (-r.gap - shrink <= 1) continue;
+    }
     if (already.has(r.po)) continue;
     rev.run(r.po, 'ledger-exceeds-amazon', `ledger $${r.ledgerConsumed} vs Amazon implied $${r.amazonImplied} — shrinking consumed needs manual confirmation`, r.gap);
     queued++;
