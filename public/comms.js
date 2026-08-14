@@ -1343,6 +1343,13 @@ async function commsVelocityPreview() {
     const p = await apiFetch(`/api/velocity/pending?prefix=${prefix}&from=${from}&to=${to}`);
     const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
     const loc1 = p.rows.filter(r => r.line === 'LOC1'), loc2 = p.rows.filter(r => r.line === 'LOC2');
+    if (!p.rows.length) {
+      out.innerHTML = `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 18px;font-size:13px">
+        No open invoices found for ${prefix}-${velPad(prefix, from)}${to !== from ? ' through ' + prefix + '-' + velPad(prefix, to) : ''}.
+        <div style="color:#6b6458;font-size:12px;margin-top:6px">The transmit picker only shows invoices that are currently OPEN in Sage — paid, voided, or out-of-scope invoices never appear, even for retransmit (a closed invoice must not be financed). If this invoice should be open, check it in Sage; if it is open but Amazon-related, it may be under LOC2 rules.</div>
+      </div>`;
+      return;
+    }
     const total = loc1.reduce((s, r) => s + r.amount, 0);
     out.innerHTML = `
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden">
