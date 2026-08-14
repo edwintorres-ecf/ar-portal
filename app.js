@@ -3002,6 +3002,40 @@ function buildVelocityCsv(rows) {
   return lines.join('\n') + '\n';
 }
 
+// ─── PO consumption reconciliation (permanent consumed ledger) ──────────────
+app.get('/api/po/consumption-recon', requireAuth, requirePerm('finance.view'), (req, res) => {
+  try { res.json(poLedger.getConsumptionRecon()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/po/consumption-backfill', requireAuth, requirePerm('po.admin'), (req, res) => {
+  try {
+    const r = poLedger.runConsumptionBackfill();
+    db.auditLog(req.session.user.email, 'po_consumption_backfill', null, JSON.stringify(r));
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/po/consumption-reviews', requireAuth, requirePerm('finance.view'), (req, res) => {
+  try { res.json({ reviews: db.all(`SELECT * FROM po_consumption_review WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT 200`) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/po/consumption-review/:id/resolve', requireAuth, requirePerm('po.admin'), (req, res) => {
+  try {
+    const { resolution, applyDelta } = req.body || {};
+    const row = db.get(`SELECT * FROM po_consumption_review WHERE id=?`, [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    if (resolution === 'apply' && typeof applyDelta === 'number' && applyDelta < 0) {
+      // Manual confirmation is the ONLY path that shrinks consumption.
+      db.getDb().prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last, source)
+        VALUES (?,?,?,'manual-adjust','manual')
+        ON CONFLICT(po_number, invoice_number) DO UPDATE SET amount=amount+excluded.amount, last_seen_at=datetime('now')`)
+        .run(row.po_number, '(manual adjustment)', applyDelta);
+    }
+    db.getDb().prepare(`UPDATE po_consumption_review SET resolved_at=datetime('now'), resolved_by=?, resolution=? WHERE id=?`)
+      .run(req.session.user.email, resolution || 'dismissed', row.id);
+    db.auditLog(req.session.user.email, 'po_consumption_review', row.po_number, `${resolution}${applyDelta != null ? ' delta=' + applyDelta : ''}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/velocity/pending', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     const prefix = String(req.query.prefix || 'ECI').toUpperCase();

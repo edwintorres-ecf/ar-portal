@@ -140,17 +140,158 @@ function classifyService(desc) {
   return 'other';
 }
 
-function buildConsumedByPo() {
+// ─── Persistent PO consumption ledger ───────────────────────────────────────
+// The payee feed only shows invoices still visible in Payee Central — settled
+// (Paid) invoices age out, so a feed-only consumed figure forgets their draw
+// forever (found 2026-08-14: 2D-20620291 showed 11/$1.86M consumed while
+// Amazon's matched-invoices tab held 14/$1.93M — the gap was exactly the three
+// Paid invoices). Rule per Edwin: an invoice match is PERMANENT; only an
+// observed Rejected/Cancelled transition releases funds. Consumption may only
+// grow automatically — anything that would shrink it goes to the review queue
+// for manual confirmation.
+const BACKFILL_INV = '(pre-feed history)';
+let _consumptionReady = false, _consumptionSyncTs = 0;
+function ensureConsumptionTables() {
+  if (_consumptionReady) return;
+  const d = db.getDb();
+  d.exec(`CREATE TABLE IF NOT EXISTS po_consumption (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    po_number TEXT NOT NULL,
+    invoice_number TEXT NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    status_last TEXT,
+    source TEXT NOT NULL DEFAULT 'feed',
+    first_seen_at TEXT DEFAULT (datetime('now')),
+    last_seen_at TEXT DEFAULT (datetime('now')),
+    released_at TEXT, released_reason TEXT,
+    UNIQUE(po_number, invoice_number)
+  );
+  CREATE TABLE IF NOT EXISTS po_consumption_review (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    po_number TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT,
+    proposed_delta REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    resolved_at TEXT, resolved_by TEXT, resolution TEXT
+  );`);
+  _consumptionReady = true;
+}
+
+// Feed → ledger sync (throttled). Inserts new matches, updates status/amount
+// upward, releases on Rejected/Cancelled, un-releases if an invoice comes back
+// consuming. Never deletes; an amount DECREASE on a live row is queued for
+// review instead of applied.
+function syncConsumptionFromIndex() {
+  ensureConsumptionTables();
+  const now = Date.now();
+  if (now - _consumptionSyncTs < 5 * 60 * 1000) return;
+  _consumptionSyncTs = now;
+  const d = db.getDb();
+  const ins = d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last)
+    VALUES (?,?,?,?) ON CONFLICT(po_number, invoice_number) DO NOTHING`);
+  const sel = d.prepare('SELECT id, amount, status_last, released_at FROM po_consumption WHERE po_number=? AND invoice_number=?');
+  const upd = d.prepare(`UPDATE po_consumption SET amount=?, status_last=?, last_seen_at=datetime('now'), released_at=?, released_reason=? WHERE id=?`);
+  const rev = d.prepare(`INSERT INTO po_consumption_review (po_number, kind, detail, proposed_delta) VALUES (?,?,?,?)`);
   const index = payee.getIndex();
+  const tx = d.transaction(() => {
+    for (const item of Object.values(index)) {
+      const po = (item.po || '').trim();
+      const invNo = String(item.invoice || item.invoiceNumber || item.id || '').trim();
+      if (!po || !invNo) continue;
+      const amt = parseAmount(item.amount);
+      const nonConsuming = NON_CONSUMING_STATUSES.has(item.status);
+      const row = sel.get(po, invNo);
+      if (!row) {
+        ins.run(po, invNo, amt, item.status || null);
+        if (nonConsuming) {
+          const r2 = sel.get(po, invNo);
+          if (r2) upd.run(amt, item.status, new Date().toISOString(), item.status, r2.id);
+        }
+        continue;
+      }
+      let newAmt = row.amount;
+      if (amt > row.amount + 0.005) newAmt = amt;
+      else if (amt < row.amount - 0.005 && amt > 0) {
+        rev.run(po, 'amount-decrease', `${invNo}: ledger $${row.amount} vs feed $${amt} — not applied, confirm manually`, amt - row.amount);
+      }
+      const released = nonConsuming ? (row.released_at || new Date().toISOString()) : null;
+      upd.run(newAmt, item.status || row.status_last, released, nonConsuming ? item.status : null, row.id);
+    }
+  });
+  tx();
+}
+
+function buildConsumedByPo() {
+  syncConsumptionFromIndex();
   const byPo = {};
-  for (const item of Object.values(index)) {
-    const po = (item.po || '').trim();
-    if (!po || NON_CONSUMING_STATUSES.has(item.status)) continue;
-    if (!byPo[po]) byPo[po] = { consumed: 0, invoiceCount: 0 };
-    byPo[po].consumed += parseAmount(item.amount);
-    byPo[po].invoiceCount++;
+  const rows = db.all(`SELECT po_number, source, SUM(amount) AS amt, COUNT(*) AS n
+    FROM po_consumption WHERE released_at IS NULL GROUP BY po_number, source`);
+  for (const r of rows) {
+    if (!byPo[r.po_number]) byPo[r.po_number] = { consumed: 0, invoiceCount: 0, backfillAmount: 0 };
+    byPo[r.po_number].consumed += r.amt;
+    if (r.source === 'amazon-implied') byPo[r.po_number].backfillAmount += r.amt;
+    else byPo[r.po_number].invoiceCount += r.n;
   }
   return byPo;
+}
+
+// Reconciliation: three-way compare per PO — our ledger consumed vs Amazon's
+// implied consumed (PO amount − Amazon available). Buckets identify what needs
+// fixing and how.
+function getConsumptionRecon() {
+  ensureConsumptionTables();
+  syncConsumptionFromIndex();
+  const consumedMap = buildConsumedByPo();
+  const detailsMap = getPoDetailsMap();
+  const openPoMap = payee.getOpenPoMap().byPo;
+  const pos = new Set([...Object.keys(consumedMap), ...Object.keys(detailsMap)]);
+  const out = { ok: [], autoFixable: [], overLedger: [], noAmazonFigure: [], overdrawn: [] };
+  for (const po of pos) {
+    const c = consumedMap[po] || { consumed: 0, invoiceCount: 0, backfillAmount: 0 };
+    const det = detailsMap[po.toUpperCase()];
+    const poAmount = det?.poAmount ?? openPoMap[po.toUpperCase()]?.amount ?? null;
+    const implied = det && det.available != null && poAmount != null ? poAmount - det.available : null;
+    const row = { po, ledgerConsumed: Math.round(c.consumed * 100) / 100, invoiceCount: c.invoiceCount,
+      backfillAmount: Math.round((c.backfillAmount || 0) * 100) / 100,
+      amazonImplied: implied != null ? Math.round(implied * 100) / 100 : null,
+      amazonAvailable: det?.available ?? null, poAmount, stale: !!det?.stale, masked: !!det?.masked };
+    if (det?.available != null && det.available < 0) out.overdrawn.push(row);
+    if (implied == null) { if (c.consumed > 0) out.noAmazonFigure.push(row); continue; }
+    const gap = implied - c.consumed;
+    row.gap = Math.round(gap * 100) / 100;
+    if (Math.abs(gap) <= 1) out.ok.push(row);
+    else if (gap > 1) out.autoFixable.push(row);      // Amazon knows more draw than we do — backfillable
+    else out.overLedger.push(row);                     // we claim MORE than Amazon — manual review only
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => Math.abs(b.gap || 0) - Math.abs(a.gap || 0));
+  return out;
+}
+
+// Backfill: bring ledger consumed up to Amazon's implied figure via a single
+// adjustment row per PO (source='amazon-implied', permanent). Only ever raises
+// consumption automatically; a would-be decrease is queued for review. Safe to
+// re-run — it re-targets the adjustment row upward as Amazon reveals more.
+function runConsumptionBackfill() {
+  const recon = getConsumptionRecon();
+  const d = db.getDb();
+  const rev = d.prepare(`INSERT INTO po_consumption_review (po_number, kind, detail, proposed_delta) VALUES (?,?,?,?)`);
+  let adjusted = 0, queued = 0;
+  for (const r of recon.autoFixable) {
+    const target = (r.backfillAmount || 0) + r.gap;   // new adjustment total
+    d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last, source)
+      VALUES (?,?,?,'backfill','amazon-implied')
+      ON CONFLICT(po_number, invoice_number) DO UPDATE SET amount=excluded.amount, last_seen_at=datetime('now')`)
+      .run(r.po, BACKFILL_INV, Math.round(target * 100) / 100);
+    adjusted++;
+  }
+  const already = new Set(db.all(`SELECT po_number FROM po_consumption_review WHERE resolved_at IS NULL`).map(x => x.po_number));
+  for (const r of recon.overLedger) {
+    if (already.has(r.po)) continue;
+    rev.run(r.po, 'ledger-exceeds-amazon', `ledger $${r.ledgerConsumed} vs Amazon implied $${r.amazonImplied} — shrinking consumed needs manual confirmation`, r.gap);
+    queued++;
+  }
+  return { adjusted, queuedForReview: queued, okCount: recon.ok.length, noAmazonFigure: recon.noAmazonFigure.length, overdrawn: recon.overdrawn.length };
 }
 
 function buildPendingUpload(invoices) {
@@ -734,4 +875,5 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
   return Object.values(sites);
 }
 
-module.exports = { getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };
+module.exports = {
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };
