@@ -149,9 +149,13 @@ async function scrapePoDetails({ staleOnly = false, maxAgeH = 20, limit = 0 } = 
   });
 
   // Drop cache entries for POs no longer open (they closed) so the ledger
-  // doesn't keep showing a remaining balance for a closed PO.
-  const openSet = new Set(openPos);
-  for (const po of Object.keys(details)) if (!openSet.has(po)) delete details[po];
+  // doesn't keep showing a remaining balance for a closed PO. Only safe when we
+  // hold the FULL open list — a --limit run truncates openPos and would wipe
+  // every other cached PO (happened 2026-08-14; restored from git snapshot).
+  if (!limit) {
+    const openSet = new Set(openPos);
+    for (const po of Object.keys(details)) if (!openSet.has(po)) delete details[po];
+  }
 
   console.log(`[po-detail] ${openPos.length} open POs, scraping ${queue.length} (staleOnly=${staleOnly})`);
   if (queue.length === 0) {
