@@ -3002,13 +3002,36 @@ function buildVelocityCsv(rows) {
   return lines.join('\n') + '\n';
 }
 
-app.get('/api/velocity/pending', requireAuth, requirePerm('finance.view'), (req, res) => {
+app.get('/api/velocity/pending', requireAuth, requirePerm('finance.view'), async (req, res) => {
   try {
     const prefix = String(req.query.prefix || 'ECI').toUpperCase();
     const from = parseInt(req.query.from, 10), to = parseInt(req.query.to, 10);
     if (!from || !to || to < from || to - from > 2000) return res.status(400).json({ error: 'Give a sane from/to invoice number range' });
+    let rows = velocityRows(prefix, from, to, req.session.user);
+    if (req.query.includeClosed === '1' && to - from < 100) {
+      // Closed/paid invoices for Velocity payment application: the invoice
+      // must exist on the lender side before their payment can be applied.
+      const have = new Set(rows.map(r => r.num));
+      const padW = prefix === 'S' ? 4 : 6;
+      const wanted = [];
+      for (let n = from; n <= to; n++) if (!have.has(n)) wanted.push(`${prefix}-${String(n).padStart(padW, '0')}`);
+      if (wanted.length) {
+        const closed = await sage.getInvoicesByIds(wanted);
+        for (const inv of closed) {
+          rows.push({
+            recordNo: inv.recordNo, invoiceId: inv.invoiceId, num: parseInv(inv.invoiceId).num,
+            customer: inv.customerName, velocityCustomer: velocityName(inv.customerName),
+            amount: inv.totalEntered, balance: inv.totalDue, whenCreated: inv.whenCreated, whenDue: inv.whenDue,
+            daysOverdue: 0, line: AMAZON_CUSTS.has(inv.customerId) ? 'LOC2' : 'LOC1',
+            closed: true, transmitted: db.getVelocityTransmitMap()[inv.recordNo] || null,
+            feed: (() => { const f = velocityFeedRow(inv.invoiceId); return f ? { account: f.account, status: f.status, balance: f.balance } : null; })(),
+          });
+        }
+        rows.sort((x, y) => x.num - y.num);
+      }
+    }
     res.json({
-      rows: velocityRows(prefix, from, to, req.session.user),
+      rows,
       marks: velocityMarks(),
       armed: process.env.VELOCITY_TRANSMIT_ARMED === '1',
     });
@@ -3046,6 +3069,23 @@ app.post('/api/velocity/transmit', requireAuth, requirePerm('finance.transmit'),
       rows = rows.filter(r => wanted.has(r.invoiceId) && r.line === targetLine);
     } else {
       rows = velocityRows(prefix, f, t, req.session.user).filter(r => r.line === targetLine);
+      if (req.body.includeClosed === true && t - f < 100) {
+        const have = new Set(rows.map(r => r.num));
+        const padW2 = prefix === 'S' ? 4 : 6;
+        const wanted = [];
+        for (let n = f; n <= t; n++) if (!have.has(n)) wanted.push(`${prefix}-${String(n).padStart(padW2, '0')}`);
+        if (wanted.length) {
+          const closed = await sage.getInvoicesByIds(wanted);
+          for (const inv of closed) {
+            const line2 = AMAZON_CUSTS.has(inv.customerId) ? 'LOC2' : 'LOC1';
+            if (line2 !== targetLine) continue;
+            rows.push({ recordNo: inv.recordNo, invoiceId: inv.invoiceId, num: parseInv(inv.invoiceId).num,
+              customer: inv.customerName, velocityCustomer: velocityName(inv.customerName),
+              amount: inv.totalEntered, balance: inv.totalDue, whenCreated: inv.whenCreated, whenDue: inv.whenDue,
+              daysOverdue: 0, line: line2, closed: true, transmitted: db.getVelocityTransmitMap()[inv.recordNo] || null });
+          }
+        }
+      }
     }
     const skippedRetrans = rows.filter(r => r.transmitted && !includeRetransmit).length;
     if (!includeRetransmit) rows = rows.filter(r => !r.transmitted);

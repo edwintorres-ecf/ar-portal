@@ -1271,6 +1271,7 @@ async function commsLoadVelocity() {
           <label style="font-size:12px;color:#6b6458">From <input id="vel-from" type="text" inputmode="numeric" value="${nextFrom}" placeholder="025424" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
           <label style="font-size:12px;color:#6b6458">To <input id="vel-to" type="text" inputmode="numeric" placeholder="same for single" style="width:100px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums"></label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="vel-retrans"> include already-transmitted (retransmit)</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px"><input type="checkbox" id="vel-closed"> include closed/paid (for payment application)</label>
           <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsVelocityPreview()">Preview</button>
         </div>
       </div>
@@ -1340,13 +1341,13 @@ async function commsVelocityPreview() {
   if (!from) { alert('Enter a starting invoice number.'); return; }
   out.innerHTML = '<div style="padding:14px;color:#6b6458">Loading…</div>';
   try {
-    const p = await apiFetch(`/api/velocity/pending?prefix=${prefix}&from=${from}&to=${to}`);
+    const p = await apiFetch(`/api/velocity/pending?prefix=${prefix}&from=${from}&to=${to}${document.getElementById('vel-closed').checked ? '&includeClosed=1' : ''}`);
     const fmt$ = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
     const loc1 = p.rows.filter(r => r.line === 'LOC1'), loc2 = p.rows.filter(r => r.line === 'LOC2');
     if (!p.rows.length) {
       out.innerHTML = `<div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:16px 18px;font-size:13px">
         No open invoices found for ${prefix}-${velPad(prefix, from)}${to !== from ? ' through ' + prefix + '-' + velPad(prefix, to) : ''}.
-        <div style="color:#6b6458;font-size:12px;margin-top:6px">The transmit picker only shows invoices that are currently OPEN in Sage — paid, voided, or out-of-scope invoices never appear, even for retransmit (a closed invoice must not be financed). If this invoice should be open, check it in Sage; if it is open but Amazon-related, it may be under LOC2 rules.</div>
+        <div style="color:#6b6458;font-size:12px;margin-top:6px">By default only OPEN Sage invoices appear. To send a closed/paid invoice so its payment can be applied on Velocity, tick "include closed/paid (for payment application)" and preview again.</div>
       </div>`;
       return;
     }
@@ -1363,7 +1364,7 @@ async function commsVelocityPreview() {
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase"><th style="padding:7px 12px">Invoice</th><th style="padding:7px 12px">Customer (Velocity name)</th><th style="padding:7px 12px">Line</th><th style="padding:7px 12px;text-align:right">Amount</th><th style="padding:7px 12px;text-align:right">Balance</th><th style="padding:7px 12px">Prior transmit</th><th style="padding:7px 12px">InterNex status</th></tr></thead>
           <tbody>${p.rows.map(r => `<tr style="border-top:1px solid #f1ede3;${r.line === 'LOC2' ? 'opacity:.6' : ''}">
-            <td style="padding:7px 12px;font-weight:600">${escHtml(r.invoiceId)}</td>
+            <td style="padding:7px 12px;font-weight:600">${escHtml(r.invoiceId)}${r.closed ? ' <span style="background:#fdf4d5;color:#8a6d1a;padding:0 6px;border-radius:7px;font-size:9.5px;font-weight:700">CLOSED — for payment application</span>' : ''}</td>
             <td style="padding:7px 12px">${escHtml(r.velocityCustomer)}${r.velocityCustomer !== r.customer ? ` <span style="color:#a8a093;font-size:10.5px">(${escHtml(r.customer)})</span>` : ''}</td>
             <td style="padding:7px 12px"><span class="sc-chip ${r.line === 'LOC1' ? 'sc-BSC' : 'sc-HSC'}">${r.line}</span></td>
             <td style="padding:7px 12px;text-align:right;font-variant-numeric:tabular-nums">${fmt$(r.amount)}</td>
@@ -1480,7 +1481,7 @@ async function commsVelocityTransmit(prefix, from, to, btn, line) {
   } else if (!confirm(`Transmit ${prefix}-${velPad(prefix, from)}${to !== from ? ' through ' + prefix + '-' + velPad(prefix, to) : ''} to InterNex Capital (LOC1)?${retrans ? ' (including retransmits)' : ''}\n\nThis runs the live browser upload on the iMac.`)) return;
   btn.disabled = true; btn.textContent = '🚀 Transmitting…';
   try {
-    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ prefix, from, to, includeRetransmit: retrans, line, confirmLoc2 }) });
+    const r = await apiFetch('/api/velocity/transmit', { method: 'POST', body: JSON.stringify({ prefix, from, to, includeRetransmit: retrans, line, confirmLoc2, includeClosed: document.getElementById('vel-closed').checked }) });
     alert(`${r.ok ? 'Success' : 'FAILED'} — batch ${r.batch}: ${r.count} invoice(s)${r.skippedRetrans ? `, ${r.skippedRetrans} skipped (already sent)` : ''}\n\nUploader output tail:\n${(r.output || '').slice(-400)}`);
     commsLoadVelocity();
   } catch (e) { alert('Transmit failed: ' + e.message); btn.disabled = false; btn.textContent = '🚀 Transmit to InterNex'; }
