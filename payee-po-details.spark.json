@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-08-14T19:28:14.499Z",
+  "generatedAt": "2026-08-14T20:10:33.845Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1170,
-  "scraped": 1170,
-  "ok": 1170,
+  "openTotal": 5,
+  "scraped": 5,
+  "ok": 5,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -11665,7 +11665,9 @@
       "site": "EWR8",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-14T19:28:14.499Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-08-14T20:10:33.845Z",
       "stale": false
     },
     "2D-22294984": {
@@ -11675,7 +11677,9 @@
       "site": "AKR1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-14T19:28:14.499Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-08-14T20:10:33.845Z",
       "stale": false
     },
     "2D-22299668": {
@@ -11685,7 +11689,9 @@
       "site": "MDW7",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-14T19:28:14.499Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-08-14T20:10:33.845Z",
       "stale": false
     },
     "2D-22308452": {
@@ -11695,7 +11701,9 @@
       "site": "AKC1",
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-14T19:28:14.499Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-08-14T20:10:33.845Z",
       "stale": false
     },
     "2D-22319165": {
@@ -11705,7 +11713,9 @@
       "site": null,
       "desc": null,
       "masked": false,
-      "scrapedAt": "2026-08-14T19:28:14.499Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-08-14T20:10:33.845Z",
       "stale": false
     }
   }
