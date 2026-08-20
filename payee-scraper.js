@@ -313,6 +313,9 @@ async function scrapePayeeCentral() {
       ops.ok('payee-feed-stale', `newest entry ${ageHours.toFixed(1)}h old (limit ${FRESHNESS_HOURS}h)`);
     }
     ops.ok('payee-feed-floor', `${items.length} items vs ${prevCount} cached`);
+    // Pair the remaining raise keys so recovery clears them (cry-wolf audit 2026-08-20).
+    ops.ok('payee-feed-distribution', 'status distribution normal');
+    ops.ok('openpos-floor', 'open-PO count healthy');
 
     const tmpPath = FEED_PATH + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(feed, null, 2));

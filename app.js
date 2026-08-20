@@ -99,6 +99,7 @@ function doPoDetailRefresh() {
       // Clear the scraper's own fail-ratio alert once a pass succeeds — its
       // raise() key differs from 'po-detail-feed', so the board stayed red.
       if (r.total > 0 && r.failRatio <= 0.4) ops.ok('po-detail-failratio', `${r.ok}/${r.total} POs ok`, r.ok);
+      ops.ok('po-detail-refresh', `${r.ok}/${r.total} POs`, r.ok);
     } catch (e) {
       console.warn(`[ar-portal] PO detail refresh error: ${e.message}`);
       ops.raise('po-detail-refresh', 'PO detail scrape failed', e.message, { minIntervalHours: 12, status: 'warn' }).catch(() => {});

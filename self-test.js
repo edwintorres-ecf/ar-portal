@@ -64,6 +64,31 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (exceptions.length) throw new Error(`${exceptions.length} transmitted invoice(s) missing from Payee past grace: ${exceptions.slice(0, 5).map(x => x.invoiceId).join(', ')}`);
     return duplicates.length ? `no vanished submissions (${duplicates.length} duplicate-send records on watch)` : 'clean';
   });
+  // 5a. Tailnet + iMac health: spark vouches for the standby/transmitter box.
+  // The 2026-08-19 tailscale logout broke replication, bridges, and the
+  // watchdog's spark-direct check for days with zero alerts — never again.
+  check('tailnet-imac', () => {
+    const IMAC = 'openclaw@easts-imac-pro.taildac2b4.ts.net';
+    const KEY = '/home/ecf-admin/.ssh/id_ed25519_dispatch';
+    let out;
+    try {
+      out = execSync(`ssh -i ${KEY} -o BatchMode=yes -o ConnectTimeout=10 ${IMAC} 'echo ok; date +%s; cat /Users/openclaw/ar-failover/last-sync 2>/dev/null || echo 0; cat /Users/openclaw/recruit-failover/last-sync 2>/dev/null || echo 0; curl -s -o /dev/null -m 3 -w %{http_code} http://127.0.0.1:7788/ 2>/dev/null || echo 000'`,
+        { timeout: 30000, encoding: 'utf8' }).trim().split('\n');
+    } catch (e) {
+      throw new Error('iMac unreachable over tailnet (logout/expiry/offline?) — replication, EDI + Velocity bridges, and failover safety checks are all degraded');
+    }
+    const nowS = parseInt(out[1], 10);
+    const arSync = parseInt(out[2], 10) || 0;
+    const recSync = parseInt(out[3], 10) || 0;
+    const daemon = (out[4] || '').trim();
+    const arAgeMin = arSync ? Math.round((nowS - arSync) / 60) : -1;
+    const recAgeMin = recSync ? Math.round((nowS - recSync) / 60) : -1;
+    const probs = [];
+    if (arAgeMin < 0 || arAgeMin > 30) probs.push(`AR replica sync ${arAgeMin < 0 ? 'never ran' : arAgeMin + 'm stale'}`);
+    if (recAgeMin < 0 || recAgeMin > 30) probs.push(`recruit replica sync ${recAgeMin < 0 ? 'never ran' : recAgeMin + 'm stale'}`);
+    if (probs.length) throw new Error(probs.join('; '));
+    return `tailnet ok, AR sync ${arAgeMin}m, recruit sync ${recAgeMin}m, browser daemon ${daemon === '000' ? 'DOWN (velocity uploads blocked)' : 'up'}`;
+  });
   // 5b. PO consumption reconciliation: ledger vs Amazon implied consumed
   check('po-consumption-recon', () => {
     const poLedger = require('./po-ledger');
