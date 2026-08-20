@@ -41,7 +41,14 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (genAge > 3) throw new Error(`feed generated ${genAge.toFixed(1)}h ago (refresh loop stalled?)`);
     const newest = Math.max(0, ...feed.items.map(i => Date.parse(i['Entry Date']) || 0));
     const entryAge = (Date.now() - newest) / 3600000;
-    if (entryAge > 48) throw new Error(`newest entry ${entryAge.toFixed(1)}h old (truncation?)`);
+    if (entryAge > 48) {
+      // Old newest-entry only signals truncation if something was actually
+      // transmitted recently and should have appeared. Quiet business days
+      // (no transmits) are normal, not a scrape failure (false alarm 2026-08-19).
+      const recentTx = db.get("SELECT COUNT(*) AS c FROM audit_log WHERE action='edi_transmit' AND detail LIKE '%-> OK%' AND created_at > datetime('now','-48 hours')").c;
+      if (recentTx > 0) throw new Error(`newest entry ${entryAge.toFixed(1)}h old with ${recentTx} OK transmit(s) in 48h (truncation?)`);
+      return `${feed.items.length} items, generated ${genAge.toFixed(1)}h ago, newest entry ${entryAge.toFixed(1)}h (quiet — no transmits in 48h)`;
+    }
     return `${feed.items.length} items, generated ${genAge.toFixed(1)}h ago, newest entry ${entryAge.toFixed(1)}h`;
   });
   // 4. Invariant health rows: anything red?
