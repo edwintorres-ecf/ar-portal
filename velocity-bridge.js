@@ -9,7 +9,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 
 const SSH_KEY = '/home/ecf-admin/.ssh/id_ed25519_dispatch';
-const HOST = 'openclaw@easts-imac-pro.local';
+const HOST = 'openclaw@easts-imac-pro.taildac2b4.ts.net';
 const NODE = '/usr/local/bin/node';
 const FIN = '/Users/openclaw/.openclaw/workspace/finance';
 

@@ -17,7 +17,7 @@
 const { execFile } = require('child_process');
 
 const SSH_KEY   = process.env.IMAC_SSH_KEY  || '/home/ecf-admin/.ssh/id_ed25519_dispatch';
-const IMAC_HOST = process.env.IMAC_HOST     || 'openclaw@easts-imac-pro.local';
+const IMAC_HOST = process.env.IMAC_HOST     || 'openclaw@easts-imac-pro.taildac2b4.ts.net';
 const NODE_BIN  = process.env.IMAC_NODE      || '/usr/local/bin/node';
 const TRANSMITTER = process.env.IMAC_TRANSMITTER || '/Users/openclaw/.openclaw/workspace-hermes/finance/edi-transmitter.js';
 const SSH_OPTS  = ['-i', SSH_KEY, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=12'];
