@@ -50,6 +50,9 @@ function doPayeeRefresh() {
       const feed = await scrapePayeeCentral();
       payee.invalidateCache();
       _payeeFailStreak = 0;
+      // Clear the failure alert on recovery — without this the health board
+      // stays red forever after a bad streak (cry-wolf).
+      ops.ok('payee-refresh-streak', `${feed.items.length} invoices`, feed.items.length);
       console.log(`[ar-portal] Payee Central refresh: ${feed.items.length} invoices at ${feed.generatedAt}`);
     } catch (e) {
       _payeeFailStreak++;
@@ -65,6 +68,7 @@ function doPayeeRefresh() {
       const out = await scrapeOpenPOs();
       payee.invalidateOpenPoCache();
       ops.ok('openpos-feed', `${out.total} POs`, out.total);
+      ops.ok('openpos-refresh', `${out.total} POs`, out.total);
       console.log(`[ar-portal] Open-PO refresh: ${out.total} POs at ${out.generatedAt}`);
     } catch (e) {
       console.warn(`[ar-portal] Open-PO refresh error: ${e.message}`);
