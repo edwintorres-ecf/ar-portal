@@ -46,33 +46,39 @@ function doPayeeRefresh() {
   _payeeRefreshStarted = new Date().toISOString();
   (async () => {
     const ops = require('./ops-alerts');
+    // Child process: a crashed scrape can never wedge this process's
+    // playwright driver again (Aug 2026: 4 days of silent refresh failure).
+    let r = { feed: { ok: false, error: 'child produced no result' }, openpos: { ok: false, error: 'child produced no result' } };
     try {
-      const feed = await scrapePayeeCentral();
+      const { execFile } = require('child_process');
+      const stdout = await new Promise((resolve, reject) => {
+        execFile(process.execPath, [path.join(__dirname, 'payee-scraper.js'), 'refresh'],
+          { timeout: 20 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 },
+          (err, so, se) => (so && so.includes('RESULT ')) ? resolve(so) : reject(err || new Error((se || 'no output').slice(0, 300))));
+      });
+      r = JSON.parse(stdout.split('RESULT ')[1].split('\n')[0]);
+    } catch (e) { r.feed.error = r.openpos.error = e.message.slice(0, 300); }
+    if (r.feed.ok) {
       payee.invalidateCache();
       _payeeFailStreak = 0;
-      // Clear the failure alert on recovery — without this the health board
-      // stays red forever after a bad streak (cry-wolf).
-      ops.ok('payee-refresh-streak', `${feed.items.length} invoices`, feed.items.length);
-      console.log(`[ar-portal] Payee Central refresh: ${feed.items.length} invoices at ${feed.generatedAt}`);
-    } catch (e) {
+      ops.ok('payee-refresh-streak', `${r.feed.items} invoices`, r.feed.items);
+      console.log(`[ar-portal] Payee Central refresh: ${r.feed.items} invoices (child)`);
+    } else {
       _payeeFailStreak++;
-      console.warn(`[ar-portal] Payee Central refresh error (streak ${_payeeFailStreak}): ${e.message}`);
-      // One failed scrape is routine (login hiccups). Three straight means the
-      // pipeline is down and the feed is quietly going stale — page a human.
+      console.warn(`[ar-portal] Payee Central refresh error (streak ${_payeeFailStreak}): ${r.feed.error}`);
       if (_payeeFailStreak >= 3) {
         ops.raise('payee-refresh-streak', `Payee scrape failed ${_payeeFailStreak}x consecutively`,
-          `Last error: ${e.message}\nThe feed is serving stale data until this recovers.`).catch(() => {});
+          `Last error: ${r.feed.error}\nThe feed is serving stale data until this recovers.`).catch(() => {});
       }
     }
-    try {
-      const out = await scrapeOpenPOs();
+    if (r.openpos.ok) {
       payee.invalidateOpenPoCache();
-      ops.ok('openpos-feed', `${out.total} POs`, out.total);
-      ops.ok('openpos-refresh', `${out.total} POs`, out.total);
-      console.log(`[ar-portal] Open-PO refresh: ${out.total} POs at ${out.generatedAt}`);
-    } catch (e) {
-      console.warn(`[ar-portal] Open-PO refresh error: ${e.message}`);
-      ops.raise('openpos-refresh', 'Open-PO scrape failed', e.message, { minIntervalHours: 12, status: 'warn' }).catch(() => {});
+      ops.ok('openpos-feed', `${r.openpos.total} POs`, r.openpos.total);
+      ops.ok('openpos-refresh', `${r.openpos.total} POs`, r.openpos.total);
+      console.log(`[ar-portal] Open-PO refresh: ${r.openpos.total} POs (child)`);
+    } else {
+      console.warn(`[ar-portal] Open-PO refresh error: ${r.openpos.error}`);
+      ops.raise('openpos-refresh', 'Open-PO scrape failed', r.openpos.error, { minIntervalHours: 12, status: 'warn' }).catch(() => {});
     }
     _payeeRefreshRunning = false;
   })();
@@ -93,7 +99,15 @@ function doPoDetailRefresh() {
   (async () => {
     const ops = require('./ops-alerts');
     try {
-      const r = await scrapePoDetails();
+      const r = await new Promise((resolve, reject) => {
+        require('child_process').execFile(process.execPath, [path.join(__dirname, 'payee-po-detail-scraper.js'), '--stale'],
+          { timeout: 90 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 },
+          (err, so) => {
+            const m = (so || '').match(/\[po-detail\] result (\{.*\})/);
+            if (m) return resolve(JSON.parse(m[1]));
+            reject(err || new Error('no result line from po-detail child'));
+          });
+      });
       console.log(`[ar-portal] PO detail refresh: ok=${r.ok} failed=${r.failed} of ${r.total}`);
       if (r.total > 0) ops.ok('po-detail-feed', `${r.ok} POs, ${(r.failRatio * 100).toFixed(0)}% fail`, r.ok);
       // Clear the scraper's own fail-ratio alert once a pass succeeds — its

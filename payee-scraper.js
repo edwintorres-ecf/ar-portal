@@ -430,6 +430,22 @@ async function scrapeOpenPOs() {
 
 module.exports = { scrapePayeeCentral, scrapeOpenPOs, launchBrowser, ensureLoggedInContext };
 
+// CLI: `node payee-scraper.js refresh` — used by app.js so scrapes run in a
+// fresh child process (a crashed scrape wedged the in-app playwright driver
+// for 4 days in Aug 2026; isolation makes that impossible). Prints one JSON
+// result line the parent parses.
+if (require.main === module && process.argv[2] === 'refresh') {
+  (async () => {
+    const out = { feed: { ok: false }, openpos: { ok: false } };
+    try { const f = await scrapePayeeCentral(); out.feed = { ok: true, items: f.items.length }; }
+    catch (e) { out.feed.error = e.message.slice(0, 300); }
+    try { const o = await scrapeOpenPOs(); out.openpos = { ok: true, total: o.total }; }
+    catch (e) { out.openpos.error = e.message.slice(0, 300); }
+    console.log('RESULT ' + JSON.stringify(out));
+    process.exit(0);
+  })();
+}
+
 if (require.main === module) {
   const mode = process.argv[2] || 'invoices';
   const run = mode === 'openpos' ? scrapeOpenPOs : scrapePayeeCentral;
