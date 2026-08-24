@@ -446,7 +446,7 @@ if (require.main === module && process.argv[2] === 'refresh') {
   })();
 }
 
-if (require.main === module) {
+if (require.main === module && process.argv[2] !== 'refresh') {
   const mode = process.argv[2] || 'invoices';
   const run = mode === 'openpos' ? scrapeOpenPOs : scrapePayeeCentral;
   run()
