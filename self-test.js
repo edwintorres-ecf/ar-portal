@@ -39,6 +39,11 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     const feed = JSON.parse(fs.readFileSync(__dirname + '/payee-feed.spark.json', 'utf8'));
     const genAge = (Date.now() - Date.parse(feed.generatedAt)) / 3600000;
     if (genAge > 3) throw new Error(`feed generated ${genAge.toFixed(1)}h ago (refresh loop stalled?)`);
+    // The open-PO list went 4 days stale unnoticed (2026-08-24, team caught
+    // it) because only the invoice feed's age was checked — check both.
+    const op = JSON.parse(fs.readFileSync(__dirname + '/payee-open-pos.json', 'utf8'));
+    const opAge = (Date.now() - Date.parse(op.generatedAt)) / 3600000;
+    if (opAge > 26) throw new Error(`open-PO list generated ${opAge.toFixed(1)}h ago (openpos scrape failing?)`);
     const newest = Math.max(0, ...feed.items.map(i => Date.parse(i['Entry Date']) || 0));
     const entryAge = (Date.now() - newest) / 3600000;
     if (entryAge > 48) {
