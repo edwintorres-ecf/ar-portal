@@ -10,11 +10,61 @@ const path = require('path');
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'ar-portal.db');
 let db;
 
+// A -wal left behind by a writer that checkpointed and vanished makes an
+// intact database unopenable ("malformed") on the NEXT start, which systemd
+// turns into a crash loop — this took AR down 2026-09-02 while every byte of
+// data was fine. A WAL whose mtime predates the database cannot hold anything
+// newer than the database (writes always touch the WAL first), so quarantining
+// it — rename, never delete — is safe and loses nothing.
+function quarantineStaleWal() {
+  const fs = require('fs');
+  const wal = DB_PATH + '-wal';
+  const shm = DB_PATH + '-shm';
+  try {
+    if (!fs.existsSync(wal) || !fs.existsSync(DB_PATH)) return false;
+    if (fs.statSync(wal).mtimeMs >= fs.statSync(DB_PATH).mtimeMs) return false;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+    fs.renameSync(wal, `${wal}.stale-${stamp}`);
+    if (fs.existsSync(shm)) fs.renameSync(shm, `${shm}.stale-${stamp}`);
+    console.warn(`[db] stale WAL (older than database) quarantined as ${wal}.stale-${stamp}`);
+    return true;
+  } catch (e) {
+    console.warn('[db] stale-WAL check failed: ' + e.message);
+    return false;
+  }
+}
+
+function openDatabase() {
+  const d = new DatabaseSync(DB_PATH);
+  try {
+    d.exec('PRAGMA journal_mode = WAL');   // better concurrency
+  } catch (e) {
+    // Close the failed handle; a half-open connection keeps the bad WAL state
+    // in-process and poisons any retry made inside this same process.
+    try { d.close(); } catch (_) {}
+    throw e;
+  }
+  return d;
+}
+
 function getDb() {
   if (!db) {
-    db = new DatabaseSync(DB_PATH);
-    // WAL mode for better concurrency
-    db.exec('PRAGMA journal_mode = WAL');
+    quarantineStaleWal();
+    try {
+      db = openDatabase();
+    } catch (e) {
+      // Last resort: quarantine whatever WAL is present and exit so systemd
+      // restarts into a FRESH process — reopening in-process re-poisons it.
+      const fs = require('fs');
+      const wal = DB_PATH + '-wal';
+      if (/malformed|not a database/i.test(e.message) && fs.existsSync(wal)) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+        try { fs.renameSync(wal, `${wal}.stale-${stamp}`); } catch (_) {}
+        try { if (fs.existsSync(DB_PATH + '-shm')) fs.renameSync(DB_PATH + '-shm', `${DB_PATH}-shm.stale-${stamp}`); } catch (_) {}
+        console.error(`[db] MALFORMED on open — quarantined ${wal}.stale-${stamp}; restarting for a clean open`);
+      }
+      throw e;
+    }
     db.exec('PRAGMA foreign_keys = ON');
 
     // customer_accounts: stop_service flag + owner assignment
