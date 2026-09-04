@@ -10,29 +10,15 @@ const path = require('path');
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'ar-portal.db');
 let db;
 
-// A -wal left behind by a writer that checkpointed and vanished makes an
-// intact database unopenable ("malformed") on the NEXT start, which systemd
-// turns into a crash loop — this took AR down 2026-09-02 while every byte of
-// data was fine. A WAL whose mtime predates the database cannot hold anything
-// newer than the database (writes always touch the WAL first), so quarantining
-// it — rename, never delete — is safe and loses nothing.
-function quarantineStaleWal() {
-  const fs = require('fs');
-  const wal = DB_PATH + '-wal';
-  const shm = DB_PATH + '-shm';
-  try {
-    if (!fs.existsSync(wal) || !fs.existsSync(DB_PATH)) return false;
-    if (fs.statSync(wal).mtimeMs >= fs.statSync(DB_PATH).mtimeMs) return false;
-    const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
-    fs.renameSync(wal, `${wal}.stale-${stamp}`);
-    if (fs.existsSync(shm)) fs.renameSync(shm, `${shm}.stale-${stamp}`);
-    console.warn(`[db] stale WAL (older than database) quarantined as ${wal}.stale-${stamp}`);
-    return true;
-  } catch (e) {
-    console.warn('[db] stale-WAL check failed: ' + e.message);
-    return false;
-  }
-}
+// NOTE: do NOT quarantine a WAL proactively by comparing mtimes. A checkpoint
+// writes the database file and leaves the WAL untouched, so a perfectly live
+// WAL routinely ends up OLDER than the database — the mtime test cannot tell
+// that apart from an abandoned one. The proactive check added 2026-09-02 did
+// exactly this to the running server: it renamed the WAL out from under an
+// open connection, leaving the server writing to an orphaned inode that no
+// other reader could see, and split the -shm locking two ways. Quarantine is
+// only safe REACTIVELY, once an open has actually failed as malformed — see
+// the catch in getDb() below, which is the path the crash-loop fix needs.
 
 function openDatabase() {
   const d = new DatabaseSync(DB_PATH);
@@ -49,7 +35,6 @@ function openDatabase() {
 
 function getDb() {
   if (!db) {
-    quarantineStaleWal();
     try {
       db = openDatabase();
     } catch (e) {
