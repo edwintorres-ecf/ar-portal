@@ -934,6 +934,56 @@ function replaceAmazonLocations(rows) {
   return d.prepare('SELECT COUNT(*) n FROM amazon_locations').get().n;
 }
 
+// The network master and the landscape RFP list are two real sources that
+// overlap on 459 codes and each carry codes the other lacks. Provenance is kept
+// per row so a later disagreement is answerable rather than a mystery, and the
+// master wins on business unit because it is the network-wide list.
+function ensureAmazonLocationColumns() {
+  const d = getDb();
+  for (const col of ['source TEXT', 'site_type TEXT', 'service_center TEXT', 'service_months TEXT']) {
+    try { d.exec(`ALTER TABLE amazon_locations ADD COLUMN ${col}`); } catch (e) { /* already present */ }
+  }
+}
+
+// Adds locations from a secondary list. Never overwrites an existing business
+// unit: it only fills codes the master does not carry, and enriches the shared
+// ones with the detail the master lacks.
+function mergeAmazonLocations(rows, source) {
+  ensureAmazonLocationColumns();
+  const d = getDb();
+  const existing = new Set(d.prepare('SELECT site_code FROM amazon_locations').all().map(r => r.site_code));
+  const ins = d.prepare(`
+    INSERT INTO amazon_locations (site_code, business_unit, region, city, state, country, address, site_type, service_center, service_months, source, loaded_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+  `);
+  const enrich = d.prepare(`
+    UPDATE amazon_locations SET site_type=COALESCE(NULLIF(?,''), site_type),
+      service_center=COALESCE(NULLIF(?,''), service_center),
+      service_months=COALESCE(NULLIF(?,''), service_months)
+    WHERE site_code=?
+  `);
+  let added = 0, enriched = 0;
+  d.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const code = String(r.siteCode || '').trim().toUpperCase();
+      if (!code) continue;
+      if (existing.has(code)) {
+        enrich.run(r.siteType || '', r.serviceCenter || '', r.serviceMonths || '', code);
+        enriched++;
+      } else {
+        ins.run(code, r.businessUnit || '', r.region || '', r.city || '', r.state || '',
+                r.country || '', r.address || '', r.siteType || '', r.serviceCenter || '',
+                r.serviceMonths || '', source || 'secondary');
+        existing.add(code);
+        added++;
+      }
+    }
+    d.exec('COMMIT');
+  } catch (e) { d.exec('ROLLBACK'); throw e; }
+  return { added, enriched, total: d.prepare('SELECT COUNT(*) n FROM amazon_locations').get().n };
+}
+
 function getAmazonLocationMap() {
   const d = getDb();
   const out = {};
@@ -2073,6 +2123,8 @@ module.exports = {
   deleteSiteAlias,
   getSiteAliasMap,
   replaceAmazonLocations,
+  mergeAmazonLocations,
+  ensureAmazonLocationColumns,
   getAmazonLocationMap,
   getBusinessUnits,
   setDepartment,
