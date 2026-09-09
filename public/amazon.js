@@ -680,6 +680,7 @@ function accrualTableHtml(rows) {
         <th style="text-align:left;padding:9px 12px;">Site</th>
         <th style="text-align:left;padding:9px 12px;">Work</th>
         <th style="text-align:left;padding:9px 12px;">Department</th>
+        <th style="text-align:left;padding:9px 12px;">Service center</th>
         <th style="text-align:left;padding:9px 12px;">Work date</th>
         <th style="text-align:right;padding:9px 12px;">Amount</th>
         <th style="text-align:right;padding:9px 12px;">Age</th>
@@ -696,6 +697,7 @@ function accrualTableHtml(rows) {
           <td style="padding:8px 12px;max-width:280px;">${escHtml(r.description)}
             ${r.notes ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.notes)}</span>` : ''}</td>
           <td style="padding:8px 12px;font-size:12px;">${escHtml(r.dept_id || '—')}</td>
+          <td style="padding:8px 12px;font-size:12px;color:${r.service_center ? 'var(--gray-700)' : 'var(--gray-400)'};">${escHtml(r.service_center || 'not set')}</td>
           <td style="padding:8px 12px;font-size:12px;">${escHtml(r.work_date || '—')}</td>
           <td style="padding:8px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(r.amount)}</td>
           <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${age !== null && age > 90 ? '#dc2626' : 'var(--gray-600)'};">${age === null ? '—' : age + 'd'}</td>
@@ -739,6 +741,7 @@ function accrualCopy(id) {
   set('ac-amount', src.amount || '');
   set('ac-date', '');
   set('ac-notes', src.notes || '');
+  accrualFillServiceCenters(src.service_center || '');
   const msg = document.getElementById('ac-msg');
   if (msg) msg.innerHTML = `<span style="color:#0369a1">Copied from accrual #${src.id}. Set the work date and check the amount before saving.</span>`;
   setTimeout(() => { const e = document.getElementById('ac-date'); if (e) e.focus(); }, 60);
@@ -772,6 +775,7 @@ function accrualOpenForm() {
   _accrualEditingId = null;
   ['ac-site', 'ac-desc', 'ac-amount', 'ac-date', 'ac-notes'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
   document.getElementById('ac-msg').innerHTML = '';
+  accrualFillServiceCenters('');
   const title = document.getElementById('ac-title');
   if (title) title.textContent = 'Record an accrual';
   const save = document.getElementById('ac-save');
@@ -797,6 +801,7 @@ function accrualEdit(id) {
   set('ac-amount', src.amount || '');
   set('ac-date', src.work_date || '');
   set('ac-notes', src.notes || '');
+  accrualFillServiceCenters(src.service_center || '');
   const title = document.getElementById('ac-title');
   if (title) title.textContent = 'Edit accrual #' + id;
   const save = document.getElementById('ac-save');
@@ -816,6 +821,7 @@ async function accrualSave() {
     amount: document.getElementById('ac-amount').value,
     workDate: document.getElementById('ac-date').value,
     notes: (document.getElementById('ac-notes').value || '').trim(),
+    serviceCenter: document.getElementById('ac-sc').value || null,
   };
   if (!body.description) { msg.innerHTML = '<span style="color:var(--red)">Describe the work — this is what tells someone later what the money is for.</span>'; return; }
   if (!(parseFloat(body.amount) > 0)) { msg.innerHTML = '<span style="color:var(--red)">Enter the amount accrued.</span>'; return; }
@@ -854,7 +860,7 @@ function accrualExportCsv() {
     <div style="font-size:12px;color:var(--gray-500);margin-bottom:12px">Work performed for Amazon with no PO yet. It stays here until a PO arrives and it can be invoiced.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Site code</label>
-        <input id="ac-site" placeholder="DBL1" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+        <input id="ac-site" placeholder="DBL1" oninput="accrualSiteChanged(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Department</label>
         <select id="ac-dept" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
           <option value="">—</option><option value="D-SNOW">Snow Removal</option><option value="D-GRMT">Landscape Maintenance</option>
@@ -869,6 +875,9 @@ function accrualExportCsv() {
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Work date</label>
         <input id="ac-date" type="date" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
     </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Service center</label>
+    <select id="ac-sc" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:2px"></select>
+    <div id="ac-sc-hint" style="font-size:11px;color:var(--gray-500);margin-bottom:10px;min-height:14px"></div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Notes <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
     <input id="ac-notes" placeholder="who authorised it, what we are waiting on" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
     <div id="ac-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
@@ -962,4 +971,36 @@ async function amazonAssignVisibleSites() {
     await apiFetch('/api/amazon/site-collectors/bulk', { method: 'POST', body: JSON.stringify({ siteCodes: sites, collectorEmail: email || null }) });
     amazonLoad();
   } catch (e) { alert(e.message); }
+}
+
+
+// ─── Service center on an accrual ────────────────────────────────────────────
+// An accrual belongs to a branch as much as to a site: the branch is who
+// carries the uninvoiced work and who will chase the PO. Defaulted from the
+// branch that ACTUALLY bills that site (observed, not guessed from a name), and
+// always overridable, because accrued work sometimes predates any billing at a
+// site at all.
+function accrualFillServiceCenters(selected) {
+  const sel = document.getElementById('ac-sc');
+  if (!sel) return;
+  const list = (_accrualMeta && _accrualMeta.serviceCenters) || [];
+  sel.innerHTML = '<option value="">— none —</option>' +
+    list.map(n => `<option value="${escHtml(n)}"${n === selected ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  const hint = document.getElementById('ac-sc-hint');
+  if (hint) hint.textContent = '';
+}
+
+function accrualSiteChanged(v) {
+  const site = (v || '').trim().toUpperCase();
+  const map = (_accrualMeta && _accrualMeta.siteServiceCenters) || {};
+  const sel = document.getElementById('ac-sc');
+  const hint = document.getElementById('ac-sc-hint');
+  if (!sel) return;
+  const derived = map[site];
+  if (!derived) { if (hint) hint.textContent = site ? 'No billing history for this site — pick a branch.' : ''; return; }
+  // Only auto-fill while the user has not chosen one themselves.
+  if (!sel.value) sel.value = derived;
+  if (hint) hint.textContent = sel.value === derived
+    ? `${derived} bills most of the work at ${site}.`
+    : `${derived} bills most of the work at ${site}, but you have chosen ${sel.value}.`;
 }
