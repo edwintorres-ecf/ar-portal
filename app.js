@@ -1776,6 +1776,14 @@ app.post('/api/ai/prioritize', requireAuth, async (req, res) => {
 });
 
 // ─── Reliability: reconciliation + health ─────────────────────────────────
+// Invoices parked in a non-terminal Payee Central status, aged on Amazon's own
+// Entry Date. This is the "why hasn't this moved" list, not an error list.
+app.get('/api/po/aging', requireAuth, (req, res) => {
+  try {
+    res.json(poLedger.getPayeeAging({ minDays: parseInt(req.query.minDays, 10) || 0 }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/po/exceptions', requireAuth, (req, res) => {
   try {
     res.json(poLedger.getTransmissionExceptions());

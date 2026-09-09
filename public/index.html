@@ -882,6 +882,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <button class="cust-pill" id="po-subtab-mismatches" onclick="setPoFundsSubtab('mismatches')">PO Mismatches <span id="po-mismatches-badge"></span></button>
       <button class="cust-pill" id="po-subtab-resubmissions" onclick="setPoFundsSubtab('resubmissions')">Resubmissions <span id="po-resubmissions-badge"></span></button>
       <button class="cust-pill" id="po-subtab-exceptions" onclick="setPoFundsSubtab('exceptions')">⚠️ Exceptions <span id="po-exceptions-badge"></span></button>
+      <button class="cust-pill" id="po-subtab-aging" onclick="setPoFundsSubtab('aging')">⏳ Aging <span id="po-aging-badge"></span></button>
     </div>
     <div id="po-form-container" style="display:none;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px;margin-bottom:16px;"></div>
     <div id="po-ledger-content">
@@ -909,6 +910,9 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-exceptions-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
+    <div id="po-aging-content" style="display:none">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
   </div>
@@ -3829,6 +3833,7 @@ async function loadPoFunds() {
   loadPoMismatches();     // async, non-blocking
   loadPoResubmissions();  // async, non-blocking
   loadPoExceptions();     // async, non-blocking
+  loadPoAging();          // async, non-blocking
   loadPoFreshness();      // async, non-blocking
 }
 
@@ -3936,6 +3941,157 @@ async function loadPoExceptions() {
     el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
   }
 }
+
+// ─── Payee aging: what is parked and for how long ───────────────────────────
+// Terminal statuses (Paid / Applied / Cancelled) are excluded server-side, so
+// everything here is something a person can actually chase.
+let _poAging = null, _poAgingMin = 0, _poAgingOpen = {};
+
+async function loadPoAging() {
+  const el = document.getElementById('po-aging-content');
+  const badge = document.getElementById('po-aging-badge');
+  if (!el) return;
+  try {
+    _poAging = await apiFetch('/api/po/aging');
+    const n = _poAging.totals.count;
+    if (badge) { badge.textContent = n ? `(${n})` : ''; badge.style.color = n ? '#dc2626' : ''; }
+    renderPoAging();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function setPoAgingMin(d) { _poAgingMin = d; renderPoAging(); }
+function togglePoAgingBucket(k) { _poAgingOpen[k] = !_poAgingOpen[k]; renderPoAging(); }
+
+function _agMoney(n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+function _agColor(d) { return d >= 90 ? '#dc2626' : d >= 60 ? '#ea580c' : d >= 30 ? '#ca8a04' : 'var(--gray-500)'; }
+
+function _agVisible(b) { return b.invoices.filter(i => (i.ageDays ?? 0) >= _poAgingMin); }
+
+function renderPoAging() {
+  const el = document.getElementById('po-aging-content');
+  if (!el || !_poAging) return;
+  const buckets = (_poAging.buckets || []).map(b => ({ ...b, shown: _agVisible(b) })).filter(b => b.shown.length);
+  const shownAll = buckets.reduce((a, b) => a.concat(b.shown), []);
+  const shownAmt = shownAll.reduce((t, i) => t + (i.amount || 0), 0);
+
+  if (!shownAll.length) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--gray-500);">
+      <div style="font-size:32px;margin-bottom:12px">✅</div>
+      <div style="font-size:15px;font-weight:600;">Nothing parked${_poAgingMin ? ` past ${_poAgingMin} days` : ''}</div>
+      <div style="font-size:13px">Every Amazon invoice is either paid, applied, or moving normally.</div>
+    </div>`;
+    return;
+  }
+
+  const bands = _poAging.bands || {};
+  const tile = (label, v, color) => `<div style="flex:1;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;">
+      <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;">${label}</div>
+      <div style="font-size:20px;font-weight:700;color:${color};margin-top:2px;">${v.count}</div>
+      <div style="font-size:12px;color:var(--gray-500);">${_agMoney(v.amount)}</div>
+    </div>`;
+
+  const pill = (label, d) => `<button class="cust-pill${_poAgingMin === d ? ' active' : ''}" onclick="setPoAgingMin(${d})">${label}</button>`;
+
+  // PO clustering: one stuck PO often holds many invoices, so fixing the PO
+  // moves them all at once. That makes the PO the useful unit of work here.
+  const byPo = {};
+  for (const i of shownAll) {
+    const k = i.po || '(no PO)';
+    byPo[k] = byPo[k] || { po: k, n: 0, amt: 0, oldest: 0, statuses: new Set() };
+    byPo[k].n++; byPo[k].amt += i.amount || 0;
+    byPo[k].oldest = Math.max(byPo[k].oldest, i.ageDays || 0);
+    byPo[k].statuses.add(i.status);
+  }
+  const topPos = Object.values(byPo).sort((a, b) => b.amt - a.amt).slice(0, 8);
+
+  const bucketCards = buckets.map(b => {
+    const open = !!_poAgingOpen[b.status];
+    const amt = b.shown.reduce((t, i) => t + (i.amount || 0), 0);
+    const rows = open ? b.shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
+        <td style="padding:8px 14px;font-weight:600;color:var(--navy);">${escHtml(i.invoiceNumber)}</td>
+        <td style="padding:8px 14px;font-family:monospace;font-size:12px;">${escHtml(i.po || '—')}</td>
+        <td style="padding:8px 14px;text-align:right;">${_agMoney(i.amount)}</td>
+        <td style="padding:8px 14px;color:var(--gray-500);font-size:12px;">${escHtml(i.entryDate || '—')}</td>
+        <td style="padding:8px 14px;text-align:right;font-weight:700;color:${_agColor(i.ageDays || 0)}">${i.ageDays ?? '—'}d</td>
+        <td style="padding:8px 14px;text-align:right;color:var(--gray-500);">${i.daysInStatus == null ? '—' : i.daysInStatus + 'd'}</td>
+      </tr>`).join('') : '';
+    return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;">
+      <div style="padding:14px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="togglePoAgingBucket('${escHtml(b.status).replace(/'/g, "\\'")}')">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--navy);">${open ? '▾' : '▸'} ${escHtml(b.status)}
+            <span style="font-weight:600;color:var(--gray-500);">· ${b.shown.length} invoice${b.shown.length === 1 ? '' : 's'} · ${_agMoney(amt)}</span></div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:3px;padding-left:16px;">${escHtml(b.reason)}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--gray-500);white-space:nowrap;padding-left:14px;">
+          median <b style="color:${_agColor(b.medianAge || 0)}">${b.medianAge ?? '—'}d</b><br>oldest <b style="color:${_agColor(b.oldestAge || 0)}">${b.oldestAge ?? '—'}d</b>
+        </div>
+      </div>
+      ${open ? `<table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid var(--gray-100);">
+        <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
+          <th style="padding:8px 14px;text-align:left;">Invoice</th><th style="padding:8px 14px;text-align:left;">PO</th>
+          <th style="padding:8px 14px;text-align:right;">Amount</th><th style="padding:8px 14px;text-align:left;">Entry date</th>
+          <th style="padding:8px 14px;text-align:right;">Age</th><th style="padding:8px 14px;text-align:right;">In status</th>
+        </tr></thead><tbody>${rows}</tbody></table>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--gray-500);">
+        <b style="color:var(--navy);font-size:15px;">${shownAll.length} invoices · ${_agMoney(shownAmt)}</b> waiting on someone.
+        Aged on Amazon's Entry Date${_poAging.feedGeneratedAt ? ` · feed ${escHtml(String(_poAging.feedGeneratedAt).slice(0, 16).replace('T', ' '))} UTC` : ''}
+      </div>
+      <button class="cust-pill" onclick="downloadPoAgingCsv()">⬇ CSV</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      ${tile('0-30 days', bands['0-30'] || { count: 0, amount: 0 }, 'var(--gray-500)')}
+      ${tile('31-60 days', bands['31-60'] || { count: 0, amount: 0 }, '#ca8a04')}
+      ${tile('61-90 days', bands['61-90'] || { count: 0, amount: 0 }, '#ea580c')}
+      ${tile('90+ days', bands['90+'] || { count: 0, amount: 0 }, '#dc2626')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <span style="font-size:12px;color:var(--gray-500);">Show:</span>
+      ${pill('All', 0)}${pill('30+ days', 30)}${pill('60+ days', 60)}${pill('90+ days', 90)}
+    </div>
+    ${bucketCards}
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px 16px;margin-top:16px;">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:2px;">Biggest POs holding it up</div>
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px;">One blocked PO usually holds several invoices, so clearing the PO releases them together.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
+          <th style="padding:8px 14px;text-align:left;">PO</th><th style="padding:8px 14px;text-align:right;">Invoices</th>
+          <th style="padding:8px 14px;text-align:right;">Amount</th><th style="padding:8px 14px;text-align:right;">Oldest</th>
+          <th style="padding:8px 14px;text-align:left;">Holding status</th></tr></thead>
+        <tbody>${topPos.map(p => `<tr style="border-bottom:1px solid var(--gray-100)">
+          <td style="padding:8px 14px;font-family:monospace;font-size:12px;font-weight:600;">${escHtml(p.po)}</td>
+          <td style="padding:8px 14px;text-align:right;">${p.n}</td>
+          <td style="padding:8px 14px;text-align:right;font-weight:600;">${_agMoney(p.amt)}</td>
+          <td style="padding:8px 14px;text-align:right;font-weight:700;color:${_agColor(p.oldest)}">${p.oldest}d</td>
+          <td style="padding:8px 14px;color:var(--gray-500);font-size:12px;">${escHtml([...p.statuses].join(', '))}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function downloadPoAgingCsv() {
+  if (!_poAging) return;
+  const rows = [['Status', 'Invoice', 'PO', 'Amount', 'Entry Date', 'Age (days)', 'Days in status', 'Estimated due', 'Past due']];
+  for (const b of (_poAging.buckets || [])) {
+    for (const i of _agVisible(b)) {
+      rows.push([b.status, i.invoiceNumber, i.po || '', i.amount, i.entryDate || '', i.ageDays ?? '', i.daysInStatus ?? '', i.dueDate || '', i.pastDue ? 'yes' : '']);
+    }
+  }
+  const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'payee-aging-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 function renderPoExceptions() {
   const el = document.getElementById('po-exceptions-content');
@@ -4061,6 +4217,7 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-subtab-mismatches').classList.toggle('active', name === 'mismatches');
   document.getElementById('po-subtab-resubmissions').classList.toggle('active', name === 'resubmissions');
   document.getElementById('po-subtab-exceptions').classList.toggle('active', name === 'exceptions');
+  document.getElementById('po-subtab-aging').classList.toggle('active', name === 'aging');
   document.getElementById('po-ledger-content').style.display = name === 'ledger' ? '' : 'none';
   document.getElementById('po-sites-content').style.display = name === 'sites' ? '' : 'none';
   document.getElementById('po-pending-site-content').style.display = name === 'pending-site' ? '' : 'none';
@@ -4070,6 +4227,7 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-mismatches-content').style.display = name === 'mismatches' ? '' : 'none';
   document.getElementById('po-resubmissions-content').style.display = name === 'resubmissions' ? '' : 'none';
   document.getElementById('po-exceptions-content').style.display = name === 'exceptions' ? '' : 'none';
+  document.getElementById('po-aging-content').style.display = name === 'aging' ? '' : 'none';
   if (name === 'sites') renderPoSiteReport();
   if (name === 'pending-site') renderPendingBySite();
   const addBtn = document.getElementById('btn-add-po');

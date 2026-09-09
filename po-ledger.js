@@ -175,6 +175,13 @@ function ensureConsumptionTables() {
     created_at TEXT DEFAULT (datetime('now')),
     resolved_at TEXT, resolved_by TEXT, resolution TEXT
   );`);
+  // Aging columns, added 2026-09-08. Additive so existing databases upgrade in
+  // place: entry_date is Amazon's own Entry Date (the clock the backlog is
+  // measured against) and status_since is when status_last last CHANGED, which
+  // only becomes meaningful for transitions observed from here forward.
+  for (const col of ['entry_date TEXT', 'status_since TEXT']) {
+    try { d.exec(`ALTER TABLE po_consumption ADD COLUMN ${col}`); } catch (e) { /* already present */ }
+  }
   _consumptionReady = true;
 }
 
@@ -188,10 +195,11 @@ function syncConsumptionFromIndex() {
   if (now - _consumptionSyncTs < 5 * 60 * 1000) return;
   _consumptionSyncTs = now;
   const d = db.getDb();
-  const ins = d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last)
-    VALUES (?,?,?,?) ON CONFLICT(po_number, invoice_number) DO NOTHING`);
+  const ins = d.prepare(`INSERT INTO po_consumption (po_number, invoice_number, amount, status_last, entry_date, status_since)
+    VALUES (?,?,?,?,?,datetime('now')) ON CONFLICT(po_number, invoice_number) DO NOTHING`);
   const sel = d.prepare('SELECT id, amount, status_last, released_at, source FROM po_consumption WHERE po_number=? AND invoice_number=?');
-  const upd = d.prepare(`UPDATE po_consumption SET amount=?, status_last=?, last_seen_at=datetime('now'), released_at=?, released_reason=? WHERE id=?`);
+  const upd = d.prepare(`UPDATE po_consumption SET amount=?, status_last=?, last_seen_at=datetime('now'), released_at=?, released_reason=?, entry_date=COALESCE(?, entry_date) WHERE id=?`);
+  const stamp = d.prepare(`UPDATE po_consumption SET status_since=datetime('now') WHERE id=?`);
   const rev = d.prepare(`INSERT INTO po_consumption_review (po_number, kind, detail, proposed_delta) VALUES (?,?,?,?)`);
   const index = payee.getIndex();
   d.exec('BEGIN');
@@ -204,10 +212,10 @@ function syncConsumptionFromIndex() {
       const nonConsuming = NON_CONSUMING_STATUSES.has(item.status);
       const row = sel.get(po, invNo);
       if (!row) {
-        ins.run(po, invNo, amt, item.status || null);
+        ins.run(po, invNo, amt, item.status || null, item.entryDate || null);
         if (nonConsuming) {
           const r2 = sel.get(po, invNo);
-          if (r2) upd.run(amt, item.status, new Date().toISOString(), item.status, r2.id);
+          if (r2) upd.run(amt, item.status, new Date().toISOString(), item.status, item.entryDate || null, r2.id);
         }
         continue;
       }
@@ -221,7 +229,8 @@ function syncConsumptionFromIndex() {
         }
       }
       const released = nonConsuming ? (row.released_at || new Date().toISOString()) : null;
-      upd.run(newAmt, item.status || row.status_last, released, nonConsuming ? item.status : null, row.id);
+      upd.run(newAmt, item.status || row.status_last, released, nonConsuming ? item.status : null, item.entryDate || null, row.id);
+      if (item.status && item.status !== row.status_last) stamp.run(row.id);
     }
     d.exec('COMMIT');
   } catch (e) { d.exec('ROLLBACK'); throw e; }
@@ -939,5 +948,98 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
   return Object.values(sites);
 }
 
+// ─── Payee aging: invoices parked in a non-terminal status ──────────────────
+// Amazon's Entry Date is the clock. Paid / Applied / Cancelled are terminal and
+// excluded. "Scheduled for payment" is healthy on 60-day terms, so it only
+// counts once it passes its estimated due date. status_since gives true
+// age-in-status but only for transitions seen from 2026-09-08 forward, so entry
+// age is what the existing backlog is measured on.
+const AGING_STATUSES = [
+  ['In Progress',                'Accepted by Amazon but never moved on to approval or scheduling'],
+  ['Pending Goods Receipt Hold', 'Amazon has not recorded a goods receipt against the PO'],
+  ['Insufficient PO Funds Hold', 'The PO does not have enough remaining funds to cover it'],
+  ['Rejected',                   'Rejected by Amazon; needs correction and resubmission'],
+];
+const PAST_DUE_KEY = 'Scheduled — past due';
+
+function getPayeeAging(opts = {}) {
+  ensureConsumptionTables();
+  const minDays = Number.isFinite(opts.minDays) ? opts.minDays : 0;
+  const now = Date.now();
+  const DAY = 86400000;
+
+  const since = {};
+  try {
+    for (const r of db.getDb().prepare("SELECT invoice_number, status_since FROM po_consumption WHERE status_since IS NOT NULL").all()) {
+      since[r.invoice_number] = r.status_since;
+    }
+  } catch (e) { /* column absent on a database that has not synced yet */ }
+
+  const reasons = new Map(AGING_STATUSES);
+  const buckets = new Map();
+  const add = (key, reason, inv) => {
+    if (!buckets.has(key)) buckets.set(key, { status: key, reason, count: 0, amount: 0, invoices: [] });
+    const b = buckets.get(key);
+    b.count++; b.amount += inv.amount; b.invoices.push(inv);
+  };
+
+  for (const [invNo, item] of Object.entries(payee.getIndex())) {
+    const status = (item.status || '').trim();
+    const isAging = reasons.has(status);
+    const dueMs = Date.parse(item.dueDate);
+    const pastDue = !isNaN(dueMs) && dueMs < now;
+    if (!isAging && !(status === 'Scheduled for payment' && pastDue)) continue;
+
+    const entryMs = Date.parse(item.entryDate);
+    const ageDays = isNaN(entryMs) ? null : Math.floor((now - entryMs) / DAY);
+    if (ageDays !== null && ageDays < minDays) continue;
+
+    const ss = since[invNo] || null;
+    const ssMs = ss ? Date.parse(String(ss).replace(' ', 'T') + 'Z') : NaN;
+    const inv = {
+      invoiceNumber: invNo,
+      po: item.po || null,
+      amount: parseAmount(item.amount),
+      status,
+      entryDate: item.entryDate || null,
+      ageDays,
+      dueDate: item.dueDate || null,
+      pastDue,
+      statusSince: ss,
+      daysInStatus: isNaN(ssMs) ? null : Math.floor((now - ssMs) / DAY),
+    };
+    if (isAging) add(status, reasons.get(status), inv);
+    else add(PAST_DUE_KEY, 'Scheduled by Amazon, but the estimated due date has already passed', inv);
+  }
+
+  const order = [...AGING_STATUSES.map(s => s[0]), PAST_DUE_KEY];
+  const out = order.filter(k => buckets.has(k)).map(k => {
+    const b = buckets.get(k);
+    b.invoices.sort((x, y) => (y.ageDays ?? -1) - (x.ageDays ?? -1));
+    const ages = b.invoices.map(i => i.ageDays).filter(n => n !== null).sort((a, c) => a - c);
+    b.medianAge = ages.length ? ages[Math.floor(ages.length / 2)] : null;
+    b.oldestAge = ages.length ? ages[ages.length - 1] : null;
+    b.amount = Math.round(b.amount * 100) / 100;
+    return b;
+  });
+
+  const all = out.reduce((acc, b) => acc.concat(b.invoices), []);
+  const band = (lo, hi) => {
+    const s = all.filter(i => i.ageDays !== null && i.ageDays >= lo && (hi === null || i.ageDays <= hi));
+    return { count: s.length, amount: Math.round(s.reduce((t, i) => t + i.amount, 0) * 100) / 100 };
+  };
+  let feedGeneratedAt = null;
+  try { feedGeneratedAt = payee.feedMeta().generatedAt || null; } catch (e) {}
+
+  return {
+    generatedAt: new Date().toISOString(),
+    feedGeneratedAt,
+    totals: { count: all.length, amount: Math.round(all.reduce((t, i) => t + i.amount, 0) * 100) / 100 },
+    bands: { '0-30': band(0, 30), '31-60': band(31, 60), '61-90': band(61, 90), '90+': band(91, null) },
+    buckets: out,
+  };
+}
+
 module.exports = {
+  getPayeeAging,
   getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };

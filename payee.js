@@ -235,6 +235,7 @@ function getIndex() {
       statusMeta,
       po:      (item['Purchase Order #'] || '').trim(),
       dueDate: (item['Estimated Due Date'] || '').trim(),
+      entryDate: (item['Entry Date'] || '').trim(),
       amount:  item['Invoice Amount'] ?? null,
     };
   }
