@@ -250,6 +250,19 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_sitecoll_email ON site_collectors(collector_email);
 
+    -- Which departments a service center is allowed to accrue against. Not every
+    -- branch does every kind of work, and offering all six on every form invites
+    -- an accrual booked to a department the branch does not run. Absence of a
+    -- row means NO restriction, so configuring one branch never silently
+    -- constrains the others.
+    CREATE TABLE IF NOT EXISTS sc_departments (
+      service_center TEXT NOT NULL,
+      dept_id        TEXT NOT NULL,
+      updated_by     TEXT,
+      updated_at     TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (service_center, dept_id)
+    );
+
     -- Work performed for Amazon with no PO yet, waiting on an accrual. This is
     -- revenue earned that cannot be invoiced, so it is invisible in AR by
     -- definition — the whole point of the register is that the money is
@@ -1177,14 +1190,51 @@ function getAllSiteCollectors() {
   return out;
 }
 
+// ─── Departments allowed per service center ─────────────────────────────────
+function setScDepartments(serviceCenter, deptIds, byEmail) {
+  const d = getDb();
+  const sc = String(serviceCenter || '').trim();
+  if (!sc) throw new Error('Service center is required');
+  const list = Array.isArray(deptIds) ? [...new Set(deptIds.map(x => String(x).trim().toUpperCase()).filter(Boolean))] : [];
+  d.exec('BEGIN');
+  try {
+    d.prepare('DELETE FROM sc_departments WHERE service_center=?').run(sc);
+    const ins = d.prepare('INSERT INTO sc_departments (service_center, dept_id, updated_by) VALUES (?,?,?)');
+    for (const id of list) ins.run(sc, id, byEmail || null);
+    d.exec('COMMIT');
+  } catch (e) { d.exec('ROLLBACK'); throw e; }
+  return list;
+}
+
+/** { serviceCenter -> [deptId] }. A branch with no row is unrestricted. */
+function getScDepartments() {
+  const out = {};
+  try {
+    for (const r of getDb().prepare('SELECT service_center, dept_id FROM sc_departments ORDER BY service_center, dept_id').all()) {
+      (out[r.service_center] = out[r.service_center] || []).push(r.dept_id);
+    }
+  } catch (e) { /* table missing on an old database */ }
+  return out;
+}
+
 // ─── Amazon accruals (work done, no PO yet) ─────────────────────────────────
 const ACCRUAL_STATUSES = ['awaiting_po', 'po_received', 'invoiced', 'cancelled'];
+
+function assertDeptAllowed(serviceCenter, deptId) {
+  if (!serviceCenter || !deptId) return;
+  const allowed = getScDepartments()[serviceCenter];
+  if (!allowed || !allowed.length) return;              // unconfigured = unrestricted
+  if (!allowed.includes(String(deptId).toUpperCase())) {
+    throw new Error(`${serviceCenter} is not set up to accrue against ${deptId}`);
+  }
+}
 
 function createAccrual(a, byEmail) {
   const d = getDb();
   const amount = parseFloat(a.amount);
   if (!a.description || !String(a.description).trim()) throw new Error('Description is required');
   if (!isFinite(amount) || amount <= 0) throw new Error('Amount must be a positive number');
+  assertDeptAllowed(a.serviceCenter, a.deptId);
   const info = d.prepare(`
     INSERT INTO amazon_accruals (customer_id, site_code, dept_id, description, amount, work_date,
       status, po_number, service_center, notes, created_by, updated_by)
@@ -1209,6 +1259,11 @@ function updateAccrual(id, patch, byEmail) {
   if (!cur) throw new Error('Accrual not found');
   const next = { ...cur, ...patch };
   if (patch.status && !ACCRUAL_STATUSES.includes(patch.status)) throw new Error('Invalid status');
+  // Checked against the values the row will END UP with, so changing either the
+  // branch or the department alone still has to leave a legal pairing.
+  assertDeptAllowed(
+    patch.serviceCenter !== undefined ? patch.serviceCenter : cur.service_center,
+    patch.deptId !== undefined ? patch.deptId : cur.dept_id);
   if (next.status === 'po_received' && !String(next.po_number || patch.poNumber || '').trim()) {
     throw new Error('A PO number is required to mark an accrual as PO received');
   }
@@ -2477,6 +2532,8 @@ module.exports = {
   getOrgUsers,
   getSubordinates,
   getVisibleEmails,
+  setScDepartments,
+  getScDepartments,
   setSiteCollector,
   getSiteCollector,
   getAllSiteCollectors,

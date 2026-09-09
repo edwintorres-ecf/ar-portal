@@ -2209,6 +2209,7 @@ app.get('/api/amazon/accruals', requireAuth, (req, res) => {
         return Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k]) => k);
       })(),
       siteServiceCenters: siteServiceCenterMap(),
+      scDepartments: db.getScDepartments(),
       openTotal: Math.round(open.reduce((t, r) => t + r.amount, 0) * 100) / 100,
       openCount: open.length,
       scoped: !!siteCodes,
@@ -2216,6 +2217,18 @@ app.get('/api/amazon/accruals', requireAuth, (req, res) => {
       intacctOrderEntry: { available: false, reason: 'Order Entry has no transaction definitions configured in Intacct' },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Which departments each branch may accrue against. A branch with no row is
+// unrestricted, so configuring one never silently constrains the rest.
+app.post('/api/amazon/sc-departments', requireAuth, requirePerm('po.admin'), (req, res) => {
+  try {
+    const { serviceCenter, deptIds } = req.body || {};
+    const list = db.setScDepartments(serviceCenter, deptIds || [], req.session.user.email);
+    db.auditLog(req.session.user.email, 'sc_departments_set', null,
+      `${serviceCenter}: ${list.length ? list.join(',') : '(unrestricted)'}`);
+    res.json({ ok: true, serviceCenter, deptIds: list });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/amazon/accruals', requireAuth, requirePerm('po.edit'), (req, res) => {
