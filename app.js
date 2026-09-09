@@ -2010,7 +2010,7 @@ app.get('/api/org/chart', requireAuth, (req, res) => {
     const me = req.session.user;
     const visible = me.org_role ? new Set(db.getVisibleEmails(me.email)) : null;
     res.json({
-      roles: db.ORG_ROLES,
+      roles: db.getOrgRoles(),
       users: users.map(u => ({
         email: u.email, name: u.name, role: u.role, orgRole: u.org_role || '',
         reportsTo: u.reports_to || '', jobTitle: u.job_title || '',
@@ -2023,16 +2023,32 @@ app.get('/api/org/chart', requireAuth, (req, res) => {
 
 app.post('/api/org/assign', requireAuth, requirePerm('users.admin'), (req, res) => {
   try {
-    const { email, orgRole, reportsTo } = req.body || {};
-    const out = db.setOrgAssignment(email, orgRole || null, reportsTo || null, req.session.user.email);
+    const { email, orgRole, reportsTo, allowException } = req.body || {};
+    const out = db.setOrgAssignment(email, orgRole || null, reportsTo || null, req.session.user.email, !!allowException);
     db.auditLog(req.session.user.email, 'org_assign', null,
-      `${email} -> ${orgRole || '(none)'}${reportsTo ? ' reporting to ' + reportsTo : ''}`);
+      `${email} -> ${orgRole || '(none)'}${reportsTo ? ' reporting to ' + reportsTo : ''}${allowException ? ' [ONE-OFF EXCEPTION]' : ''}`);
     res.json({ ok: true, user: out });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // What a given user can actually see, and why — so a "why can't I see X" question
 // has an answer that does not require reading the code.
+// The role list is data, so it is editable. Roles drive the chart's validation;
+// an individual placement can still break the rule as a recorded exception.
+app.get('/api/org/roles', requireAuth, (req, res) => {
+  try { res.json({ roles: db.getOrgRoles() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/org/roles', requireAuth, requirePerm('users.admin'), (req, res) => {
+  try {
+    const out = db.upsertOrgRole(req.body || {}, req.session.user.email);
+    db.auditLog(req.session.user.email, 'org_role_upsert', null,
+      `${String((req.body || {}).code).toUpperCase()} manages [${((req.body || {}).manages || []).join(',')}]`);
+    res.json({ ok: true, role: out });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get('/api/org/scope/:email', requireAuth, requirePerm('users.admin'), async (req, res) => {
   try {
     const target = db.getOrgUser(req.params.email);

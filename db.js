@@ -222,6 +222,21 @@ function initSchema() {
       set_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- The org roles themselves, as DATA. They were hardcoded, which meant adding
+    -- a role or changing who manages whom was a code change. The list drives the
+    -- org chart's validation; individual placements can still override it for
+    -- one-off adjustments, and those overrides are recorded as exceptions.
+    CREATE TABLE IF NOT EXISTS org_role_defs (
+      code       TEXT PRIMARY KEY,
+      label      TEXT NOT NULL,
+      rank       INTEGER NOT NULL DEFAULT 5,
+      manages    TEXT,            -- JSON array of role codes
+      sort_order INTEGER NOT NULL DEFAULT 100,
+      active     INTEGER NOT NULL DEFAULT 1,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- Who owns an Amazon SITE. Collectors were only ever assignable per invoice
     -- or per customer, and Amazon is ONE customer with 219 sites — so customer
     -- level is useless here and per invoice means reassigning thousands of rows
@@ -993,14 +1008,58 @@ function getSiteAliasMap() {
 // hierarchy IS a property of the user, and a join table would let a user exist
 // in the org chart without existing as a user, which is the classic way these
 // structures drift out of sync.
-const ORG_ROLES = {
-  VPO: { label: 'VP of Operations',      rank: 1, manages: ['DOO'] },
-  DOO: { label: 'Director of Operations', rank: 2, manages: ['AE', 'BA', 'OPM', 'PM'] },
-  AE:  { label: 'Account Executive',      rank: 3, manages: [] },
-  BA:  { label: 'Branch Administrator',   rank: 3, manages: [] },
-  OPM: { label: 'Operations Manager',     rank: 3, manages: [] },
-  PM:  { label: 'Production Manager',     rank: 3, manages: [] },
-};
+// Seeded once, then owned by the table. Kept here only as the starting shape.
+const ORG_ROLE_SEED = [
+  { code: 'VPO', label: 'VP of Operations',       rank: 1, manages: ['DOO'], sort_order: 10 },
+  { code: 'DOO', label: 'Director of Operations', rank: 2, manages: ['AE', 'BA', 'OPM', 'PM'], sort_order: 20 },
+  { code: 'AE',  label: 'Account Executive',      rank: 3, manages: [], sort_order: 30 },
+  { code: 'BA',  label: 'Branch Administrator',   rank: 3, manages: [], sort_order: 40 },
+  { code: 'OPM', label: 'Operations Manager',     rank: 3, manages: [], sort_order: 50 },
+  { code: 'PM',  label: 'Production Manager',     rank: 3, manages: [], sort_order: 60 },
+];
+
+function seedOrgRoles() {
+  const d = getDb();
+  const n = d.prepare('SELECT COUNT(*) c FROM org_role_defs').get().c;
+  if (n) return;
+  const ins = d.prepare('INSERT INTO org_role_defs (code, label, rank, manages, sort_order) VALUES (?,?,?,?,?)');
+  for (const r of ORG_ROLE_SEED) ins.run(r.code, r.label, r.rank, JSON.stringify(r.manages), r.sort_order);
+}
+
+/** The live role list, shaped like the old constant so callers are unchanged. */
+function getOrgRoles() {
+  const d = getDb();
+  try { seedOrgRoles(); } catch (e) { /* table not ready */ }
+  const out = {};
+  try {
+    for (const r of d.prepare('SELECT * FROM org_role_defs WHERE active=1 ORDER BY sort_order, code').all()) {
+      let manages = [];
+      try { manages = JSON.parse(r.manages || '[]'); } catch (e) {}
+      out[r.code] = { label: r.label, rank: r.rank, manages, sortOrder: r.sort_order };
+    }
+  } catch (e) { /* fall back below */ }
+  if (!Object.keys(out).length) {
+    for (const r of ORG_ROLE_SEED) out[r.code] = { label: r.label, rank: r.rank, manages: r.manages, sortOrder: r.sort_order };
+  }
+  return out;
+}
+
+function upsertOrgRole(def, byEmail) {
+  const d = getDb();
+  const code = String(def.code || '').trim().toUpperCase();
+  if (!code || !/^[A-Z0-9]{1,8}$/.test(code)) throw new Error('Role code must be 1-8 letters or digits');
+  if (!def.label || !String(def.label).trim()) throw new Error('Role label is required');
+  const manages = Array.isArray(def.manages) ? def.manages.map(m => String(m).toUpperCase()) : [];
+  if (manages.includes(code)) throw new Error('A role cannot manage itself');
+  d.prepare(`
+    INSERT INTO org_role_defs (code, label, rank, manages, sort_order, active, updated_by, updated_at)
+    VALUES (?,?,?,?,?,?,?,datetime('now'))
+    ON CONFLICT(code) DO UPDATE SET label=excluded.label, rank=excluded.rank, manages=excluded.manages,
+      sort_order=excluded.sort_order, active=excluded.active, updated_by=excluded.updated_by, updated_at=datetime('now')
+  `).run(code, String(def.label).trim(), parseInt(def.rank, 10) || 5, JSON.stringify(manages),
+    parseInt(def.sortOrder, 10) || 100, def.active === false ? 0 : 1, byEmail || null);
+  return getOrgRoles()[code] || null;
+}
 
 function ensureOrgColumns() {
   const d = getDb();
@@ -1009,13 +1068,13 @@ function ensureOrgColumns() {
   }
 }
 
-function setOrgAssignment(email, orgRole, reportsTo, byEmail) {
+function setOrgAssignment(email, orgRole, reportsTo, byEmail, allowException) {
   ensureOrgColumns();
   const d = getDb();
   const e = String(email || '').toLowerCase().trim();
   if (!e) throw new Error('User email is required');
   const role = orgRole ? String(orgRole).toUpperCase() : null;
-  if (role && !ORG_ROLES[role]) throw new Error(`Unknown org role: ${orgRole}`);
+  if (role && !getOrgRoles()[role]) throw new Error(`Unknown org role: ${orgRole}`);
   const mgr = reportsTo ? String(reportsTo).toLowerCase().trim() : null;
 
   if (mgr) {
@@ -1023,8 +1082,13 @@ function setOrgAssignment(email, orgRole, reportsTo, byEmail) {
     const m = d.prepare('SELECT org_role FROM user_roles WHERE lower(email)=?').get(mgr);
     if (!m) throw new Error('Manager is not a portal user');
     if (!m.org_role) throw new Error('Manager has no org role yet — set theirs first');
-    if (role && !(ORG_ROLES[m.org_role].manages || []).includes(role)) {
-      throw new Error(`A ${m.org_role} does not manage a ${role}`);
+    const roles = getOrgRoles();
+    const mgrDef = roles[m.org_role] || { manages: [] };
+    // One-off adjustments are legitimate — a PM reporting straight to a VPO
+    // during a vacancy, say — but they must be DELIBERATE, so the caller has to
+    // ask for the exception rather than the rule quietly not applying.
+    if (role && !(mgrDef.manages || []).includes(role) && !allowException) {
+      throw new Error(`A ${m.org_role} does not normally manage a ${role}. Tick "one-off exception" to allow it.`);
     }
     // A cycle would make the rollup recurse forever and, worse, silently grant
     // everyone everything. Walk up from the proposed manager before accepting.
@@ -2404,7 +2468,9 @@ module.exports = {
   setBlockedSiteCode,
   deleteBlockedSiteCode,
   getBlockedSiteCodes,
-  ORG_ROLES,
+  getOrgRoles,
+  upsertOrgRole,
+  seedOrgRoles,
   ensureOrgColumns,
   setOrgAssignment,
   getOrgUser,
