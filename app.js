@@ -1931,6 +1931,7 @@ app.get('/api/amazon/explorer', requireAuth, (req, res) => {
         businessUnits, siteTypes, regions,
       },
       scope: scopedSites ? { sites: scopedSites.size, locations: JSON.parse(req.session.user.location_filter) } : null,
+      accruals: amazonAccrualSummary(req),
       unresolved: scopedSites ? [] : siteLedger.getNeedsReview(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2012,6 +2013,45 @@ app.patch('/api/amazon/accruals/:id', requireAuth, requirePerm('po.edit'), (req,
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Accrual totals shaped for the reporting surface. Kept STRICTLY SEPARATE from
+// AR: accrued work has no invoice, so folding it into an AR total would
+// overstate receivables and misstate DSO. It travels alongside, labelled, and
+// only the open states count — invoiced accruals are already in AR as invoices,
+// and counting them again would double-count the same money.
+function amazonAccrualSummary(req) {
+  const siteCodes = accrualSiteScope(req);
+  let rows = [];
+  try { rows = db.getAccruals({ siteCodes: siteCodes || undefined }); } catch (e) { return null; }
+  const open = rows.filter(r => r.status === 'awaiting_po' || r.status === 'po_received');
+  const master = db.getAmazonLocationMap();
+  const bump = (bag, k, amt) => {
+    if (!k) k = '(none)';
+    bag[k] = bag[k] || { count: 0, amount: 0 };
+    bag[k].count++;
+    bag[k].amount = Math.round((bag[k].amount + amt) * 100) / 100;
+  };
+  const bySite = {}, byDeptGroup = {}, byBusinessUnit = {}, byStatus = {};
+  for (const r of open) {
+    const loc = r.site_code ? master[r.site_code] : null;
+    bump(bySite, r.site_code, r.amount);
+    bump(byDeptGroup, siteLedger.DEPT_GROUPS[r.dept_id] || 'Unclassified', r.amount);
+    bump(byBusinessUnit, loc ? loc.businessUnit : '', r.amount);
+  }
+  for (const r of rows) bump(byStatus, r.status, r.amount);
+  return {
+    openCount: open.length,
+    openAmount: Math.round(open.reduce((t, r) => t + r.amount, 0) * 100) / 100,
+    bySite, byDeptGroup, byBusinessUnit, byStatus,
+    rows: open.map(r => ({
+      id: r.id, site: r.site_code || '', deptId: r.dept_id || '',
+      deptGroup: siteLedger.DEPT_GROUPS[r.dept_id] || 'Unclassified',
+      businessUnit: (r.site_code && master[r.site_code]) ? master[r.site_code].businessUnit : '',
+      description: r.description, amount: r.amount, workDate: r.work_date || '',
+      status: r.status, poNumber: r.po_number || '',
+    })),
+  };
+}
+
 // ─── Amazon Drill-Down: reporting + export ──────────────────────────────────
 // The export must reproduce exactly what the user is looking at, so it takes
 // the SAME filters the screen uses and applies them to the same row builder.
@@ -2075,6 +2115,7 @@ app.get('/api/amazon/report', requireAuth, (req, res) => {
       byDepartment: by('deptGroup'), byBusinessUnit: by('businessUnit'), bySite: by('site'),
       byPo: by('po'), bySiteType: by('siteType'), byRegion: by('region'),
       byPayeeStatus: by('payeeStatus'), byAging: by('bucket'), byServiceCenter: by('serviceCenter'),
+      accruals: amazonAccrualSummary(req),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2145,6 +2186,24 @@ app.get('/api/amazon/export.xlsx', requireAuth, async (req, res) => {
       { width: 7 }, { width: 15 }, { width: 15 }, { width: 10 }, { width: 26 }, { width: 14 }, { width: 22 }];
     ws.views = [{ state: 'frozen', ySplit: 1 }];
     ws.autoFilter = { from: 'A1', to: 'T1' };
+
+    // Accruals get their OWN sheet, never mixed into the invoice totals: this is
+    // earned work with no invoice behind it, so a reader must not be able to add
+    // it to AR by accident.
+    const acc = amazonAccrualSummary(req);
+    if (acc && acc.rows.length) {
+      const aws = wb.addWorksheet('Accruals (not in AR)');
+      aws.addRow(['Site', 'Business Unit', 'Department', 'Work', 'Work Date', 'Amount', 'Status', 'PO']);
+      styleHeader(aws, 1);
+      acc.rows.forEach(r => {
+        const row = aws.addRow([r.site, r.businessUnit, r.deptGroup, r.description, r.workDate, r.amount, r.status, r.poNumber]);
+        row.getCell(6).numFmt = money;
+      });
+      const t = aws.addRow(['Total (NOT included in Open AR)', '', '', '', '', acc.openAmount, '', '']);
+      t.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+      t.getCell(6).numFmt = money;
+      aws.columns = [{ width: 9 }, { width: 15 }, { width: 22 }, { width: 40 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 15 }];
+    }
 
     db.auditLog(req.session.user.email, 'export_amazon_drilldown', null, `${rows.length} invoices`);
     // Cloudflare edge-caches .xlsx by default — see the pending-by-site note.
