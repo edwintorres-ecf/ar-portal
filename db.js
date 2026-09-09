@@ -983,6 +983,102 @@ function getSiteAliasMap() {
   return out;
 }
 
+// ─── Chain of command ───────────────────────────────────────────────────────
+// Edwin 2026-09-09: a VPO manages his DOOs; a DOO manages AEs, BAs, OPMs and
+// PMs. People are assigned work at three levels — an invoice, a site code, or a
+// whole customer — and **visibility rolls UP**: everyone sees their own book,
+// and a manager sees the union of everything beneath them.
+//
+// Stored as two columns on user_roles rather than a separate org table: the
+// hierarchy IS a property of the user, and a join table would let a user exist
+// in the org chart without existing as a user, which is the classic way these
+// structures drift out of sync.
+const ORG_ROLES = {
+  VPO: { label: 'VP of Operations',      rank: 1, manages: ['DOO'] },
+  DOO: { label: 'Director of Operations', rank: 2, manages: ['AE', 'BA', 'OPM', 'PM'] },
+  AE:  { label: 'Account Executive',      rank: 3, manages: [] },
+  BA:  { label: 'Branch Administrator',   rank: 3, manages: [] },
+  OPM: { label: 'Operations Manager',     rank: 3, manages: [] },
+  PM:  { label: 'Production Manager',     rank: 3, manages: [] },
+};
+
+function ensureOrgColumns() {
+  const d = getDb();
+  for (const col of ['org_role TEXT', 'reports_to TEXT']) {
+    try { d.exec(`ALTER TABLE user_roles ADD COLUMN ${col}`); } catch (e) { /* already present */ }
+  }
+}
+
+function setOrgAssignment(email, orgRole, reportsTo, byEmail) {
+  ensureOrgColumns();
+  const d = getDb();
+  const e = String(email || '').toLowerCase().trim();
+  if (!e) throw new Error('User email is required');
+  const role = orgRole ? String(orgRole).toUpperCase() : null;
+  if (role && !ORG_ROLES[role]) throw new Error(`Unknown org role: ${orgRole}`);
+  const mgr = reportsTo ? String(reportsTo).toLowerCase().trim() : null;
+
+  if (mgr) {
+    if (mgr === e) throw new Error('A user cannot report to themselves');
+    const m = d.prepare('SELECT org_role FROM user_roles WHERE lower(email)=?').get(mgr);
+    if (!m) throw new Error('Manager is not a portal user');
+    if (!m.org_role) throw new Error('Manager has no org role yet — set theirs first');
+    if (role && !(ORG_ROLES[m.org_role].manages || []).includes(role)) {
+      throw new Error(`A ${m.org_role} does not manage a ${role}`);
+    }
+    // A cycle would make the rollup recurse forever and, worse, silently grant
+    // everyone everything. Walk up from the proposed manager before accepting.
+    let cur = mgr, hops = 0;
+    while (cur && hops++ < 50) {
+      if (cur === e) throw new Error('That would create a reporting loop');
+      const row = d.prepare('SELECT reports_to FROM user_roles WHERE lower(email)=?').get(cur);
+      cur = row && row.reports_to ? String(row.reports_to).toLowerCase() : null;
+    }
+  }
+  d.prepare('UPDATE user_roles SET org_role=?, reports_to=?, updated_at=datetime(\'now\') WHERE lower(email)=?')
+    .run(role, mgr, e);
+  return getOrgUser(e);
+}
+
+function getOrgUser(email) {
+  ensureOrgColumns();
+  return getDb().prepare('SELECT email, name, role, org_role, reports_to, job_title FROM user_roles WHERE lower(email)=?')
+    .get(String(email || '').toLowerCase()) || null;
+}
+
+function getOrgUsers() {
+  ensureOrgColumns();
+  return getDb().prepare('SELECT email, name, role, org_role, reports_to, job_title FROM user_roles ORDER BY org_role, name').all();
+}
+
+/** Every email beneath this one, transitively. Cycle-guarded. */
+function getSubordinates(email) {
+  ensureOrgColumns();
+  const d = getDb();
+  const start = String(email || '').toLowerCase();
+  const out = new Set();
+  let frontier = [start];
+  let hops = 0;
+  while (frontier.length && hops++ < 50) {
+    const next = [];
+    for (const mgr of frontier) {
+      for (const r of d.prepare('SELECT email FROM user_roles WHERE lower(reports_to)=?').all(mgr)) {
+        const e = String(r.email).toLowerCase();
+        if (out.has(e) || e === start) continue;
+        out.add(e); next.push(e);
+      }
+    }
+    frontier = next;
+  }
+  return [...out];
+}
+
+/** Self plus everyone beneath — the set whose work this user may see. */
+function getVisibleEmails(email) {
+  const e = String(email || '').toLowerCase();
+  return [e, ...getSubordinates(e)];
+}
+
 // ─── Site collectors (Amazon) ───────────────────────────────────────────────
 function setSiteCollector(siteCode, collectorEmail, byEmail) {
   const d = getDb();
@@ -2308,6 +2404,13 @@ module.exports = {
   setBlockedSiteCode,
   deleteBlockedSiteCode,
   getBlockedSiteCodes,
+  ORG_ROLES,
+  ensureOrgColumns,
+  setOrgAssignment,
+  getOrgUser,
+  getOrgUsers,
+  getSubordinates,
+  getVisibleEmails,
   setSiteCollector,
   getSiteCollector,
   getAllSiteCollectors,

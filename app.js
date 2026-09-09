@@ -249,6 +249,7 @@ function requireAuth(req, res, next) {
     if (fresh) {
       req.session.user.role             = fresh.role;
       req.session.user.location_filter  = fresh.location_filter || null;
+      req.session.user.org_role         = fresh.org_role || null;
       req.session.user.customer_filter  = fresh.customer_filter || null;
     }
     return next();
@@ -331,6 +332,9 @@ function applyUserFilter(invoices, user) {
       result = result.filter(inv => custs.includes(inv.customerId));
     }
   }
+  // Chain of command last, so it INTERSECTS with the location/customer filters
+  // rather than widening them. No-op for users with no org role.
+  result = applyAssignmentScope(result, user);
   return result;
 }
 
@@ -1943,6 +1947,112 @@ app.get('/api/amazon/explorer', requireAuth, (req, res) => {
 app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
   try {
     res.json(siteLedger.rebuild(sage.getCachedInvoices()));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Chain-of-command visibility ────────────────────────────────────────────
+// Work is assigned at three levels — invoice, site code, whole customer — and a
+// manager sees the union of everything assigned beneath them. This resolves an
+// ASSIGNMENT scope, which is separate from and combined with the location
+// filter: a user restricted to FacilityCare AND assigned three sites sees the
+// intersection, never the union, because either restriction alone is a promise
+// the portal already made.
+//
+// OPT-IN BY DESIGN: it applies only to users who have an org_role. Everyone
+// without one keeps exactly the behaviour they have today, so introducing the
+// hierarchy cannot silently hide data from existing staff.
+function assignmentScopeFor(user, invoices) {
+  if (!user || !user.org_role) return null;
+  let emails;
+  try { emails = db.getVisibleEmails(user.email).map(e => e.toLowerCase()); }
+  catch (e) { return null; }
+  const mine = new Set(emails);
+
+  let invColl = {}, siteColl = {}, accounts = [];
+  try { invColl = db.getAllInvoiceCollectors() || {}; } catch (e) {}
+  try { siteColl = db.getAllSiteCollectors() || {}; } catch (e) {}
+  try { accounts = db.getAllCustomerAccounts() || []; } catch (e) {}
+
+  const mySites = new Set(Object.entries(siteColl)
+    .filter(([, v]) => v && v.email && mine.has(String(v.email).toLowerCase()))
+    .map(([site]) => site));
+  const myCustomers = new Set(accounts
+    .filter(a => a.collector_email && mine.has(String(a.collector_email).toLowerCase()))
+    .map(a => a.customer_id));
+  const myInvoices = new Set(Object.entries(invColl)
+    .filter(([, v]) => v && v.collector_email && mine.has(String(v.collector_email).toLowerCase()))
+    .map(([recordNo]) => String(recordNo)));
+
+  let ledger = {};
+  try { ledger = siteLedger.getLedgerMap(); } catch (e) {}
+
+  const recordNos = new Set();
+  for (const inv of invoices) {
+    const rec = String(inv.recordNo);
+    if (myInvoices.has(rec)) { recordNos.add(rec); continue; }
+    if (myCustomers.has(inv.customerId)) { recordNos.add(rec); continue; }
+    const site = (ledger[rec] || {}).siteCode;
+    if (site && mySites.has(site)) recordNos.add(rec);
+  }
+  return { recordNos, emails: mine, sites: mySites, customers: myCustomers };
+}
+
+// Applied AFTER applyUserFilter so the two restrictions intersect.
+function applyAssignmentScope(invoices, user) {
+  const scope = assignmentScopeFor(user, invoices);
+  if (!scope) return invoices;
+  return invoices.filter(i => scope.recordNos.has(String(i.recordNo)));
+}
+
+app.get('/api/org/chart', requireAuth, (req, res) => {
+  try {
+    const users = db.getOrgUsers();
+    const me = req.session.user;
+    const visible = me.org_role ? new Set(db.getVisibleEmails(me.email)) : null;
+    res.json({
+      roles: db.ORG_ROLES,
+      users: users.map(u => ({
+        email: u.email, name: u.name, role: u.role, orgRole: u.org_role || '',
+        reportsTo: u.reports_to || '', jobTitle: u.job_title || '',
+        underMe: visible ? visible.has(String(u.email).toLowerCase()) : true,
+      })),
+      me: { email: me.email, orgRole: me.org_role || '', sees: visible ? [...visible] : null },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/org/assign', requireAuth, requirePerm('users.admin'), (req, res) => {
+  try {
+    const { email, orgRole, reportsTo } = req.body || {};
+    const out = db.setOrgAssignment(email, orgRole || null, reportsTo || null, req.session.user.email);
+    db.auditLog(req.session.user.email, 'org_assign', null,
+      `${email} -> ${orgRole || '(none)'}${reportsTo ? ' reporting to ' + reportsTo : ''}`);
+    res.json({ ok: true, user: out });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// What a given user can actually see, and why — so a "why can't I see X" question
+// has an answer that does not require reading the code.
+app.get('/api/org/scope/:email', requireAuth, requirePerm('users.admin'), async (req, res) => {
+  try {
+    const target = db.getOrgUser(req.params.email);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    const afterLocation = applyUserFilter(invoices, target);
+    const scope = assignmentScopeFor(target, afterLocation);
+    const final = scope ? afterLocation.filter(i => scope.recordNos.has(String(i.recordNo))) : afterLocation;
+    res.json({
+      user: { email: target.email, name: target.name, orgRole: target.org_role || '', reportsTo: target.reports_to || '' },
+      team: db.getSubordinates(target.email),
+      locationFiltered: afterLocation.length,
+      assignmentScoped: !!scope,
+      sites: scope ? [...scope.sites] : [],
+      customers: scope ? [...scope.customers] : [],
+      visibleInvoices: final.length,
+      visibleAmount: Math.round(final.reduce((t, i) => t + (parseFloat(i.totalDue) || 0), 0) * 100) / 100,
+      totalInvoices: invoices.length,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
