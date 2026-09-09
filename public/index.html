@@ -557,6 +557,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     </div>
 
     <div class="nav-tab" data-view="po-funds" onclick="navGo('po-funds')">🟠 Amazon PO Manager</div>
+    <div class="nav-tab" data-view="amazon-drilldown" onclick="navGo('amazon-drilldown')">🔎 Amazon Drill-Down</div>
 
     <div class="nav-group" data-group="comms">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'comms')">Collections<span class="caret">▾</span><span id="triage-badge" style="display:none;background:#dc2626;color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:5px"></span></div>
@@ -862,6 +863,17 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 </div>
 
 <!-- ─── PO FUNDS ─── -->
+<div id="view-amazon-drilldown" class="view">
+  <div style="max-width:1500px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0;">🔎 Amazon Drill-Down</h2>
+      <button onclick="amazonLoad()" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">↻ Refresh</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:14px;">Drill Department → Business Unit → Site → PO → Invoice. Click a row to go deeper; filters work at any depth, in any order.</div>
+    <div id="amazon-content"><div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div></div>
+  </div>
+</div>
+
 <div id="view-po-funds" class="view">
   <div style="padding:20px 24px;max-width:1300px;margin:0 auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
@@ -2414,6 +2426,7 @@ function switchView(name, el) {
   if (name === 'watchlist') { loadWatchlist(); }
   if (name === 'my-work') { loadMyWork(); }
   if (name === 'amazon') { loadAmazonView(); }
+  if (name === 'amazon-drilldown' && typeof amazonLoad === 'function') { amazonLoad(); }
   if (name === 'activity') { loadActivityLog(); }
   if (name === 'ptp-board') { loadPtpBoard(); }
   if (name === 'reports') { loadReports(); }
@@ -5890,5 +5903,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260814c"></script>
+<script src="/amazon.js?v=20260909a"></script>
 </body>
 </html>
