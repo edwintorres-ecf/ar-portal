@@ -620,6 +620,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="admin" onclick="navGo('admin')">👤 Users</div>
         <div class="nav-drop-item" onclick="commsInviteUser()">✉️ Invite user</div>
         <div class="nav-drop-item" data-view="permissions" onclick="navGo('permissions')">🔑 Permissions</div>
+        <div class="nav-drop-item" data-view="org-chart" onclick="navGo('org-chart')">⛓️ Org Chart</div>
       </div>
     </div>
   </div>
@@ -800,6 +801,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-velocity" class="view">
   <div id="velocity-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-org-chart" class="view">
+  <div id="org-root" style="padding:4px 8px;max-width:1200px"></div>
 </div>
 
 <div id="view-permissions" class="view">
@@ -2470,7 +2475,7 @@ const NAV_GROUP_OF = {
   'customers': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance', 'permissions': 'admin',
-  'admin': 'admin',
+  'admin': 'admin', 'org-chart': 'admin',
   'amazon': 'amazon', 'po-funds': 'amazon', 'amazon-drilldown': 'amazon', 'amazon-accruals': 'amazon',
 };
 
@@ -2516,6 +2521,7 @@ function switchView(name, el) {
   if (name === 'training' && typeof commsLoadTraining === 'function') { commsLoadTraining(); }
   if (name === 'velocity' && typeof commsLoadVelocity === 'function') { commsLoadVelocity(); }
   if (name === 'permissions' && typeof commsLoadPermissions === 'function') { commsLoadPermissions(); }
+  if (name === 'org-chart' && typeof commsLoadOrgChart === 'function') { commsLoadOrgChart(); }
   if (name === 'stop-service-view' && typeof commsLoadStopService === 'function') { commsLoadStopService(); }
   if (name === 'auto-assign' && typeof commsLoadAutoAssign === 'function') { commsLoadAutoAssign(); }
   if (name === 'service-centers' && typeof commsLoadServiceCenters === 'function') { commsLoadServiceCenters(); }
@@ -6040,7 +6046,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260909d"></script>
+<script src="/comms.js?v=20260909e"></script>
 <script src="/amazon.js?v=20260909l"></script>
 </body>
 </html>

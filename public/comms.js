@@ -2606,3 +2606,204 @@ async function commsDecorateDrawer(data) {
     }
   } catch (e) { /* decoration only — never break the drawer */ }
 }
+
+
+// ─── Org chart admin (chain of command) ──────────────────────────────────────
+// Edwin 2026-09-09: a VPO manages his DOOs; a DOO manages AEs, BAs, OPMs and
+// PMs; work is assigned at invoice / site / customer level and visibility rolls
+// UP. This screen is where that tree is built and, just as importantly, where
+// you can see what any one person can actually see — an org chart that cannot
+// answer "why can't they see X" is decoration.
+let _orgData = null, _orgScopeCache = {};
+
+const ORG_TONE = {
+  VPO: { bg: '#ede9fe', color: '#5b21b6' },
+  DOO: { bg: '#e0f2fe', color: '#075985' },
+  AE:  { bg: '#dcfce7', color: '#166534' },
+  BA:  { bg: '#fef3c7', color: '#92400e' },
+  OPM: { bg: '#ffe4e6', color: '#9f1239' },
+  PM:  { bg: '#f3e8ff', color: '#6b21a8' },
+};
+
+async function commsLoadOrgChart() {
+  const el = document.getElementById('org-root');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    _orgData = await apiFetch('/api/org/chart');
+    commsRenderOrgChart();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+function orgUserByEmail(email) {
+  return (_orgData.users || []).find(u => u.email.toLowerCase() === String(email || '').toLowerCase()) || null;
+}
+
+function orgChildrenOf(email) {
+  const e = String(email || '').toLowerCase();
+  return (_orgData.users || []).filter(u => (u.reportsTo || '').toLowerCase() === e)
+    .sort((a, b) => (a.orgRole || '').localeCompare(b.orgRole || '') || (a.name || '').localeCompare(b.name || ''));
+}
+
+function commsRenderOrgChart() {
+  const el = document.getElementById('org-root');
+  if (!el || !_orgData) return;
+  const users = _orgData.users || [];
+  const placed = users.filter(u => u.orgRole);
+  // Roots are anyone with a role and no manager — usually the VPOs, but an
+  // orphan shows up here too rather than vanishing from the tree.
+  const roots = placed.filter(u => !u.reportsTo);
+  const unplaced = users.filter(u => !u.orgRole);
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:4px">
+      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0">Org Chart</h2>
+      <button onclick="commsLoadOrgChart()" style="padding:5px 11px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;color:var(--gray-600)">↻ Refresh</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:14px">
+      Work is assigned at invoice, site or customer level. Everyone sees their own book; a manager sees everything beneath them.
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      ${orgTile('In the chart', placed.length, 'have an org role')}
+      ${orgTile('Not placed', unplaced.length, 'no org role yet', unplaced.length ? '#d97706' : '')}
+      ${orgTile('Top level', roots.length, 'report to nobody')}
+    </div>
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px;margin-bottom:16px">
+      ${roots.length ? roots.map(r => orgNodeHtml(r, 0)).join('') : '<div style="color:var(--gray-500);font-size:13px">Nobody has an org role yet. Place someone below to start the chart.</div>'}
+    </div>
+    ${unplaced.length ? `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Not in the chart (${unplaced.length})</div>
+      <div style="font-size:11px;color:var(--gray-500);margin-bottom:10px">These users are unaffected by the chain of command and see whatever their role and location filter already allow.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${unplaced.map(u => `<button onclick="orgEdit('${escHtml(u.email)}')" style="border:1px solid var(--gray-300);background:var(--white);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer">
+          ${escHtml(u.name || u.email)} <span style="color:var(--gray-500)">+ place</span></button>`).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+
+function orgTile(label, value, sub, color) {
+  return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 16px;min-width:140px;border-left:3px solid ${color || 'var(--navy)'}">
+    <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em">${escHtml(label)}</div>
+    <div style="font-size:19px;font-weight:700;color:${color || 'var(--navy)'}">${value}</div>
+    <div style="font-size:11px;color:var(--gray-500)">${escHtml(sub)}</div></div>`;
+}
+
+function orgNodeHtml(u, depth) {
+  const kids = orgChildrenOf(u.email);
+  const tone = ORG_TONE[u.orgRole] || { bg: '#f3f4f6', color: '#374151' };
+  const roleLabel = ((_orgData.roles || {})[u.orgRole] || {}).label || u.orgRole;
+  return `<div style="margin-left:${depth * 24}px;padding:7px 0;${depth ? 'border-left:2px solid var(--gray-200);padding-left:14px;' : ''}">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="background:${tone.bg};color:${tone.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${escHtml(u.orgRole)}</span>
+      <span style="font-weight:600;color:var(--navy)">${escHtml(u.name || u.email)}</span>
+      <span style="font-size:11px;color:var(--gray-500)">${escHtml(roleLabel)}${u.jobTitle ? ' · ' + escHtml(u.jobTitle) : ''}</span>
+      ${kids.length ? `<span style="font-size:11px;color:var(--gray-500)">${kids.length} direct report${kids.length === 1 ? '' : 's'}</span>` : ''}
+      <button onclick="orgEdit('${escHtml(u.email)}')" style="border:1px solid var(--gray-300);background:var(--white);border-radius:5px;padding:1px 8px;font-size:11px;cursor:pointer">Edit</button>
+      <button onclick="orgShowScope('${escHtml(u.email)}')" style="border:1px solid var(--gray-300);background:var(--white);border-radius:5px;padding:1px 8px;font-size:11px;cursor:pointer">What they see</button>
+    </div>
+    <div id="org-scope-${escHtml(u.email).replace(/[^a-zA-Z0-9]/g, '_')}" style="font-size:11px;color:var(--gray-600);margin-top:4px"></div>
+    ${kids.map(k => orgNodeHtml(k, depth + 1)).join('')}
+  </div>`;
+}
+
+// The answer to "why can't they see X", computed server-side from the same
+// resolution the portal itself uses rather than re-derived here.
+async function orgShowScope(email) {
+  const id = 'org-scope-' + email.replace(/[^a-zA-Z0-9]/g, '_');
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = '<span style="color:var(--gray-500)">checking…</span>';
+  try {
+    const s = await apiFetch('/api/org/scope/' + encodeURIComponent(email));
+    const money = (v) => '$' + Math.round(v || 0).toLocaleString();
+    const bits = [];
+    bits.push(`sees <strong>${s.visibleInvoices.toLocaleString()}</strong> of ${s.totalInvoices.toLocaleString()} invoices · ${money(s.visibleAmount)}`);
+    if (s.team && s.team.length) bits.push(`team of ${s.team.length}`);
+    if (s.sites && s.sites.length) bits.push(`${s.sites.length} site${s.sites.length === 1 ? '' : 's'}: ${s.sites.slice(0, 8).join(', ')}${s.sites.length > 8 ? '…' : ''}`);
+    if (s.customers && s.customers.length) bits.push(`${s.customers.length} customer${s.customers.length === 1 ? '' : 's'}`);
+    if (!s.assignmentScoped) bits.push('<span style="color:#92400e">no org role — not restricted by the chain of command</span>');
+    else if (!s.visibleInvoices) bits.push('<span style="color:#dc2626">nothing assigned to them or anyone beneath them</span>');
+    el.innerHTML = bits.join(' · ');
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`;
+  }
+}
+
+function orgEdit(email) {
+  const u = orgUserByEmail(email);
+  if (!u) return;
+  const m = document.getElementById('org-modal');
+  document.getElementById('org-modal-who').textContent = (u.name || u.email) + ' — ' + u.email;
+  const roleSel = document.getElementById('org-role');
+  roleSel.innerHTML = '<option value="">— not in the chart —</option>' +
+    Object.entries(_orgData.roles || {}).map(([k, v]) => `<option value="${escHtml(k)}"${u.orgRole === k ? ' selected' : ''}>${escHtml(k)} — ${escHtml(v.label)}</option>`).join('');
+  orgRefreshManagers(u);
+  document.getElementById('org-msg').innerHTML = '';
+  m.style.display = 'flex';
+}
+
+// Only offer managers who are ALLOWED to manage the chosen role, so an invalid
+// pairing cannot be submitted and then rejected by the server.
+function orgRefreshManagers(u) {
+  const role = document.getElementById('org-role').value;
+  const sel = document.getElementById('org-manager');
+  const eligible = (_orgData.users || []).filter(m => {
+    if (!m.orgRole) return false;
+    if (m.email.toLowerCase() === (u ? u.email.toLowerCase() : '')) return false;
+    const manages = ((_orgData.roles || {})[m.orgRole] || {}).manages || [];
+    return !role || manages.includes(role);
+  });
+  const cur = u ? (u.reportsTo || '') : '';
+  sel.innerHTML = '<option value="">— nobody (top level) —</option>' +
+    eligible.map(m => `<option value="${escHtml(m.email)}"${cur.toLowerCase() === m.email.toLowerCase() ? ' selected' : ''}>${escHtml(m.orgRole)} · ${escHtml(m.name || m.email)}</option>`).join('');
+  const hint = document.getElementById('org-mgr-hint');
+  if (hint) hint.textContent = role && !eligible.length
+    ? `No existing user can manage a ${role} yet — place their manager first.` : '';
+}
+
+async function orgSave() {
+  const msg = document.getElementById('org-msg');
+  const email = (document.getElementById('org-modal-who').textContent.split('—').pop() || '').trim();
+  const orgRole = document.getElementById('org-role').value;
+  const reportsTo = document.getElementById('org-manager').value;
+  msg.innerHTML = '<span style="color:var(--gray-500)">Saving…</span>';
+  try {
+    await apiFetch('/api/org/assign', { method: 'POST', body: JSON.stringify({ email, orgRole: orgRole || null, reportsTo: reportsTo || null }) });
+    document.getElementById('org-modal').style.display = 'none';
+    commsLoadOrgChart();
+  } catch (e) {
+    msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`;
+  }
+}
+
+function orgCloseModal() { const m = document.getElementById('org-modal'); if (m) m.style.display = 'none'; }
+
+(function injectOrgModal() {
+  const html = `
+<div id="org-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)orgCloseModal()">
+  <div class="modal-box" style="width:520px;max-width:95vw">
+    <h3 style="margin-bottom:2px">Place in the org chart</h3>
+    <div id="org-modal-who" style="font-size:12px;color:var(--gray-500);margin-bottom:12px"></div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Org role</label>
+    <select id="org-role" onchange="orgRefreshManagers(orgUserByEmail((document.getElementById('org-modal-who').textContent.split('—').pop()||'').trim()))"
+      style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px"></select>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Reports to</label>
+    <select id="org-manager" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></select>
+    <div id="org-mgr-hint" style="font-size:11px;color:#92400e;margin-top:4px"></div>
+    <div style="background:#f1f5f9;border-radius:8px;padding:8px 12px;font-size:11px;color:var(--gray-600);margin-top:12px">
+      Giving someone an org role starts restricting them to work assigned to them or their team. Leave the role blank to take them out of the chain of command entirely.
+    </div>
+    <div id="org-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="orgCloseModal()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="orgSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
