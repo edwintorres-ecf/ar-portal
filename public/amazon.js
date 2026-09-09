@@ -24,6 +24,7 @@ const AMZ_LEVELS = [
 let _amzRows = null;
 let _amzVocab = null;
 let _amzUnresolved = [];
+let _amzFresh = {};
 let _amzPath = [];                 // [{key,value}] one per level descended
 let _amzFilters = {};              // {businessUnit, siteType, region, bucket, q, ...}
 let _amzSort = { key: 'amount', dir: -1 };
@@ -43,6 +44,7 @@ async function amazonLoad() {
     _amzRows = data.rows || [];
     _amzVocab = data.vocab || {};
     _amzUnresolved = data.unresolved || [];
+    _amzFresh = data.freshness || {};
     amazonRender();
   } catch (e) {
     el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
@@ -62,6 +64,8 @@ function amzFiltered() {
     if (f.siteType && r.siteType !== f.siteType) return false;
     if (f.region && r.region !== f.region) return false;
     if (f.bucket && r.bucket !== f.bucket) return false;
+    if (f.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== f.payeeStatus) return false;
+    if (f.poStatus && (r.poStatus || '') !== f.poStatus) return false;
     if (f.site && r.site !== f.site) return false;
     if (f.serviceCenter && r.serviceCenter !== f.serviceCenter) return false;
     // One switch for both gaps the header warns about: no site at all, or a
@@ -87,6 +91,7 @@ function amazonRender() {
 
   el.innerHTML = `
     ${amzHeaderHtml(rows, total)}
+    ${amzFreshnessHtml()}
     ${amzFilterBarHtml()}
     ${amzCrumbHtml()}
     ${level ? amzGroupTableHtml(rows, level) : amzInvoiceTableHtml(rows)}
@@ -143,6 +148,8 @@ function amzFilterBarHtml() {
       ${amzSelect('site', 'Site', sites, _amzFilters.site)}
       ${amzSelect('serviceCenter', 'ECF branch', scs, _amzFilters.serviceCenter)}
       ${amzSelect('bucket', 'Aging', ['current', '1-30', '31-60', '61-90', '91+'], _amzFilters.bucket)}
+      ${amzSelect('payeeStatus', 'Amazon status', amzStatusVocab(), _amzFilters.payeeStatus)}
+      ${amzSelect('poStatus', 'PO status', ['Open', 'Closed'], _amzFilters.poStatus)}
       <input type="text" placeholder="Search invoice / PO / site" value="${escHtml(_amzFilters.q || '')}"
         oninput="amazonSetFilter('q', this.value)"
         style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;min-width:190px;">
@@ -172,8 +179,8 @@ function amzGroupTableHtml(rows, level) {
   const groups = {};
   for (const r of rows) {
     const k = r[level.key] || '';
-    if (!groups[k]) groups[k] = { key: k, n: 0, amount: 0, sites: new Set(), pos: new Set(), sample: r };
-    groups[k].n++; groups[k].amount += r.amount;
+    if (!groups[k]) groups[k] = { key: k, n: 0, amount: 0, sites: new Set(), pos: new Set(), sample: r, rows: [] };
+    groups[k].n++; groups[k].amount += r.amount; groups[k].rows.push(r);
     if (r.site) groups[k].sites.add(r.site);
     if (r.po) groups[k].pos.add(r.po);
   }
@@ -212,7 +219,7 @@ function amzGroupDetail(key, g) {
   if (key === 'deptGroup') return s.deptName ? `${g.sites.size} sites` : `${g.sites.size} sites`;
   if (key === 'businessUnit') return `${g.sites.size} sites · ${g.pos.size} POs${s.region ? ' · ' + s.region : ''}`;
   if (key === 'site') return [s.siteType, s.region, s.serviceCenter].filter(Boolean).join(' · ') || '—';
-  if (key === 'po') return `${g.n} invoice${g.n > 1 ? 's' : ''}`;
+  if (key === 'po') return amzPoDetailHtml(g);
   return '';
 }
 
@@ -229,7 +236,7 @@ function amzInvoiceTableHtml(rows) {
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="background:var(--gray-100);">
         ${h('invoiceId', 'Invoice')}${h('invoiceDate', 'Date')}${h('site', 'Site')}${h('po', 'PO')}
-        ${h('deptName', 'Department')}${h('businessUnit', 'BU')}${h('payeeStatus', 'Amazon status')}
+        ${h('deptName', 'Department')}${h('businessUnit', 'BU')}${h('payeeStatus', 'Amazon status')}${h('poStatus', 'PO')}
         ${h('daysOverdue', 'Age', 'right')}${h('amount', 'Open AR', 'right')}
       </tr></thead>
       <tbody>
@@ -241,7 +248,8 @@ function amzInvoiceTableHtml(rows) {
           <td style="padding:8px 12px;font-size:12px;">${escHtml(amzBlank(r.po))}</td>
           <td style="padding:8px 12px;font-size:12px;">${escHtml(amzBlank(r.deptName))}${r.deptMixed ? ' <span style="color:#d97706;" title="lines span more than one department">mixed</span>' : ''}</td>
           <td style="padding:8px 12px;font-size:12px;">${escHtml(amzBlank(r.businessUnit, '(none)'))}</td>
-          <td style="padding:8px 12px;font-size:12px;color:var(--gray-600);">${escHtml(amzBlank(r.payeeStatus))}</td>
+          <td style="padding:8px 12px;font-size:12px;">${amzStatusPill(r)}</td>
+          <td style="padding:8px 12px;font-size:11px;color:${r.poStatus === 'Closed' ? '#dc2626' : 'var(--gray-600)'};">${escHtml(amzBlank(r.poStatus, '—'))}${r.poStale ? ' ⚠' : ''}</td>
           <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">${r.daysOverdue || 0}d</td>
           <td style="padding:8px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(r.amount)}</td>
         </tr>`).join('')}
@@ -273,4 +281,69 @@ function amazonShowUnattributed() {
   _amzPath = [];
   _amzFilters = { unattributed: true };
   amazonRender();
+}
+
+
+// ─── Amazon Payee Central status ─────────────────────────────────────────────
+// The status shown here is Amazon's own, resolved across the resubmission
+// suffix chain, so a rejected invoice that was resubmitted as S8604A reports the
+// live attempt rather than the dead original.
+function amzStatusVocab() {
+  const set = new Set((_amzRows || []).map(r => r.payeeStatus || '(not in Payee feed)'));
+  return [...set].sort();
+}
+
+function amzAgeMin(iso) {
+  const t = Date.parse(iso || '');
+  return isNaN(t) ? null : Math.round((Date.now() - t) / 60000);
+}
+
+function amzAgeText(min) {
+  if (min === null) return 'unknown';
+  if (min < 90) return min + 'm ago';
+  const h = Math.round(min / 60);
+  return h < 48 ? h + 'h ago' : Math.round(h / 24) + 'd ago';
+}
+
+// A status is only as good as its feed. Say the age out loud and colour it, so
+// nobody reads a week-old "Scheduled for payment" as today's truth.
+function amzFreshnessHtml() {
+  const f = _amzFresh || {};
+  const fm = amzAgeMin(f.payeeFeedGeneratedAt);
+  const pm = amzAgeMin(f.poDetailsScrapedAt);
+  const tone = (min, warnH, badH) => min === null ? '#6b7280'
+    : min > badH * 60 ? '#dc2626' : min > warnH * 60 ? '#d97706' : '#059669';
+  return `<div style="font-size:11px;color:var(--gray-500);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+    <span>Amazon status freshness:</span>
+    <span><span style="color:${tone(fm, 6, 24)};">●</span> invoice statuses ${escHtml(amzAgeText(fm))}</span>
+    <span><span style="color:${tone(pm, 8, 48)};">●</span> PO detail ${escHtml(amzAgeText(pm))}</span>
+    ${fm !== null && fm > 24 * 60 ? '<span style="color:#dc2626;font-weight:600;">Feed is over a day old — statuses below may have moved.</span>' : ''}
+  </div>`;
+}
+
+function amzStatusPill(r) {
+  const label = r.payeeLabel || r.payeeStatus;
+  if (!label) return '<span style="color:var(--gray-400);font-size:11px;">not in Payee feed</span>';
+  const bg = r.payeeBg || '#f3f4f6';
+  const color = r.payeeColor || '#374151';
+  const dup = r.payeeDuplicateLive
+    ? ' <span title="more than one attempt is live at Amazon — possible double submission" style="color:#dc2626;font-weight:700;">!!</span>' : '';
+  const att = (r.payeeAttempts > 1 && !r.payeeDuplicateLive)
+    ? ` <span title="resubmission chain: ${r.payeeAttempts} attempts, showing ${escHtml(r.payeeId)}" style="color:var(--gray-500);font-size:10px;">${r.payeeAttempts}×</span>` : '';
+  return `<span style="background:${bg};color:${color};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(r.payeeIcon || '')} ${escHtml(label)}</span>${att}${dup}`;
+}
+
+// At PO level the useful facts are Amazon's PO state and how its invoices are
+// sitting, not just the total. A closed PO with pending invoices is a problem.
+function amzPoDetailHtml(g) {
+  const s = g.sample || {};
+  const bits = [];
+  if (s.poStatus) bits.push(s.poStatus === 'Closed' ? '⛔ Closed at Amazon' : '✓ Open at Amazon');
+  if (s.poMasked) bits.push('amount hidden by Amazon');
+  else if (s.poAvailable !== null && s.poAvailable !== undefined) bits.push('available ' + amzMoney(s.poAvailable));
+  if (s.poStale) bits.push('⚠ stale scrape');
+  const counts = {};
+  (g.rows || []).forEach(r => { const k = r.payeeLabel || r.payeeStatus || 'not in feed'; counts[k] = (counts[k] || 0) + 1; });
+  const statuses = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k}`).join(', ');
+  return [bits.join(' · '), statuses].filter(Boolean).join('  —  ');
 }
