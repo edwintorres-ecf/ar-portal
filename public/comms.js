@@ -2670,6 +2670,7 @@ function commsRenderOrgChart() {
       ${orgTile('Not placed', unplaced.length, 'no org role yet', unplaced.length ? '#d97706' : '')}
       ${orgTile('Top level', roots.length, 'report to nobody')}
     </div>
+    ${orgRolesPanelHtml()}
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px;margin-bottom:16px">
       ${roots.length ? roots.map(r => orgNodeHtml(r, 0)).join('') : '<div style="color:var(--gray-500);font-size:13px">Nobody has an org role yet. Place someone below to start the chart.</div>'}
     </div>
@@ -2740,6 +2741,8 @@ function orgEdit(email) {
   const roleSel = document.getElementById('org-role');
   roleSel.innerHTML = '<option value="">— not in the chart —</option>' +
     Object.entries(_orgData.roles || {}).map(([k, v]) => `<option value="${escHtml(k)}"${u.orgRole === k ? ' selected' : ''}>${escHtml(k)} — ${escHtml(v.label)}</option>`).join('');
+  const exc = document.getElementById('org-exception');
+  if (exc) exc.checked = false;
   orgRefreshManagers(u);
   document.getElementById('org-msg').innerHTML = '';
   m.style.display = 'flex';
@@ -2750,9 +2753,13 @@ function orgEdit(email) {
 function orgRefreshManagers(u) {
   const role = document.getElementById('org-role').value;
   const sel = document.getElementById('org-manager');
+  const exception = !!(document.getElementById('org-exception') || {}).checked;
   const eligible = (_orgData.users || []).filter(m => {
     if (!m.orgRole) return false;
     if (m.email.toLowerCase() === (u ? u.email.toLowerCase() : '')) return false;
+    // With the exception ticked, ANY placed user may be offered as a manager;
+    // without it, only roles the list says may manage this one.
+    if (exception) return true;
     const manages = ((_orgData.roles || {})[m.orgRole] || {}).manages || [];
     return !role || manages.includes(role);
   });
@@ -2771,7 +2778,8 @@ async function orgSave() {
   const reportsTo = document.getElementById('org-manager').value;
   msg.innerHTML = '<span style="color:var(--gray-500)">Saving…</span>';
   try {
-    await apiFetch('/api/org/assign', { method: 'POST', body: JSON.stringify({ email, orgRole: orgRole || null, reportsTo: reportsTo || null }) });
+    const allowException = !!(document.getElementById('org-exception') || {}).checked;
+    await apiFetch('/api/org/assign', { method: 'POST', body: JSON.stringify({ email, orgRole: orgRole || null, reportsTo: reportsTo || null, allowException }) });
     document.getElementById('org-modal').style.display = 'none';
     commsLoadOrgChart();
   } catch (e) {
@@ -2793,6 +2801,11 @@ function orgCloseModal() { const m = document.getElementById('org-modal'); if (m
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Reports to</label>
     <select id="org-manager" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></select>
     <div id="org-mgr-hint" style="font-size:11px;color:#92400e;margin-top:4px"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray-700);margin-top:10px;cursor:pointer">
+      <input type="checkbox" id="org-exception" onchange="orgRefreshManagers(orgUserByEmail((document.getElementById('org-modal-who').textContent.split('—').pop()||'').trim()))">
+      One-off exception — allow a manager the role list would normally forbid
+    </label>
+    <div style="font-size:11px;color:var(--gray-500);margin-left:22px">For a vacancy or an interim arrangement. It is recorded in the audit log.</div>
     <div style="background:#f1f5f9;border-radius:8px;padding:8px 12px;font-size:11px;color:var(--gray-600);margin-top:12px">
       Giving someone an org role starts restricting them to work assigned to them or their team. Leave the role blank to take them out of the chain of command entirely.
     </div>
@@ -2800,6 +2813,117 @@ function orgCloseModal() { const m = document.getElementById('org-modal'); if (m
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button onclick="orgCloseModal()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
       <button onclick="orgSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
+
+
+// ─── The role list ───────────────────────────────────────────────────────────
+// Edwin 2026-09-09: "list the roles and that will drive the org chart but allow
+// for manually edit for one off adjustments". The roles are data, so who may
+// manage whom is a row rather than a deploy; individual placements can still
+// break the rule as a recorded exception.
+let _orgRolesOpen = false;
+
+function orgRolesPanelHtml() {
+  const roles = _orgData.roles || {};
+  const entries = Object.entries(roles).sort((a, b) => (a[1].sortOrder || 99) - (b[1].sortOrder || 99));
+  const counts = {};
+  for (const u of (_orgData.users || [])) if (u.orgRole) counts[u.orgRole] = (counts[u.orgRole] || 0) + 1;
+  return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:${_orgRolesOpen ? '10px' : '0'}">
+      <button onclick="_orgRolesOpen=!_orgRolesOpen;commsRenderOrgChart()" style="border:none;background:none;font-size:12px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:.05em;cursor:pointer;padding:0">
+        ${_orgRolesOpen ? '▼' : '▶'} Roles (${entries.length})
+      </button>
+      <span style="font-size:11px;color:var(--gray-500)">these drive who may manage whom</span>
+      ${_orgRolesOpen ? `<button onclick="orgEditRole('')" style="margin-left:auto;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">+ Add role</button>` : ''}
+    </div>
+    ${_orgRolesOpen ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:var(--gray-100)">
+        <th style="text-align:left;padding:7px 10px">Code</th>
+        <th style="text-align:left;padding:7px 10px">Title</th>
+        <th style="text-align:left;padding:7px 10px">Manages</th>
+        <th style="text-align:right;padding:7px 10px">People</th>
+        <th style="padding:7px 10px"></th>
+      </tr></thead><tbody>
+      ${entries.map(([code, r]) => `<tr style="border-top:1px solid var(--gray-200)">
+        <td style="padding:7px 10px"><span style="background:${(ORG_TONE[code] || { bg: '#f3f4f6' }).bg};color:${(ORG_TONE[code] || { color: '#374151' }).color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${escHtml(code)}</span></td>
+        <td style="padding:7px 10px">${escHtml(r.label)}</td>
+        <td style="padding:7px 10px;font-size:12px;color:var(--gray-600)">${r.manages && r.manages.length ? escHtml(r.manages.join(', ')) : '<span style="color:var(--gray-400)">nobody</span>'}</td>
+        <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${counts[code] || 0}</td>
+        <td style="padding:7px 10px;text-align:right"><button onclick="orgEditRole('${escHtml(code)}')" style="border:1px solid var(--gray-300);background:var(--white);border-radius:5px;padding:1px 8px;font-size:11px;cursor:pointer">Edit</button></td>
+      </tr>`).join('')}
+      </tbody></table>` : ''}
+  </div>`;
+}
+
+function orgEditRole(code) {
+  const roles = _orgData.roles || {};
+  const r = code ? roles[code] : null;
+  const all = Object.keys(roles);
+  const m = document.getElementById('org-role-modal');
+  document.getElementById('orl-title').textContent = code ? `Edit role ${code}` : 'Add a role';
+  document.getElementById('orl-code').value = code || '';
+  document.getElementById('orl-code').disabled = !!code;
+  document.getElementById('orl-label').value = r ? r.label : '';
+  document.getElementById('orl-rank').value = r ? r.rank : 3;
+  document.getElementById('orl-sort').value = r ? (r.sortOrder || 100) : 100;
+  document.getElementById('orl-manages').innerHTML = all.filter(c => c !== code).map(c => {
+    const on = r && (r.manages || []).includes(c);
+    return `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 10px 6px 0;font-size:12px;cursor:pointer">
+      <input type="checkbox" value="${escHtml(c)}"${on ? ' checked' : ''}> ${escHtml(c)}</label>`;
+  }).join('') || '<span style="font-size:12px;color:var(--gray-500)">No other roles yet.</span>';
+  document.getElementById('orl-msg').innerHTML = '';
+  m.style.display = 'flex';
+}
+
+function orgCloseRoleModal() { const m = document.getElementById('org-role-modal'); if (m) m.style.display = 'none'; }
+
+async function orgSaveRole() {
+  const msg = document.getElementById('orl-msg');
+  const body = {
+    code: document.getElementById('orl-code').value.trim().toUpperCase(),
+    label: document.getElementById('orl-label').value.trim(),
+    rank: parseInt(document.getElementById('orl-rank').value, 10) || 3,
+    sortOrder: parseInt(document.getElementById('orl-sort').value, 10) || 100,
+    manages: [...document.querySelectorAll('#orl-manages input:checked')].map(i => i.value),
+  };
+  msg.innerHTML = '<span style="color:var(--gray-500)">Saving…</span>';
+  try {
+    await apiFetch('/api/org/roles', { method: 'POST', body: JSON.stringify(body) });
+    orgCloseRoleModal();
+    _orgRolesOpen = true;
+    commsLoadOrgChart();
+  } catch (e) { msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`; }
+}
+
+(function injectOrgRoleModal() {
+  const html = `
+<div id="org-role-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)orgCloseRoleModal()">
+  <div class="modal-box" style="width:480px;max-width:95vw">
+    <h3 id="orl-title" style="margin-bottom:12px">Add a role</h3>
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Code</label>
+        <input id="orl-code" placeholder="RM" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Title</label>
+        <input id="orl-label" placeholder="Regional Manager" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+    </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Manages</label>
+    <div id="orl-manages" style="margin-bottom:10px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Rank</label>
+        <input id="orl-rank" type="number" min="1" max="9" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Sort order</label>
+        <input id="orl-sort" type="number" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+    </div>
+    <div id="orl-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="orgCloseRoleModal()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="orgSaveRole()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save role</button>
     </div>
   </div>
 </div>`;
