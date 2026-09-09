@@ -384,6 +384,12 @@ function getLedgerMap() {
 // make "show me every Landscape invoice at one site regardless of BU" a second
 // endpoint. A flat set is ~2,800 rows, which is nothing to group in the browser.
 
+// Amazon has settled these. 'Paid' means the remittance went out; 'Applied'
+// means Amazon has applied it on their side. Either way the money has moved, so
+// an invoice in one of these states that STILL shows a balance in Sage is cash
+// sitting unapplied in our own books, not a collections problem.
+const AMAZON_SETTLED = new Set(['Paid', 'Applied']);
+
 const DEPT_GROUPS = {
   'D-SNOW': 'Snow',
   'D-GRMT': 'Landscape',
@@ -482,6 +488,11 @@ function buildAmazonRows(allInvoices, opts = {}) {
       payeeAttempts: pay ? (pay.attemptCount || 1) : 0,
       payeeDuplicateLive: pay ? !!pay.duplicateLive : false,
       payeeEntryDate: pay ? (pay.entryDate || '') : '',
+      // Amazon says settled but our books still show a balance: this invoice
+      // needs the cash APPLIED in Intacct. It is not overdue and chasing it
+      // would be wrong, so it must not read as collectable AR.
+      amazonSettled: pay ? AMAZON_SETTLED.has(pay.status) : false,
+      needsCashApplication: !!(pay && AMAZON_SETTLED.has(pay.status) && (parseFloat(inv.totalDue || 0) || 0) > 0.005),
       serviceCenter: inv.locationName || '',
     };
   });
