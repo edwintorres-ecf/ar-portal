@@ -710,9 +710,33 @@ function accrualTableHtml(rows) {
 
 function accrualActionsHtml(r) {
   const btn = (label, fn, tone) => `<button onclick="${fn}" style="margin-right:4px;padding:2px 8px;border:1px solid ${tone};background:var(--white);color:${tone};border-radius:5px;font-size:11px;cursor:pointer;">${label}</button>`;
-  if (r.status === 'awaiting_po') return btn('PO received', `accrualMarkPo(${r.id})`, '#0284c7') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626');
-  if (r.status === 'po_received') return btn('Invoiced', `accrualMarkInvoiced(${r.id})`, '#16a34a') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626');
-  return '<span style="font-size:11px;color:var(--gray-500);">—</span>';
+  // Copy is available on every row, including closed ones: the same work recurs
+  // at the same site, and a finished accrual is the most useful template there
+  // is. It opens a PREFILLED FORM rather than saving straight away, so the
+  // amount and date get looked at instead of inherited by accident.
+  const copy = btn('Copy', `accrualCopy(${r.id})`, '#6b7280');
+  if (r.status === 'awaiting_po') return btn('PO received', `accrualMarkPo(${r.id})`, '#0284c7') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + copy;
+  if (r.status === 'po_received') return btn('Invoiced', `accrualMarkInvoiced(${r.id})`, '#16a34a') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + copy;
+  return copy;
+}
+
+// Prefill the form from an existing accrual. Everything about WHERE and WHAT
+// carries over; nothing about the specific event does — the work date clears and
+// the PO/invoice never copy, because those belong to the original.
+function accrualCopy(id) {
+  const src = (_accruals || []).find(a => a.id === id);
+  if (!src) return;
+  accrualOpenForm();
+  const set = (elId, v) => { const e = document.getElementById(elId); if (e) e.value = v == null ? '' : v; };
+  set('ac-site', src.site_code || '');
+  set('ac-dept', src.dept_id || '');
+  set('ac-desc', src.description || '');
+  set('ac-amount', src.amount || '');
+  set('ac-date', '');
+  set('ac-notes', src.notes || '');
+  const msg = document.getElementById('ac-msg');
+  if (msg) msg.innerHTML = `<span style="color:#0369a1">Copied from accrual #${src.id}. Set the work date and check the amount before saving.</span>`;
+  setTimeout(() => { const e = document.getElementById('ac-date'); if (e) e.focus(); }, 60);
 }
 
 async function accrualPatch(id, body) {
