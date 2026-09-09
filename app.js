@@ -1932,6 +1932,7 @@ app.get('/api/amazon/explorer', requireAuth, (req, res) => {
       },
       scope: scopedSites ? { sites: scopedSites.size, locations: JSON.parse(req.session.user.location_filter) } : null,
       accruals: amazonAccrualSummary(req),
+      siteCollectors: db.getAllSiteCollectors(),
       unresolved: scopedSites ? [] : siteLedger.getNeedsReview(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1943,6 +1944,65 @@ app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'm
   try {
     res.json(siteLedger.rebuild(sage.getCachedInvoices()));
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Amazon site ownership ──────────────────────────────────────────────────
+// Amazon is a single customer with 219 sites, so customer-level collector
+// assignment cannot divide the work, and per-invoice assignment would mean
+// re-assigning thousands of rows forever. The SITE is the unit that matches how
+// the work is actually split. Precedence when showing an invoice's owner stays
+// invoice override > site > customer.
+app.get('/api/amazon/site-collectors', requireAuth, (req, res) => {
+  try {
+    const assigned = db.getAllSiteCollectors();
+    const rows = siteLedger.buildAmazonRows(sage.getCachedInvoices(), { payee });
+    const master = db.getAmazonLocationMap();
+    const bySite = {};
+    for (const r of rows) {
+      if (!r.site) continue;
+      if (!bySite[r.site]) {
+        const loc = master[r.site] || {};
+        bySite[r.site] = { site: r.site, invoices: 0, amount: 0,
+          businessUnit: loc.businessUnit || '', siteType: loc.siteType || '',
+          city: loc.city || '', state: loc.state || '', serviceCenter: loc.serviceCenter || '',
+          collector: assigned[r.site] ? assigned[r.site].email : '',
+          assignedBy: assigned[r.site] ? assigned[r.site].assignedBy : '',
+          assignedAt: assigned[r.site] ? assigned[r.site].assignedAt : '' };
+      }
+      bySite[r.site].invoices++;
+      bySite[r.site].amount = Math.round((bySite[r.site].amount + r.amount) * 100) / 100;
+    }
+    const list = Object.values(bySite).sort((a, b) => b.amount - a.amount);
+    const unassigned = list.filter(s2 => !s2.collector);
+    res.json({
+      sites: list,
+      totals: { sites: list.length, assigned: list.length - unassigned.length,
+        unassigned: unassigned.length,
+        unassignedAmount: Math.round(unassigned.reduce((t, s2) => t + s2.amount, 0) * 100) / 100 },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/site-collectors', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try {
+    const { siteCode, collectorEmail } = req.body || {};
+    const out = db.setSiteCollector(siteCode, collectorEmail || null, req.session.user.email);
+    db.auditLog(req.session.user.email, 'site_collector_assign', null,
+      `${String(siteCode).toUpperCase()} -> ${collectorEmail || '(cleared)'}`);
+    res.json({ ok: true, assignment: out });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Bulk assign, because dividing 219 sites one at a time is not a workflow.
+app.post('/api/amazon/site-collectors/bulk', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try {
+    const { siteCodes, collectorEmail } = req.body || {};
+    if (!Array.isArray(siteCodes) || !siteCodes.length) return res.status(400).json({ error: 'siteCodes required' });
+    let n = 0;
+    for (const c of siteCodes) { db.setSiteCollector(c, collectorEmail || null, req.session.user.email); n++; }
+    db.auditLog(req.session.user.email, 'site_collector_bulk', null, `${n} sites -> ${collectorEmail || '(cleared)'}`);
+    res.json({ ok: true, count: n });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ─── Amazon accruals: work done with no PO yet ──────────────────────────────
