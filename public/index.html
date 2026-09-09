@@ -1853,7 +1853,7 @@ function renderDrawer(data) {
           </span>`
         ).join('')}</div>` : '';
       const quickReactHtml = `<div class="quick-react">
-        ${['👍','💯','✅','🚨'].map(e => `<button class="quick-react-btn" title="${e}" onclick="toggleReaction(${n.id}, '${e}', '${escHtml(n.body.slice(0,10))}')">"+e+"</button>`).join('')}
+        ${['👍','💯','✅','🚨'].map(e => `<button class="quick-react-btn" title="${e}" onclick="toggleReaction(${n.id}, '${e}', '${escHtml(n.body.slice(0,10))}')">${e}</button>`).join('')}
         <button class="quick-react-btn" title="Reply in thread" onclick="setNoteReply(${n.id}, '${escHtml(n.user_name)}')">↩ Reply</button>
       </div>`;
       const bodyHighlighted = escHtml(n.body).replace(/@(\S+)/g, '<span class="mention-tag">@$1</span>');
@@ -1902,7 +1902,7 @@ function renderDrawer(data) {
         ${payeeStatus.po && payeeStatus.po !== '-- Not Applicable --' ? `<div class="detail-item"><label>PO Number</label><span>${escHtml(payeeStatus.po)}</span></div>` : ''}
         ${payeeStatus.dueDate ? `<div class="detail-item"><label>Est. Due Date</label><span>${escHtml(payeeStatus.dueDate)}</span></div>` : ''}
         ${payeeStatus.entryDate ? `<div class="detail-item"><label>Entry Date</label><span>${escHtml(payeeStatus.entryDate)}</span></div>` : ''}
-        ${payeeStatus.amount != null ? `<div class="detail-item"><label>Payee Amount</label><span>${fmt$(payeeStatus.amount)}</span></div>` : ''}
+        ${payeeStatus.amount != null ? `<div class="detail-item"><label>Payee Amount</label><span>${fmtPayeeAmount(payeeStatus.amount)}</span></div>` : ''}
       </div>
       ${['Insufficient Amazon PO Manager Hold','Pending Goods Receipt Hold','Rejected'].includes(payeeStatus.status) ? `
       <div style="margin-top:10px;padding:10px 12px;background:${payeeStatus.statusMeta.bg};border-radius:6px;font-size:13px;color:${payeeStatus.statusMeta.color};font-weight:600">
@@ -2566,6 +2566,12 @@ function fmt$(n) {
   if (n == null || isNaN(n)) return '—';
   return '$' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
+function fmtPayeeAmount(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'string' && /[$£€]/.test(v)) return v;   // already Amazon's own formatting
+  return fmt$(v);
+}
+
 function fmtDate(s) {
   if (!s) return '—';
   try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
