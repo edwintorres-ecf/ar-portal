@@ -413,8 +413,20 @@ function buildAmazonRows(allInvoices, opts = {}) {
   try { master = db.getAmazonLocationMap(); } catch (e) {}
   try { assignments = db.getAllPoAssignments(); } catch (e) {}
 
-  let payeeIndex = {};
-  if (payee) { try { payeeIndex = payee.getIndex() || {}; } catch (e) {} }
+  // Amazon's own status per invoice. Use resolveInvoice, NOT the raw index:
+  // Payee Central rejects a reused invoice number, so a rejected invoice comes
+  // back as S8604A and only the resolver walks that suffix chain and picks the
+  // best attempt BY STATUS. The index is also keyed by payeeId (no dash), which
+  // is why an earlier version keyed on the dashed Sage id and silently returned
+  // a blank status for every single row.
+  const payeeOf = (invoiceId) => {
+    if (!payee || !invoiceId) return null;
+    try { return payee.resolveInvoice(payee.toPayeeId(invoiceId)); } catch (e) { return null; }
+  };
+
+  // PO-level status straight from Amazon's PO detail page.
+  let poDetails = {};
+  try { poDetails = readJson('payee-po-details.spark.json', r => r.details); } catch (e) {}
 
   return invoices.map(inv => {
     const rec = String(inv.recordNo);
@@ -423,7 +435,8 @@ function buildAmazonRows(allInvoices, opts = {}) {
     const loc = sl.siteCode ? master[sl.siteCode] : null;
     const assigned = assignments[rec];
     const po = String((assigned && assigned.assigned_po) || inv.poNumber || '').trim();
-    const pay = payeeIndex[inv.invoiceId] || null;
+    const pay = payeeOf(inv.invoiceId);
+    const pod = po ? poDetails[po] : null;
     return {
       recordNo: rec,
       invoiceId: inv.invoiceId || '',
@@ -451,8 +464,24 @@ function buildAmazonRows(allInvoices, opts = {}) {
       // gate 4
       po,
       poAssigned: !!(assigned && assigned.assigned_po),
-      // gate 5 context
+      // PO-level Amazon state
+      poStatus: pod ? (pod.status || '') : '',
+      poAvailable: pod && pod.available !== undefined && pod.available !== null ? pod.available : null,
+      poAmount: pod ? (pod.poAmount ?? null) : null,
+      poMasked: !!(pod && pod.masked),
+      poStale: !!(pod && pod.stale),
+      poScrapedAt: pod ? (pod.scrapedAt || '') : '',
+      // invoice-level Amazon state
       payeeStatus: pay ? (pay.status || '') : '',
+      payeeLabel: pay && pay.statusMeta ? (pay.statusMeta.label || pay.status || '') : '',
+      payeeColor: pay && pay.statusMeta ? (pay.statusMeta.color || '') : '',
+      payeeBg: pay && pay.statusMeta ? (pay.statusMeta.bg || '') : '',
+      payeeIcon: pay && pay.statusMeta ? (pay.statusMeta.icon || '') : '',
+      payeeId: pay ? (pay.payeeId || '') : '',
+      payeeIsLive: pay ? !!pay.isLive : false,
+      payeeAttempts: pay ? (pay.attemptCount || 1) : 0,
+      payeeDuplicateLive: pay ? !!pay.duplicateLive : false,
+      payeeEntryDate: pay ? (pay.entryDate || '') : '',
       serviceCenter: inv.locationName || '',
     };
   });

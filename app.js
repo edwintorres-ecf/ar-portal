@@ -1797,8 +1797,20 @@ app.get('/api/amazon/explorer', requireAuth, (req, res) => {
     const businessUnits = [...new Set(Object.values(master).map(l => l.businessUnit).filter(Boolean))].sort();
     const siteTypes = [...new Set(Object.values(master).map(l => l.siteType).filter(Boolean))].sort();
     const regions = [...new Set(Object.values(master).map(l => l.region).filter(Boolean))].sort();
+    // "Up to date" has to be checkable, not assumed. Both Amazon-sourced feeds
+    // carry their own age so the view can say how stale the status is instead of
+    // presenting a week-old status as current.
+    let feedGeneratedAt = null, poScrapedAt = null;
+    try { feedGeneratedAt = payee.feedMeta().generatedAt || null; } catch (e) {}
+    try {
+      const det = JSON.parse(require('fs').readFileSync(__dirname + '/payee-po-details.spark.json', 'utf8')).details || {};
+      for (const d of Object.values(det)) {
+        if (d && d.scrapedAt && (!poScrapedAt || d.scrapedAt > poScrapedAt)) poScrapedAt = d.scrapedAt;
+      }
+    } catch (e) {}
     res.json({
       generatedAt: new Date().toISOString(),
+      freshness: { payeeFeedGeneratedAt: feedGeneratedAt, poDetailsScrapedAt: poScrapedAt },
       rows,
       vocab: {
         departmentGroups: siteLedger.departmentGroups(),
