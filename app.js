@@ -3932,8 +3932,11 @@ app.get('/api/kpis', requireAuth, async (req, res) => {
 
 // ─── API: Notes ──────────────────────────────────────────────────────────────
 
-app.get('/api/notes/:recordno', requireAuth, (req, res) => {
+app.get('/api/notes/:recordno', requireAuth, async (req, res) => {
   try {
+    // Notes carry collection commentary, so reading them on an out-of-scope
+    // invoice is the same disclosure as reading the invoice itself.
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordno })) return;
     const notes = db.getNotes(req.params.recordno);
     res.json(notes);
   } catch (e) {
