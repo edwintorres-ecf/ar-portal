@@ -4115,18 +4115,19 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // stop arriving — so failures go to the health board on the same raise/clear
   // pattern as the Payee refresh. 15 consecutive misses is ~30 min of silence.
   const { runInboundPoll } = require('./comms-inbound');
+  const opsAlerts = require('./ops-alerts');   // required per-scope in this file
   let _inboundFailStreak = 0;
   const doInboundPoll = () => runInboundPoll({ notify: notifyUser })
     .then(() => {
       if (_inboundFailStreak) console.log(`[comms-inbound] recovered after ${_inboundFailStreak} failed poll(s)`);
       _inboundFailStreak = 0;
-      ops.ok('comms-inbound-poll', 'mailbox poll ok');
+      opsAlerts.ok('comms-inbound-poll', 'mailbox poll ok');
     })
     .catch(e => {
       _inboundFailStreak++;
       console.warn(`[comms-inbound] poll error (streak ${_inboundFailStreak}): ${e.message}`);
       if (_inboundFailStreak >= 15) {
-        ops.raise('comms-inbound-poll', `invoices@ inbound poll failing (${_inboundFailStreak}x)`,
+        opsAlerts.raise('comms-inbound-poll', `invoices@ inbound poll failing (${_inboundFailStreak}x)`,
           `Customer replies are not being ingested.\n\nLast error: ${e.message}`, { minIntervalHours: 12 });
       }
     });
