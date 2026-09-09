@@ -1025,8 +1025,10 @@ async function commsLoadAutoAssign() {
   if (!root) return;
   root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
   try {
+    // Kept so the rule editor can populate its pickers without refetching.
     const [rules, meta, locs] = await Promise.all([
       apiFetch('/api/assignment-rules'), commsGridMeta(), apiFetch('/api/locations-view').catch(() => [])]);
+    _arRules = rules; _arLocs = locs;
     root.innerHTML = `
       <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">Collector Auto-Assignment</h1>
       <div style="font-size:12.5px;color:#6b6458;margin-bottom:14px">Rules fill in a collector for UNASSIGNED invoices only (existing assignments are never overwritten). First matching rule by priority wins. Runs daily at ~7:45 AM ET, or on demand.</div>
@@ -1036,22 +1038,28 @@ async function commsLoadAutoAssign() {
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden;margin-bottom:14px">
         <table style="width:100%;border-collapse:collapse;font-size:12.5px">
           <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase">
-            ${['Active', 'Priority', 'Name', 'Location', 'Aging (days past due)', 'Collector', ''].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
+            ${['Active', 'Priority', 'Name', 'Locations', 'Timing (days from due date)', 'Collector', ''].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
           </tr></thead>
           <tbody>${rules.map(r => `
             <tr style="border-top:1px solid #f1ede3">
               <td style="padding:8px 12px;cursor:pointer;font-size:15px" onclick="commsAutoAssignSave({id:${r.id},active:${r.active ? 0 : 1}})">${r.active ? '🟢' : '⚪'}</td>
               <td style="padding:8px 12px">${r.priority}</td>
               <td style="padding:8px 12px;font-weight:600">${escHtml(r.name)}</td>
-              <td style="padding:8px 12px">${r.location_id ? escHtml((locs.find(l => l.locationId === r.location_id) || {}).locationName || r.location_id) : 'Any'}</td>
-              <td style="padding:8px 12px">${r.min_days_past_due || 0}${r.max_days_past_due != null ? '–' + r.max_days_past_due : '+'}</td>
+              <td style="padding:8px 12px">${commsRuleLocationsText(r, locs)}</td>
+              <td style="padding:8px 12px">${escHtml(commsRuleTimingText(r))}</td>
               <td style="padding:8px 12px">${escHtml(((_gridMeta.users || []).find(u => u.email.toLowerCase() === (r.collector_email || '').toLowerCase()) || {}).name || r.collector_email)}</td>
-              <td style="padding:8px 12px"><button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsAutoAssignDelete(${r.id})">✕</button></td>
+              <td style="padding:8px 12px;white-space:nowrap">
+                <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px;margin-right:4px" onclick="commsRuleEdit(${r.id})">Edit</button>
+                <button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsAutoAssignDelete(${r.id})">✕</button></td>
             </tr>`).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:#6b6458">No rules yet — add one below.</td></tr>'}</tbody>
         </table>
       </div>
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px">
-        <div style="font-size:12px;font-weight:700;color:#6b6458;margin-bottom:8px">ADD RULE</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:#6b6458">ADD RULE</div>
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:5px 12px;border-radius:7px;cursor:pointer;font-weight:600;font-size:12px" onclick="commsRuleNew()">+ New rule (multiple locations, before due date)</button>
+          <span style="font-size:11px;color:#6b6458">the quick strip below only covers one location and days past due</span>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input id="ar-name" placeholder="Rule name" style="flex:1.4;min-width:160px;padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
           <select id="ar-loc" style="padding:7px 9px;border:1px solid var(--line,#e7e1d4);border-radius:8px;font-size:13px">
@@ -2924,6 +2932,150 @@ async function orgSaveRole() {
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button onclick="orgCloseRoleModal()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
       <button onclick="orgSaveRole()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save role</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
+
+
+// ─── Assignment rules: multiple locations, and firing BEFORE the due date ────
+// The aging field only ever meant "days PAST due", so a rule like Edwin's
+// "Auto Assign <5 Days to Due Date" could not be expressed at all. Days are now
+// signed and relative to the due date: -5 means five days BEFORE it falls due.
+let _arRules = [], _arLocs = [];
+
+function commsRuleLocationsText(r, locs) {
+  const ids = (r.locationIds && r.locationIds.length) ? r.locationIds : (r.location_id ? [r.location_id] : []);
+  if (!ids.length) return 'Any';
+  const name = (id) => escHtml((locs.find(l => l.locationId === id) || {}).locationName || id);
+  if (ids.length <= 2) return ids.map(name).join(', ');
+  return `${name(ids[0])} <span title="${escHtml(ids.slice(1).join(', '))}" style="color:#6b6458">+${ids.length - 1} more</span>`;
+}
+
+// Say the window in words. "-5 to -1" is not something anyone should have to
+// decode while deciding whether a rule is right.
+function commsRuleTimingText(r) {
+  const min = r.min_days_past_due == null ? null : r.min_days_past_due;
+  const max = r.max_days_past_due == null ? null : r.max_days_past_due;
+  const day = (n) => n === 0 ? 'the due date' : n < 0 ? `${Math.abs(n)} days before due` : `${n} days past due`;
+  if (min !== null && max !== null) {
+    if (min < 0 && max < 0) return `${Math.abs(min)} to ${Math.abs(max)} days before due`;
+    return `${day(min)} to ${day(max)}`;
+  }
+  if (min !== null && max === null) return min < 0 ? `from ${Math.abs(min)} days before due onwards` : `${day(min)} onwards`;
+  if (min === null && max !== null) return `up to ${day(max)}`;
+  return 'any time';
+}
+
+function commsRuleEdit(id) {
+  const r = _arRules.find(x => x.id === id);
+  if (!r) return;
+  const m = document.getElementById('ar-modal');
+  document.getElementById('arm-title').textContent = 'Edit rule';
+  document.getElementById('arm-id').value = r.id;
+  document.getElementById('arm-name').value = r.name || '';
+  document.getElementById('arm-min').value = r.min_days_past_due == null ? '' : r.min_days_past_due;
+  document.getElementById('arm-max').value = r.max_days_past_due == null ? '' : r.max_days_past_due;
+  document.getElementById('arm-priority').value = r.priority || 1;
+  const ids = (r.locationIds && r.locationIds.length) ? r.locationIds : (r.location_id ? [r.location_id] : []);
+  document.getElementById('arm-locs').innerHTML = _arLocs.map(l => `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 12px 6px 0;font-size:12px;cursor:pointer">
+    <input type="checkbox" value="${escHtml(l.locationId)}"${ids.includes(l.locationId) ? ' checked' : ''}> ${escHtml(l.locationName)}</label>`).join('');
+  document.getElementById('arm-collector').innerHTML = '<option value="">Collector…</option>' +
+    (_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}"${(r.collector_email || '').toLowerCase() === u.email.toLowerCase() ? ' selected' : ''}>${escHtml(u.name || u.email)}</option>`).join('');
+  commsRuleTimingPreview();
+  document.getElementById('arm-msg').innerHTML = '';
+  m.style.display = 'flex';
+}
+
+function commsRuleTimingPreview() {
+  const min = document.getElementById('arm-min').value;
+  const max = document.getElementById('arm-max').value;
+  const el = document.getElementById('arm-timing');
+  if (!el) return;
+  el.textContent = 'Matches: ' + commsRuleTimingText({
+    min_days_past_due: min === '' ? null : parseInt(min, 10),
+    max_days_past_due: max === '' ? null : parseInt(max, 10),
+  });
+}
+
+function commsRuleCloseModal() { const m = document.getElementById('ar-modal'); if (m) m.style.display = 'none'; }
+
+async function commsRuleSave() {
+  const msg = document.getElementById('arm-msg');
+  const id = parseInt(document.getElementById('arm-id').value, 10) || null;
+  const min = document.getElementById('arm-min').value;
+  const max = document.getElementById('arm-max').value;
+  const f = {
+    id,
+    name: document.getElementById('arm-name').value.trim(),
+    locationIds: [...document.querySelectorAll('#arm-locs input:checked')].map(i => i.value),
+    min_days_past_due: min === '' ? 0 : parseInt(min, 10),
+    max_days_past_due: max === '' ? null : parseInt(max, 10),
+    collector_email: document.getElementById('arm-collector').value,
+    priority: parseInt(document.getElementById('arm-priority').value, 10) || 1,
+    active: 1,
+  };
+  if (!f.name) { msg.innerHTML = '<span style="color:var(--red)">Give the rule a name.</span>'; return; }
+  if (!f.collector_email) { msg.innerHTML = '<span style="color:var(--red)">Pick a collector.</span>'; return; }
+  if (f.max_days_past_due !== null && f.max_days_past_due < f.min_days_past_due) {
+    msg.innerHTML = '<span style="color:var(--red)">The upper bound is earlier than the lower one.</span>'; return;
+  }
+  msg.innerHTML = '<span style="color:#6b6458">Saving…</span>';
+  try {
+    await apiFetch('/api/assignment-rules', { method: 'POST', body: JSON.stringify(f) });
+    commsRuleCloseModal();
+    commsLoadAutoAssign();
+  } catch (e) { msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`; }
+}
+
+function commsRuleNew() {
+  const m = document.getElementById('ar-modal');
+  document.getElementById('arm-title').textContent = 'New rule';
+  document.getElementById('arm-id').value = '';
+  document.getElementById('arm-name').value = '';
+  document.getElementById('arm-min').value = 0;
+  document.getElementById('arm-max').value = '';
+  document.getElementById('arm-priority').value = (_arRules.length || 0) + 1;
+  document.getElementById('arm-locs').innerHTML = _arLocs.map(l => `<label style="display:inline-flex;align-items:center;gap:5px;margin:0 12px 6px 0;font-size:12px;cursor:pointer">
+    <input type="checkbox" value="${escHtml(l.locationId)}"> ${escHtml(l.locationName)}</label>`).join('');
+  document.getElementById('arm-collector').innerHTML = '<option value="">Collector…</option>' +
+    (_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('');
+  commsRuleTimingPreview();
+  document.getElementById('arm-msg').innerHTML = '';
+  m.style.display = 'flex';
+}
+
+(function injectAssignRuleModal() {
+  const html = `
+<div id="ar-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)commsRuleCloseModal()">
+  <div class="modal-box" style="width:620px;max-width:96vw;max-height:88vh;overflow-y:auto">
+    <h3 id="arm-title" style="margin-bottom:10px">Edit rule</h3>
+    <input type="hidden" id="arm-id">
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Rule name</label>
+    <input id="arm-name" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Service centers</label>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">Tick any number. None ticked means every location.</div>
+    <div id="arm-locs" style="margin-bottom:10px;max-height:160px;overflow-y:auto"></div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Timing, in days from the due date</label>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">Negative is before the invoice falls due. So −5 to −1 assigns during the five days leading up to the due date.</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
+      <label style="font-size:12px;color:var(--gray-700)">From <input id="arm-min" type="number" oninput="commsRuleTimingPreview()" style="width:80px;padding:7px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></label>
+      <label style="font-size:12px;color:var(--gray-700)">to <input id="arm-max" type="number" placeholder="∞" oninput="commsRuleTimingPreview()" style="width:80px;padding:7px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></label>
+      <span id="arm-timing" style="font-size:12px;color:#0369a1;font-weight:600"></span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <div style="flex:1"><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Collector</label>
+        <select id="arm-collector" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></select></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Priority</label>
+        <input id="arm-priority" type="number" style="width:80px;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+    </div>
+    <div id="arm-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="commsRuleCloseModal()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="commsRuleSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save rule</button>
     </div>
   </div>
 </div>`;
