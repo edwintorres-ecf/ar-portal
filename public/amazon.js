@@ -663,6 +663,7 @@ function accrualsRender() {
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
       <button onclick="accrualOpenForm()" style="padding:7px 14px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">+ Record accrual</button>
       <button onclick="accrualExportCsv()" style="padding:7px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ CSV</button>
+      <button onclick="accrualOpenDeptConfig()" title="Set which departments each branch accrues against" style="padding:7px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⚙ Departments by branch</button>
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-700);cursor:pointer;">
         <input type="checkbox" ${_accrualShowCancelled ? 'checked' : ''} onchange="_accrualShowCancelled=this.checked;accrualsLoad()"> show cancelled
       </label>
@@ -742,6 +743,8 @@ function accrualCopy(id) {
   set('ac-date', '');
   set('ac-notes', src.notes || '');
   accrualFillServiceCenters(src.service_center || '');
+  set('ac-dept', src.dept_id || '');
+  accrualRefreshDepts();
   const msg = document.getElementById('ac-msg');
   if (msg) msg.innerHTML = `<span style="color:#0369a1">Copied from accrual #${src.id}. Set the work date and check the amount before saving.</span>`;
   setTimeout(() => { const e = document.getElementById('ac-date'); if (e) e.focus(); }, 60);
@@ -776,6 +779,7 @@ function accrualOpenForm() {
   ['ac-site', 'ac-desc', 'ac-amount', 'ac-date', 'ac-notes'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
   document.getElementById('ac-msg').innerHTML = '';
   accrualFillServiceCenters('');
+  accrualRefreshDepts();
   const title = document.getElementById('ac-title');
   if (title) title.textContent = 'Record an accrual';
   const save = document.getElementById('ac-save');
@@ -802,6 +806,8 @@ function accrualEdit(id) {
   set('ac-date', src.work_date || '');
   set('ac-notes', src.notes || '');
   accrualFillServiceCenters(src.service_center || '');
+  set('ac-dept', src.dept_id || '');
+  accrualRefreshDepts();
   const title = document.getElementById('ac-title');
   if (title) title.textContent = 'Edit accrual #' + id;
   const save = document.getElementById('ac-save');
@@ -862,10 +868,8 @@ function accrualExportCsv() {
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Site code</label>
         <input id="ac-site" placeholder="DBL1" oninput="accrualSiteChanged(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Department</label>
-        <select id="ac-dept" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
-          <option value="">—</option><option value="D-SNOW">Snow Removal</option><option value="D-GRMT">Landscape Maintenance</option>
-          <option value="D-ARBR">Arbor</option><option value="D-LAPR">Landscape Projects</option><option value="D-PKLT">Parking Lot</option><option value="D-IRMG">Irrigation</option>
-        </select></div>
+        <select id="ac-dept" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></select>
+        <div id="ac-dept-hint" style="font-size:11px;color:var(--gray-500);min-height:14px"></div></div>
     </div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">What was done</label>
     <input id="ac-desc" placeholder="e.g. Dec 18 snow event, 3 pushes" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
@@ -876,7 +880,7 @@ function accrualExportCsv() {
         <input id="ac-date" type="date" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
     </div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Service center</label>
-    <select id="ac-sc" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:2px"></select>
+    <select id="ac-sc" onchange="accrualRefreshDepts()" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:2px"></select>
     <div id="ac-sc-hint" style="font-size:11px;color:var(--gray-500);margin-bottom:10px;min-height:14px"></div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Notes <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
     <input id="ac-notes" placeholder="who authorised it, what we are waiting on" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
@@ -1000,6 +1004,7 @@ function accrualSiteChanged(v) {
   if (!derived) { if (hint) hint.textContent = site ? 'No billing history for this site — pick a branch.' : ''; return; }
   // Only auto-fill while the user has not chosen one themselves.
   if (!sel.value) sel.value = derived;
+  accrualRefreshDepts();
   if (hint) hint.textContent = sel.value === derived
     ? `${derived} bills most of the work at ${site}.`
     : `${derived} bills most of the work at ${site}, but you have chosen ${sel.value}.`;
@@ -1042,7 +1047,7 @@ function accEditCell(id, field, kind) {
   let inner;
   if (kind === 'dept') {
     inner = `<select id="acc-input" style="width:100%;padding:4px;border:1px solid var(--navy);border-radius:4px;font-size:12px;">
-      ${ACC_DEPTS.map(([v, l]) => `<option value="${v}"${(cur || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+      ${accDeptOptionsHtml(row.service_center, cur || '')}</select>`;
   } else if (kind === 'sc') {
     const list = (_accrualMeta && _accrualMeta.serviceCenters) || [];
     inner = `<select id="acc-input" style="width:100%;padding:4px;border:1px solid var(--navy);border-radius:4px;font-size:12px;">
@@ -1099,3 +1104,97 @@ async function accCommitCell() {
     alert(e.message);
   }
 }
+
+
+// ─── Departments allowed per service center ──────────────────────────────────
+// Not every branch does every kind of work. A branch with no configuration is
+// unrestricted, so setting one branch up never silently constrains the others.
+// The server enforces the same rule — this only stops people picking something
+// that would be rejected.
+const ACC_DEPT_LABEL = {
+  'D-SNOW': 'Snow Removal', 'D-GRMT': 'Landscape Maintenance', 'D-ARBR': 'Arbor',
+  'D-LAPR': 'Landscape Projects', 'D-PKLT': 'Parking Lot', 'D-IRMG': 'Irrigation',
+};
+
+function accAllowedDepts(serviceCenter) {
+  const all = Object.keys(ACC_DEPT_LABEL);
+  const map = (_accrualMeta && _accrualMeta.scDepartments) || {};
+  const list = serviceCenter ? map[serviceCenter] : null;
+  return (list && list.length) ? all.filter(d => list.includes(d)) : all;
+}
+
+function accDeptOptionsHtml(serviceCenter, selected) {
+  const allowed = accAllowedDepts(serviceCenter);
+  // A value already on the row that the branch no longer permits still shows,
+  // flagged, so an existing record never silently loses its department.
+  const extra = selected && !allowed.includes(selected) ? [selected] : [];
+  return '<option value="">—</option>' +
+    allowed.map(d => `<option value="${d}"${d === selected ? ' selected' : ''}>${escHtml(ACC_DEPT_LABEL[d] || d)}</option>`).join('') +
+    extra.map(d => `<option value="${d}" selected>${escHtml(ACC_DEPT_LABEL[d] || d)} (not allowed for this branch)</option>`).join('');
+}
+
+function accrualRefreshDepts() {
+  const sc = (document.getElementById('ac-sc') || {}).value || '';
+  const sel = document.getElementById('ac-dept');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = accDeptOptionsHtml(sc, cur);
+  const hint = document.getElementById('ac-dept-hint');
+  const map = (_accrualMeta && _accrualMeta.scDepartments) || {};
+  if (hint) hint.textContent = (sc && map[sc] && map[sc].length)
+    ? `${sc} accrues against ${map[sc].length} department${map[sc].length === 1 ? '' : 's'}.` : '';
+}
+
+// ─── Configure it ────────────────────────────────────────────────────────────
+function accrualOpenDeptConfig() {
+  const m = document.getElementById('acc-deptcfg-modal');
+  if (!m) return;
+  const centers = (_accrualMeta && _accrualMeta.serviceCenters) || [];
+  const map = (_accrualMeta && _accrualMeta.scDepartments) || {};
+  document.getElementById('adc-body').innerHTML = centers.map(sc => {
+    const list = map[sc] || [];
+    return `<div style="border-top:1px solid var(--gray-200);padding:8px 0;">
+      <div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">${escHtml(sc)}
+        ${list.length ? '' : '<span style="font-weight:400;font-size:11px;color:var(--gray-500);"> — all departments</span>'}</div>
+      <div>${Object.keys(ACC_DEPT_LABEL).map(d => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 12px 4px 0;font-size:12px;cursor:pointer;">
+        <input type="checkbox" data-sc="${escHtml(sc)}" value="${d}"${list.includes(d) ? ' checked' : ''}> ${escHtml(ACC_DEPT_LABEL[d])}</label>`).join('')}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('adc-msg').innerHTML = '';
+  m.style.display = 'flex';
+}
+
+function accrualCloseDeptConfig() { const m = document.getElementById('acc-deptcfg-modal'); if (m) m.style.display = 'none'; }
+
+async function accrualSaveDeptConfig() {
+  const msg = document.getElementById('adc-msg');
+  const centers = (_accrualMeta && _accrualMeta.serviceCenters) || [];
+  msg.innerHTML = '<span style="color:var(--gray-500)">Saving…</span>';
+  try {
+    for (const sc of centers) {
+      const ids = [...document.querySelectorAll(`#adc-body input[data-sc="${CSS.escape(sc)}"]:checked`)].map(i => i.value);
+      await apiFetch('/api/amazon/sc-departments', { method: 'POST', body: JSON.stringify({ serviceCenter: sc, deptIds: ids }) });
+    }
+    accrualCloseDeptConfig();
+    accrualsLoad();
+  } catch (e) { msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`; }
+}
+
+(function injectDeptConfigModal() {
+  const html = `
+<div id="acc-deptcfg-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)accrualCloseDeptConfig()">
+  <div class="modal-box" style="width:640px;max-width:96vw;max-height:88vh;overflow-y:auto">
+    <h3 style="margin-bottom:2px">Departments by service center</h3>
+    <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Tick the departments each branch accrues against. Leave a branch with nothing ticked to allow all of them.</div>
+    <div id="adc-body"></div>
+    <div id="adc-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="accrualCloseDeptConfig()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="accrualSaveDeptConfig()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
