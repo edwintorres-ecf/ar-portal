@@ -462,6 +462,8 @@ function buildAmazonRows(allInvoices, opts = {}) {
       businessUnit: loc ? (loc.businessUnit || '') : '',
       region: loc ? (loc.region || '') : '',
       siteType: loc ? (loc.siteType || '') : '',
+      city: loc ? (loc.city || '') : '',
+      state: loc ? (loc.state || '') : '',
       // gate 3
       site: sl.siteCode || '',
       siteSource: sl.source || '',

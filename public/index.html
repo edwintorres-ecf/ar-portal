@@ -68,6 +68,10 @@
   .nav-drop-item.active { background: rgba(255,255,255,0.15); color: var(--white); font-weight: 700; }
   /* Grouped dropdown nav */
   .nav-group { position: relative; }
+  /* Amazon wordmark: the smile sits under the word, as in the real logo. */
+  .amz-mark { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; vertical-align: middle; }
+  .amz-word { font-size: 13px; font-weight: 700; letter-spacing: .01em; }
+  .amz-smile { width: 52px; height: 9px; margin-top: -1px; display: block; }
   .nav-group-btn .caret { font-size: 9px; opacity: 0.7; margin-left: 3px; }
   .nav-group-menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; background: var(--navy); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); min-width: 180px; z-index: 9999; overflow: hidden; padding: 4px; }
   .nav-group.open .nav-group-menu { display: block; }
@@ -552,12 +556,22 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="locations" onclick="navGo('locations')">📍 Locations</div>
         <div class="nav-drop-item" data-view="search" onclick="navGo('search')">🔎 Search</div>
         <div class="nav-drop-item" data-view="service-centers" onclick="navGo('service-centers')">🏢 Service Centers</div>
-        <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">🟠 Amazon AR</div>
       </div>
     </div>
 
-    <div class="nav-tab" data-view="po-funds" onclick="navGo('po-funds')">🟠 Amazon PO Manager</div>
-    <div class="nav-tab" data-view="amazon-drilldown" onclick="navGo('amazon-drilldown')">🔎 Amazon Drill-Down</div>
+    <div class="nav-group" data-group="amazon">
+      <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'amazon')" title="Amazon">
+        <span class="amz-mark" aria-label="Amazon">
+          <span class="amz-word">amazon</span>
+          <svg viewBox="0 0 100 22" class="amz-smile" aria-hidden="true"><path d="M4 14 C 26 26, 74 26, 95 12" fill="none" stroke="#FF9900" stroke-width="5" stroke-linecap="round"/><path d="M95 12 l -9 -1 l 6 7 z" fill="#FF9900"/></svg>
+        </span><span class="caret">▾</span>
+      </div>
+      <div class="nav-group-menu">
+        <div class="nav-drop-item" data-view="amazon-drilldown" onclick="navGo('amazon-drilldown')">🔎 Drill-Down</div>
+        <div class="nav-drop-item" data-view="po-funds" onclick="navGo('po-funds')">💵 PO Manager</div>
+        <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">📊 Amazon AR</div>
+      </div>
+    </div>
 
     <div class="nav-group" data-group="comms">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'comms')">Collections<span class="caret">▾</span><span id="triage-badge" style="display:none;background:#dc2626;color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:5px"></span></div>
@@ -2396,10 +2410,11 @@ async function manualRefresh() {
 // Which grouped menu (if any) each view lives under — drives the active state.
 const NAV_GROUP_OF = {
   'my-work': 'collections', 'ptp-board': 'collections', 'calendar': 'collections', 'watchlist': 'collections', 'stop-service-view': 'collections', 'auto-assign': 'collections',
-  'customers': 'accounts', 'amazon': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
+  'customers': 'accounts', 'dashboard': 'accounts', 'invoices2': 'accounts', 'locations': 'accounts', 'search': 'accounts', 'customer-page': 'accounts', 'service-centers': 'accounts',
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance', 'permissions': 'admin',
   'admin': 'admin',
+  'amazon': 'amazon', 'po-funds': 'amazon', 'amazon-drilldown': 'amazon',
 };
 
 function switchView(name, el) {
@@ -5903,6 +5918,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260909a"></script>
-<script src="/amazon.js?v=20260909d"></script>
+<script src="/amazon.js?v=20260909e"></script>
 </body>
 </html>

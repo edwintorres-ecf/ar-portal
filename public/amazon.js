@@ -395,7 +395,7 @@ function amzJumpIndex() {
   const sites = {};
   for (const r of (_amzRows || [])) {
     if (!r.site) continue;
-    if (!sites[r.site]) sites[r.site] = { site: r.site, n: 0, amount: 0, bu: r.businessUnit, region: r.region, type: r.siteType, sc: r.serviceCenter };
+    if (!sites[r.site]) sites[r.site] = { site: r.site, n: 0, amount: 0, bu: r.businessUnit, region: r.region, type: r.siteType, sc: r.serviceCenter, city: r.city, state: r.state };
     sites[r.site].n++; sites[r.site].amount += r.amount;
   }
   return Object.values(sites);
@@ -406,10 +406,10 @@ function amzJumpMatches(q) {
   if (s.length < 2) return [];
   const out = [];
   for (const site of amzJumpIndex()) {
-    const hay = [site.site, site.bu, site.region, site.type, site.sc].filter(Boolean).join(' ').toUpperCase();
+    const hay = [site.site, site.bu, site.region, site.type, site.sc, site.city, site.state].filter(Boolean).join(' ').toUpperCase();
     if (hay.includes(s)) {
       out.push({ kind: 'site', key: site.site, amount: site.amount, n: site.n,
-                 sub: [site.bu, site.type, site.region, site.sc].filter(Boolean).join(' · '),
+                 sub: [[site.city, site.state].filter(Boolean).join(', '), site.bu, site.type, site.sc].filter(Boolean).join(' · '),
                  exact: site.site === s });
     }
   }
