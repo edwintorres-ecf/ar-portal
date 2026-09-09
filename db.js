@@ -222,6 +222,19 @@ function initSchema() {
       set_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- Who owns an Amazon SITE. Collectors were only ever assignable per invoice
+    -- or per customer, and Amazon is ONE customer with 219 sites — so customer
+    -- level is useless here and per invoice means reassigning thousands of rows
+    -- forever. The site is the unit of ownership that matches how the work is
+    -- actually divided. Precedence stays invoice > site > customer.
+    CREATE TABLE IF NOT EXISTS site_collectors (
+      site_code       TEXT PRIMARY KEY,
+      collector_email TEXT NOT NULL,
+      assigned_by     TEXT,
+      assigned_at     TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sitecoll_email ON site_collectors(collector_email);
+
     -- Work performed for Amazon with no PO yet, waiting on an accrual. This is
     -- revenue earned that cannot be invoiced, so it is invisible in AR by
     -- definition — the whole point of the register is that the money is
@@ -965,6 +978,40 @@ function getSiteAliasMap() {
   try {
     for (const r of d.prepare('SELECT alias, canonical_code, note FROM site_aliases').all()) {
       out[r.alias] = { canonical: r.canonical_code, note: r.note || '' };
+    }
+  } catch (e) { /* table missing on an old database */ }
+  return out;
+}
+
+// ─── Site collectors (Amazon) ───────────────────────────────────────────────
+function setSiteCollector(siteCode, collectorEmail, byEmail) {
+  const d = getDb();
+  const code = String(siteCode || '').trim().toUpperCase();
+  if (!code) throw new Error('Site code is required');
+  if (!collectorEmail) {
+    d.prepare('DELETE FROM site_collectors WHERE site_code=?').run(code);
+    return null;
+  }
+  d.prepare(`
+    INSERT INTO site_collectors (site_code, collector_email, assigned_by, assigned_at)
+    VALUES (?,?,?,datetime('now'))
+    ON CONFLICT(site_code) DO UPDATE SET
+      collector_email=excluded.collector_email, assigned_by=excluded.assigned_by, assigned_at=datetime('now')
+  `).run(code, String(collectorEmail).toLowerCase(), byEmail || null);
+  return getSiteCollector(code);
+}
+
+function getSiteCollector(siteCode) {
+  return getDb().prepare('SELECT * FROM site_collectors WHERE site_code=?')
+    .get(String(siteCode || '').trim().toUpperCase()) || null;
+}
+
+// One call for the whole grid — the drill-down renders hundreds of sites.
+function getAllSiteCollectors() {
+  const out = {};
+  try {
+    for (const r of getDb().prepare('SELECT * FROM site_collectors').all()) {
+      out[r.site_code] = { email: r.collector_email, assignedBy: r.assigned_by, assignedAt: r.assigned_at };
     }
   } catch (e) { /* table missing on an old database */ }
   return out;
@@ -2261,6 +2308,9 @@ module.exports = {
   setBlockedSiteCode,
   deleteBlockedSiteCode,
   getBlockedSiteCodes,
+  setSiteCollector,
+  getSiteCollector,
+  getAllSiteCollectors,
   createAccrual,
   getAccrual,
   updateAccrual,
