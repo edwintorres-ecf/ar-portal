@@ -334,6 +334,54 @@ function applyUserFilter(invoices, user) {
   return result;
 }
 
+// ─── Scope guards ───────────────────────────────────────────────────────────
+// applyUserFilter above covers routes that hand back a LIST. Routes that take an
+// invoice id in the path bypassed it entirely, so a location-scoped user could
+// read the line items, Payee status or customer email history of any invoice by
+// guessing an id. These helpers close that class of hole in one place, so the
+// answer to "is this user allowed to see this invoice" has exactly one
+// implementation rather than being re-derived per route.
+
+/** True when the user has no location/customer restriction at all. */
+function userIsUnscoped(user) {
+  const has = (v) => { try { const a = JSON.parse(v || 'null'); return Array.isArray(a) && a.length > 0; } catch (e) { return true; } };
+  return !has(user && user.location_filter) && !has(user && user.customer_filter);
+}
+
+/**
+ * The invoices a user may see, as lookup sets. Returns null for an unscoped
+ * user, meaning "no restriction" — callers must treat null as allow-all and a
+ * Set as the complete allow-list.
+ */
+async function userScopeSets(user) {
+  if (userIsUnscoped(user)) return null;
+  let invoices = sage.getCachedInvoices();
+  if (invoices.length === 0) invoices = await sage.getInvoices();
+  const allowed = applyUserFilter(invoices, user);
+  return {
+    recordNos: new Set(allowed.map(i => String(i.recordNo))),
+    invoiceIds: new Set(allowed.map(i => String(i.invoiceId || '').toUpperCase())),
+  };
+}
+
+/**
+ * Guard for a single-invoice route. Responds 404 and returns false when the
+ * invoice is out of scope — 404 rather than 403 so the response cannot be used
+ * to confirm that an out-of-scope invoice exists. Fails CLOSED: if the scope
+ * cannot be built, access is refused rather than allowed.
+ */
+async function denyIfOutOfScope(req, res, { recordNo, invoiceId }) {
+  let scope;
+  try { scope = await userScopeSets(req.session.user); }
+  catch (e) { res.status(503).json({ error: 'Could not verify access scope' }); return true; }
+  if (scope === null) return false;                      // unscoped user
+  const okRec = recordNo !== undefined && scope.recordNos.has(String(recordNo));
+  const okInv = invoiceId !== undefined && scope.invoiceIds.has(String(invoiceId).toUpperCase());
+  if (okRec || okInv) return false;
+  res.status(404).json({ error: 'Invoice not found' });
+  return true;
+}
+
 // ─── Auth Routes ────────────────────────────────────────────────────────────
 
 app.get('/auth/login', async (req, res) => {
@@ -889,6 +937,7 @@ app.get('/api/invoice/:invoiceId/lines', requireAuth, async (req, res) => {
     if (!invoiceId || !invoiceId.startsWith('ECI-')) {
       return res.status(400).json({ error: 'invoiceId must start with ECI-' });
     }
+    if (await denyIfOutOfScope(req, res, { invoiceId })) return;
     const lines = await sage.getInvoiceLines(invoiceId);
     res.json(lines);
   } catch (e) {
@@ -899,9 +948,10 @@ app.get('/api/invoice/:invoiceId/lines', requireAuth, async (req, res) => {
 
 
 // ─── API: Payee Central Status ────────────────────────────────────────────────
-app.get('/api/invoice/:invoiceId/payee', requireAuth, (req, res) => {
+app.get('/api/invoice/:invoiceId/payee', requireAuth, async (req, res) => {
   try {
     const { invoiceId } = req.params;
+    if (await denyIfOutOfScope(req, res, { invoiceId })) return;
     const result = payee.lookupInvoice(invoiceId);
     if (!result) return res.status(404).json({ found: false, invoiceId });
     res.json({ found: true, ...result });
@@ -1779,11 +1829,40 @@ app.post('/api/ai/prioritize', requireAuth, async (req, res) => {
 // ─── Reliability: reconciliation + health ─────────────────────────────────
 // Invoices parked in a non-terminal Payee Central status, aged on Amazon's own
 // Entry Date. This is the "why hasn't this moved" list, not an error list.
-app.get('/api/po/aging', requireAuth, (req, res) => {
+app.get('/api/po/aging', requireAuth, async (req, res) => {
   try {
-    res.json(poLedger.getPayeeAging({ minDays: parseInt(req.query.minDays, 10) || 0 }));
+    const out = poLedger.getPayeeAging({ minDays: parseInt(req.query.minDays, 10) || 0 });
+    // This one is built from the Payee feed rather than the Sage list, so
+    // applyUserFilter never touched it. Restrict it to the caller's invoices.
+    const scope = await userScopeSets(req.session.user);
+    if (scope) filterAgingToScope(out, scope);
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Rebuilds the buckets and bands from the surviving rows so every total on
+// screen agrees with the rows behind it.
+function filterAgingToScope(out, scope) {
+  const keep = (inv) => scope.invoiceIds.has(String(inv.invoiceNumber || '').toUpperCase())
+    || scope.invoiceIds.has(String(inv.invoiceNumber || '').toUpperCase().replace(/^([A-Z]+)(?=\d)/, '$1-'));
+  const round = (n) => Math.round(n * 100) / 100;
+  out.buckets = (out.buckets || []).map(b => {
+    const invoices = (b.invoices || []).filter(keep);
+    const ages = invoices.map(i => i.ageDays).filter(n => n !== null && n !== undefined).sort((a, c) => a - c);
+    return { ...b, invoices, count: invoices.length,
+      amount: round(invoices.reduce((t, i) => t + (i.amount || 0), 0)),
+      medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
+      oldestAge: ages.length ? ages[ages.length - 1] : null };
+  }).filter(b => b.count > 0);
+  const all = out.buckets.reduce((acc, b) => acc.concat(b.invoices), []);
+  out.totals = { count: all.length, amount: round(all.reduce((t, i) => t + (i.amount || 0), 0)) };
+  const band = (lo, hi) => {
+    const sel = all.filter(i => i.ageDays !== null && i.ageDays >= lo && (hi === null || i.ageDays <= hi));
+    return { count: sel.length, amount: round(sel.reduce((t, i) => t + (i.amount || 0), 0)) };
+  };
+  out.bands = { '0-30': band(0, 30), '31-60': band(31, 60), '61-90': band(61, 90), '90+': band(91, null) };
+  out.scoped = true;
+}
 
 // ─── Amazon view: Department > Business Unit > Site > PO > Invoice ──────────
 // Returns the flat row set plus the filter vocabularies. The vocabularies come
@@ -1842,9 +1921,18 @@ app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'm
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/po/exceptions', requireAuth, (req, res) => {
+app.get('/api/po/exceptions', requireAuth, async (req, res) => {
   try {
-    res.json(poLedger.getTransmissionExceptions());
+    const out = poLedger.getTransmissionExceptions();
+    // Also feed-derived, so scope it the same way as the aging list.
+    const scope = await userScopeSets(req.session.user);
+    if (scope) {
+      const keep = (r) => scope.invoiceIds.has(String(r.invoiceId || '').toUpperCase());
+      out.exceptions = (out.exceptions || []).filter(keep);
+      out.duplicates = (out.duplicates || []).filter(keep);
+      out.scoped = true;
+    }
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2545,8 +2633,10 @@ app.get('/api/comms/conversations/:id', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/invoices/:recordNo/messages', requireAuth, (req, res) => {
-  try { res.json(db.getMessagesForInvoice(req.params.recordNo)); }
+app.get('/api/invoices/:recordNo/messages', requireAuth, async (req, res) => {
+  try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
+    res.json(db.getMessagesForInvoice(req.params.recordNo)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3851,11 +3941,12 @@ app.get('/api/notes/:recordno', requireAuth, (req, res) => {
   }
 });
 
-app.post('/api/notes/:recordno', requireAuth, (req, res) => {
+app.post('/api/notes/:recordno', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
     const { body, type, mentions, parent_id } = req.body;
     if (!body || !body.trim()) return res.status(400).json({ error: 'Body required' });
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordno })) return;
     if (!['admin', 'manager', 'ar_specialist'].includes(user.role)) {
       return res.status(403).json({ error: 'Viewers cannot add notes' });
     }
