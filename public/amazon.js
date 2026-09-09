@@ -66,6 +66,7 @@ function amzFiltered() {
     if (f.bucket && r.bucket !== f.bucket) return false;
     if (f.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== f.payeeStatus) return false;
     if (f.poStatus && (r.poStatus || '') !== f.poStatus) return false;
+    if (f.needsCashApplication && !r.needsCashApplication) return false;
     if (f.site && r.site !== f.site) return false;
     if (f.serviceCenter && r.serviceCenter !== f.serviceCenter) return false;
     // One switch for both gaps the header warns about: no site at all, or a
@@ -104,7 +105,14 @@ function amzHeaderHtml(rows, total) {
   const warn = [];
   if (noBu.length) warn.push(`${noBu.length} at a site with no business unit (${amzMoney(noBu.reduce((s, r) => s + r.amount, 0))})`);
   if (noSite.length) warn.push(`${noSite.length} with no site yet (${amzMoney(noSite.reduce((s, r) => s + r.amount, 0))})`);
+  const paidNotApplied = rows.filter(r => r.needsCashApplication);
+  const pnaAmt = paidNotApplied.reduce((s, r) => s + r.amount, 0);
   return `
+    ${paidNotApplied.length ? `<div style="background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#075985;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:16px;">💰</span>
+      <span><strong>${paidNotApplied.length}</strong> invoice${paidNotApplied.length > 1 ? 's' : ''} worth <strong>${amzMoney(pnaAmt)}</strong> are marked <strong>Paid by Amazon</strong> but still carry a balance in Intacct — the cash needs applying, not chasing.</span>
+      <button onclick="amazonShowPaidNotApplied()" style="margin-left:auto;background:#0284c7;border:none;color:#fff;border-radius:5px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600;">Show them</button>
+    </div>` : ''}
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
       ${amzTile('Open AR', amzMoney(total))}
       ${amzTile('Invoices', rows.length.toLocaleString())}
@@ -150,6 +158,9 @@ function amzFilterBarHtml() {
       ${amzSelect('bucket', 'Aging', ['current', '1-30', '31-60', '61-90', '91+'], _amzFilters.bucket)}
       ${amzSelect('payeeStatus', 'Amazon status', amzStatusVocab(), _amzFilters.payeeStatus)}
       ${amzSelect('poStatus', 'PO status', ['Open', 'Closed'], _amzFilters.poStatus)}
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-700);cursor:pointer;">
+        <input type="checkbox" ${_amzFilters.needsCashApplication ? 'checked' : ''} onchange="amazonSetFilter('needsCashApplication', this.checked)"> Needs applying in Intacct
+      </label>
       <input type="text" placeholder="Search invoice / PO / site" value="${escHtml(_amzFilters.q || '')}"
         oninput="amazonSetFilter('q', this.value)"
         style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;min-width:190px;">
@@ -250,7 +261,7 @@ function amzInvoiceTableHtml(rows) {
           <td style="padding:8px 12px;font-size:12px;">${escHtml(amzBlank(r.businessUnit, '(none)'))}</td>
           <td style="padding:8px 12px;font-size:12px;">${amzStatusPill(r)}</td>
           <td style="padding:8px 12px;font-size:11px;color:${r.poStatus === 'Closed' ? '#dc2626' : 'var(--gray-600)'};">${escHtml(amzBlank(r.poStatus, '—'))}${r.poStale ? ' ⚠' : ''}</td>
-          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">${r.daysOverdue || 0}d</td>
+          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;${r.needsCashApplication ? 'color:var(--gray-400);text-decoration:line-through;' : ''}" ${r.needsCashApplication ? 'title="Amazon has paid this — the age is not a collections age"' : ''}>${r.daysOverdue || 0}d</td>
           <td style="padding:8px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(r.amount)}</td>
         </tr>`).join('')}
       </tbody>
@@ -330,7 +341,9 @@ function amzStatusPill(r) {
     ? ' <span title="more than one attempt is live at Amazon — possible double submission" style="color:#dc2626;font-weight:700;">!!</span>' : '';
   const att = (r.payeeAttempts > 1 && !r.payeeDuplicateLive)
     ? ` <span title="resubmission chain: ${r.payeeAttempts} attempts, showing ${escHtml(r.payeeId)}" style="color:var(--gray-500);font-size:10px;">${r.payeeAttempts}×</span>` : '';
-  return `<span style="background:${bg};color:${color};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(r.payeeIcon || '')} ${escHtml(label)}</span>${att}${dup}`;
+  const apply = r.needsCashApplication
+    ? ' <span title="Amazon has paid this but Intacct still shows a balance — apply the cash" style="background:#fff7ed;color:#c2410c;border:1px solid #fdba74;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:700;white-space:nowrap;">apply in Intacct</span>' : '';
+  return `<span style="background:${bg};color:${color};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(r.payeeIcon || '')} ${escHtml(label)}</span>${att}${dup}${apply}`;
 }
 
 // At PO level the useful facts are Amazon's PO state and how its invoices are
@@ -346,4 +359,14 @@ function amzPoDetailHtml(g) {
   (g.rows || []).forEach(r => { const k = r.payeeLabel || r.payeeStatus || 'not in feed'; counts[k] = (counts[k] || 0) + 1; });
   const statuses = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k}`).join(', ');
   return [bits.join(' · '), statuses].filter(Boolean).join('  —  ');
+}
+
+
+// Paid at Amazon, still open in Intacct. Kept as its own switch because these
+// are the opposite of a collections problem: the money already arrived and the
+// aging column beside them is meaningless until the cash is applied.
+function amazonShowPaidNotApplied() {
+  _amzPath = [];
+  _amzFilters = { needsCashApplication: true };
+  amazonRender();
 }
