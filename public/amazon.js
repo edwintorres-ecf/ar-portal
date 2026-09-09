@@ -611,6 +611,8 @@ function amzReportHtml(rows) {
 // point; pushing to Intacct is a bonus and is currently blocked upstream.
 let _accruals = null, _accrualMeta = null, _accrualShowCancelled = false;
 let _accrualEditingId = null;   // set while the form is editing an existing row
+let _accrualSel = new Set();     // ids ticked for a bulk action
+let _accrualBand = '';           // age band filter, '' = everything
 
 async function accrualsLoad() {
   const el = document.getElementById('accruals-content');
@@ -652,7 +654,8 @@ function accrualsRender() {
     <div style="font-size:11px;color:var(--gray-500);">${escHtml(sub)}</div></div>`;
   const st = (k) => by[k] || { count: 0, amount: 0 };
 
-  const rows = _accruals.slice().sort((a, b) => b.amount - a.amount);
+  const all = _accruals.slice().sort((a, b) => b.amount - a.amount);
+  const rows = _accrualBand ? all.filter(r => accAgeBand(r).key === _accrualBand) : all;
   el.innerHTML = `
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
       ${tile('Open accrual value', amzMoney(m.openTotal || 0), `${m.openCount || 0} not yet invoiced`, '#d97706')}
@@ -670,6 +673,8 @@ function accrualsRender() {
       ${m.scoped ? '<span style="font-size:11px;color:var(--gray-500);">showing your sites only</span>' : ''}
       ${m.intacctOrderEntry && !m.intacctOrderEntry.available ? `<span title="${escHtml(m.intacctOrderEntry.reason)}" style="margin-left:auto;font-size:11px;color:#92400e;background:#fef3c7;border-radius:10px;padding:2px 10px;">Push to Intacct unavailable — ${escHtml(m.intacctOrderEntry.reason)}</span>` : ''}
     </div>
+    ${accBandChipsHtml(all)}
+    ${accBulkBarHtml()}
     ${rows.length ? accrualTableHtml(rows) : '<div style="padding:30px;text-align:center;color:var(--gray-500);background:var(--white);border-radius:10px;box-shadow:var(--shadow);">Nothing recorded yet. Use “Record accrual” when work is done before a PO exists.</div>'}
   `;
 }
@@ -678,6 +683,7 @@ function accrualTableHtml(rows) {
   return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="background:var(--gray-100);">
+        <th style="padding:9px 8px;width:28px;"><input type="checkbox" onchange="accSelectAll(this.checked)" ${rows.length && rows.every(r => _accrualSel.has(r.id)) ? 'checked' : ''}></th>
         <th style="text-align:left;padding:9px 12px;">Site</th>
         <th style="text-align:left;padding:9px 12px;">Work</th>
         <th style="text-align:left;padding:9px 12px;">Department</th>
@@ -692,7 +698,9 @@ function accrualTableHtml(rows) {
       <tbody>${rows.map(r => {
         const tone = ACCRUAL_TONE[r.status] || ACCRUAL_TONE.cancelled;
         const age = accrualDays(r);
-        return `<tr style="border-top:1px solid var(--gray-200);">
+        const band = accAgeBand(r);
+        return `<tr style="border-top:1px solid var(--gray-200);${_accrualSel.has(r.id) ? 'background:#eff6ff;' : ''}">
+          <td style="padding:8px 8px;"><input type="checkbox" ${_accrualSel.has(r.id) ? 'checked' : ''} onchange="accSelectRow(${r.id}, this.checked)"></td>
           ${accCell(r, 'siteCode', r.site_code, 'text', `font-weight:600;color:var(--navy);`,
             r.businessUnit ? `<span style="display:block;font-size:11px;font-weight:400;color:var(--gray-500);">${escHtml(r.businessUnit)}</span>` : '')}
           ${accCell(r, 'description', r.description, 'text', 'max-width:280px;',
@@ -701,7 +709,9 @@ function accrualTableHtml(rows) {
           ${accCell(r, 'serviceCenter', r.service_center, 'sc', 'font-size:12px;')}
           ${accCell(r, 'workDate', r.work_date, 'date', 'font-size:12px;')}
           ${accCell(r, 'amount', r.amount, 'money', 'text-align:right;font-weight:600;font-variant-numeric:tabular-nums;')}
-          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${age !== null && age > 90 ? '#dc2626' : 'var(--gray-600)'};">${age === null ? '—' : age + 'd'}</td>
+          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;">
+            <span style="color:${band.color};font-weight:${band.key === 'overdue' ? '700' : '400'};">${age === null ? '—' : age + 'd'}</span>
+            <span style="display:block;font-size:10px;color:${band.color};">${escHtml(band.label)}</span></td>
           <td style="padding:8px 12px;"><span style="background:${tone.bg};color:${tone.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(ACCRUAL_LABEL[r.status] || r.status)}</span>
             ${r.cancel_reason ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.cancel_reason)}</span>` : ''}</td>
           <td style="padding:8px 12px;font-size:12px;">${escHtml(r.po_number || '')}${r.po_number && r.invoice_id ? ' · ' : ''}${escHtml(r.invoice_id || '')}${!r.po_number && !r.invoice_id ? '—' : ''}</td>
@@ -1198,3 +1208,133 @@ async function accrualSaveDeptConfig() {
   d.innerHTML = html;
   document.body.appendChild(d.firstElementChild);
 })();
+
+
+// ─── Selection and bulk actions ──────────────────────────────────────────────
+// Edwin wanted to work several rows at once rather than one at a time. The
+// blanks in the grid are the obvious case: eight accruals with no service
+// center, all of which can be filled from the branch that bills their site.
+function accSelectRow(id, on) {
+  if (on) _accrualSel.add(id); else _accrualSel.delete(id);
+  accrualsRender();
+}
+
+function accSelectAll(on) {
+  const rows = (_accruals || []);
+  if (on) rows.forEach(r => _accrualSel.add(r.id)); else _accrualSel.clear();
+  accrualsRender();
+}
+
+function accSelected() { return (_accruals || []).filter(r => _accrualSel.has(r.id)); }
+
+// How long an accrual has been sitting. An accrual has no due date of its own —
+// what matters is how long we have waited for a PO, so that is what is banded.
+// A future work date is scheduled work, not a problem.
+function accAgeBand(r) {
+  const age = accrualDays(r);
+  if (r.status === 'invoiced') return { key: 'done', label: 'invoiced', color: 'var(--gray-500)' };
+  if (age === null) return { key: 'none', label: '', color: 'var(--gray-500)' };
+  if (age < 0) return { key: 'future', label: 'scheduled', color: '#6b7280' };
+  if (age <= 30) return { key: 'new', label: 'recent', color: '#16a34a' };
+  if (age <= 60) return { key: 'soon', label: 'chase soon', color: '#d97706' };
+  if (age <= 90) return { key: 'chasing', label: 'chasing', color: '#ea580c' };
+  return { key: 'overdue', label: 'overdue', color: '#dc2626' };
+}
+
+function accBulkBarHtml() {
+  const sel = accSelected();
+  if (!sel.length) return '';
+  const total = sel.reduce((t, r) => t + r.amount, 0);
+  const missingSc = sel.filter(r => !r.service_center && r.site_code).length;
+  return `<div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:9px 12px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <strong style="color:#1e40af;font-size:13px;">${sel.length} selected</strong>
+    <span style="font-size:12px;color:#1e40af;">${amzMoney(total)}</span>
+    ${missingSc ? `<button onclick="accBulkAutoServiceCenter()" style="border:none;background:#2563eb;color:#fff;border-radius:5px;padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer;">Auto-fill ${missingSc} service center${missingSc === 1 ? '' : 's'}</button>` : ''}
+    <button onclick="accBulkSet('serviceCenter')" style="border:1px solid #93c5fd;background:var(--white);color:#1e40af;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Set service center</button>
+    <button onclick="accBulkSet('deptId')" style="border:1px solid #93c5fd;background:var(--white);color:#1e40af;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Set department</button>
+    <button onclick="accBulkPo()" style="border:1px solid #93c5fd;background:var(--white);color:#1e40af;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;">Mark PO received</button>
+    <button onclick="accSelectAll(false)" style="margin-left:auto;border:none;background:none;color:#1e40af;font-size:12px;cursor:pointer;">Clear</button>
+  </div>`;
+}
+
+async function accBulkPatch(rows, bodyFor, label) {
+  let ok = 0; const fails = [];
+  for (const r of rows) {
+    try {
+      const body = typeof bodyFor === 'function' ? bodyFor(r) : bodyFor;
+      if (!body) continue;
+      await apiFetch('/api/amazon/accruals/' + r.id, { method: 'PATCH', body: JSON.stringify(body) });
+      ok++;
+    } catch (e) { fails.push(`#${r.id}: ${e.message}`); }
+  }
+  _accrualSel.clear();
+  await accrualsLoad();
+  if (fails.length) alert(`${label}: ${ok} updated, ${fails.length} failed.\n\n` + fails.slice(0, 6).join('\n'));
+}
+
+// The branch that actually bills each site, which is exactly what the single
+// form already defaults to — applied to everything ticked that is missing one.
+function accBulkAutoServiceCenter() {
+  const map = (_accrualMeta && _accrualMeta.siteServiceCenters) || {};
+  const targets = accSelected().filter(r => !r.service_center && r.site_code && map[r.site_code]);
+  if (!targets.length) { alert('Nothing to fill — those rows either have a service center already or a site with no billing history.'); return; }
+  if (!confirm(`Fill the service center on ${targets.length} accrual${targets.length === 1 ? '' : 's'} from the branch that bills each site?`)) return;
+  accBulkPatch(targets, (r) => ({ serviceCenter: map[r.site_code] }), 'Auto-fill');
+}
+
+function accBulkSet(field) {
+  const sel = accSelected();
+  if (!sel.length) return;
+  let value;
+  if (field === 'serviceCenter') {
+    const list = (_accrualMeta && _accrualMeta.serviceCenters) || [];
+    value = prompt(`Service center for ${sel.length} accrual${sel.length === 1 ? '' : 's'}:\n\n` + list.join('\n'));
+    if (value === null) return;
+    if (value && !list.includes(value)) { alert('That is not one of the service centers listed.'); return; }
+  } else {
+    value = prompt(`Department for ${sel.length} accrual${sel.length === 1 ? '' : 's'}:\n\n` + Object.keys(ACC_DEPT_LABEL).join('\n'));
+    if (value === null) return;
+    value = (value || '').trim().toUpperCase();
+    if (value && !ACC_DEPT_LABEL[value]) { alert('That is not one of the department codes listed.'); return; }
+  }
+  accBulkPatch(sel, { [field]: value || null }, 'Bulk update');
+}
+
+function accBulkPo() {
+  const sel = accSelected().filter(r => r.status === 'awaiting_po');
+  if (!sel.length) { alert('None of the selected rows are awaiting a PO.'); return; }
+  const po = prompt(`PO number to record against ${sel.length} accrual${sel.length === 1 ? '' : 's'}:`);
+  if (!po || !po.trim()) return;
+  accBulkPatch(sel, { status: 'po_received', poNumber: po.trim().toUpperCase() }, 'Mark PO received');
+}
+
+
+// ─── Aging sections ──────────────────────────────────────────────────────────
+// An accrual has no due date of its own; the thing that goes wrong is waiting
+// too long for a PO. These bands turn that wait into something you can act on,
+// and clicking one narrows the grid to it.
+const ACC_BANDS = [
+  { key: 'future',  label: 'Scheduled',   color: '#6b7280' },
+  { key: 'new',     label: 'Recent',      color: '#16a34a' },
+  { key: 'soon',    label: 'Chase soon',  color: '#d97706' },
+  { key: 'chasing', label: 'Chasing',     color: '#ea580c' },
+  { key: 'overdue', label: 'Overdue',     color: '#dc2626' },
+];
+
+function accBandChipsHtml(rows) {
+  const counts = {};
+  for (const r of rows) {
+    const b = accAgeBand(r);
+    counts[b.key] = counts[b.key] || { n: 0, amt: 0 };
+    counts[b.key].n++; counts[b.key].amt += r.amount;
+  }
+  const chip = (key, label, color, n, amt, active) => `<button onclick="_accrualBand=${JSON.stringify(key)};_accrualSel.clear();accrualsRender()"
+    style="border:1px solid ${active ? color : 'var(--gray-300)'};background:${active ? color : 'var(--white)'};color:${active ? '#fff' : color};border-radius:14px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;">
+    ${escHtml(label)} ${n}${amt !== null ? ` · ${amzMoney(amt)}` : ''}</button>`;
+  const total = rows.reduce((t, r) => t + r.amount, 0);
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+    ${chip('', 'All', 'var(--navy)', rows.length, total, !_accrualBand)}
+    ${ACC_BANDS.filter(b => counts[b.key]).map(b => chip(b.key, b.label, b.color, counts[b.key].n, counts[b.key].amt, _accrualBand === b.key)).join('')}
+    <span style="font-size:11px;color:var(--gray-500);margin-left:4px;">by how long they have waited for a PO</span>
+  </div>`;
+}
