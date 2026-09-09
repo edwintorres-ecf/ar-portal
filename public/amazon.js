@@ -692,14 +692,14 @@ function accrualTableHtml(rows) {
         const tone = ACCRUAL_TONE[r.status] || ACCRUAL_TONE.cancelled;
         const age = accrualDays(r);
         return `<tr style="border-top:1px solid var(--gray-200);">
-          <td style="padding:8px 12px;font-weight:600;color:var(--navy);">${escHtml(r.site_code || '—')}
-            ${r.businessUnit ? `<span style="display:block;font-size:11px;font-weight:400;color:var(--gray-500);">${escHtml(r.businessUnit)}</span>` : ''}</td>
-          <td style="padding:8px 12px;max-width:280px;">${escHtml(r.description)}
-            ${r.notes ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.notes)}</span>` : ''}</td>
-          <td style="padding:8px 12px;font-size:12px;">${escHtml(r.dept_id || '—')}</td>
-          <td style="padding:8px 12px;font-size:12px;color:${r.service_center ? 'var(--gray-700)' : 'var(--gray-400)'};">${escHtml(r.service_center || 'not set')}</td>
-          <td style="padding:8px 12px;font-size:12px;">${escHtml(r.work_date || '—')}</td>
-          <td style="padding:8px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(r.amount)}</td>
+          ${accCell(r, 'siteCode', r.site_code, 'text', `font-weight:600;color:var(--navy);`,
+            r.businessUnit ? `<span style="display:block;font-size:11px;font-weight:400;color:var(--gray-500);">${escHtml(r.businessUnit)}</span>` : '')}
+          ${accCell(r, 'description', r.description, 'text', 'max-width:280px;',
+            r.notes ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.notes)}</span>` : '')}
+          ${accCell(r, 'deptId', r.dept_id, 'dept', 'font-size:12px;')}
+          ${accCell(r, 'serviceCenter', r.service_center, 'sc', 'font-size:12px;')}
+          ${accCell(r, 'workDate', r.work_date, 'date', 'font-size:12px;')}
+          ${accCell(r, 'amount', r.amount, 'money', 'text-align:right;font-weight:600;font-variant-numeric:tabular-nums;')}
           <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${age !== null && age > 90 ? '#dc2626' : 'var(--gray-600)'};">${age === null ? '—' : age + 'd'}</td>
           <td style="padding:8px 12px;"><span style="background:${tone.bg};color:${tone.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(ACCRUAL_LABEL[r.status] || r.status)}</span>
             ${r.cancel_reason ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.cancel_reason)}</span>` : ''}</td>
@@ -1003,4 +1003,99 @@ function accrualSiteChanged(v) {
   if (hint) hint.textContent = sel.value === derived
     ? `${derived} bills most of the work at ${site}.`
     : `${derived} bills most of the work at ${site}, but you have chosen ${sel.value}.`;
+}
+
+
+// ─── Inline editing ──────────────────────────────────────────────────────────
+// Edwin 2026-09-09: "edit right in the view as if it was a spreadsheet". Every
+// cell below is click-to-edit and saves on its own — one field, one PATCH — so
+// fixing eight blank service centers is eight clicks rather than eight trips
+// through a modal. Status is deliberately NOT inline: those transitions require
+// evidence (a PO number, an invoice number, a reason) and belong in the buttons.
+const ACC_DEPTS = [['', '—'], ['D-SNOW', 'D-SNOW'], ['D-GRMT', 'D-GRMT'], ['D-ARBR', 'D-ARBR'],
+  ['D-LAPR', 'D-LAPR'], ['D-PKLT', 'D-PKLT'], ['D-IRMG', 'D-IRMG']];
+
+function accCellId(id, field) { return `acc-${id}-${field}`; }
+
+function accCell(r, field, value, kind, style, extraHtml) {
+  const shown = (value === null || value === undefined || value === '')
+    ? `<span style="color:var(--gray-400);">${field === 'serviceCenter' ? 'not set' : '—'}</span>`
+    : (kind === 'money' ? amzMoney(value) : escHtml(String(value)));
+  return `<td id="${accCellId(r.id, field)}" onclick="accEditCell(${r.id}, '${field}', '${kind}')"
+    title="Click to edit"
+    style="padding:8px 12px;cursor:text;${style || ''}">${shown}${extraHtml || ''}</td>`;
+}
+
+let _accEditing = null;   // {id, field} — only ever one cell at a time
+
+function accEditCell(id, field, kind) {
+  if (_accEditing) return;                       // one at a time keeps saves unambiguous
+  const row = (_accruals || []).find(a => a.id === id);
+  const td = document.getElementById(accCellId(id, field));
+  if (!row || !td) return;
+  _accEditing = { id, field };
+  const cur = {
+    siteCode: row.site_code, description: row.description, deptId: row.dept_id,
+    serviceCenter: row.service_center, workDate: row.work_date, amount: row.amount,
+  }[field];
+
+  let inner;
+  if (kind === 'dept') {
+    inner = `<select id="acc-input" style="width:100%;padding:4px;border:1px solid var(--navy);border-radius:4px;font-size:12px;">
+      ${ACC_DEPTS.map(([v, l]) => `<option value="${v}"${(cur || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  } else if (kind === 'sc') {
+    const list = (_accrualMeta && _accrualMeta.serviceCenters) || [];
+    inner = `<select id="acc-input" style="width:100%;padding:4px;border:1px solid var(--navy);border-radius:4px;font-size:12px;">
+      <option value="">— none —</option>
+      ${list.map(n => `<option value="${escHtml(n)}"${n === cur ? ' selected' : ''}>${escHtml(n)}</option>`).join('')}</select>`;
+  } else {
+    const type = kind === 'date' ? 'date' : kind === 'money' ? 'number' : 'text';
+    const step = kind === 'money' ? ' step="0.01" min="0"' : '';
+    inner = `<input id="acc-input" type="${type}"${step} value="${escHtml(cur === null || cur === undefined ? '' : String(cur))}"
+      style="width:100%;padding:4px;border:1px solid var(--navy);border-radius:4px;font-size:12px;">`;
+  }
+  td.innerHTML = inner;
+  const el = document.getElementById('acc-input');
+  el.focus();
+  if (el.select) el.select();
+  // Enter and blur commit; Escape abandons. A select commits on change too, so
+  // picking a value does not need a second click somewhere else.
+  el.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); accCommitCell(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); _accEditing = null; accrualsRender(); }
+  };
+  el.onblur = () => accCommitCell();
+  if (el.tagName === 'SELECT') el.onchange = () => accCommitCell();
+}
+
+async function accCommitCell() {
+  if (!_accEditing) return;
+  const { id, field } = _accEditing;
+  const el = document.getElementById('acc-input');
+  if (!el) { _accEditing = null; return; }
+  const raw = el.value;
+  _accEditing = null;                            // released before the await so a slow save cannot wedge the grid
+
+  const row = (_accruals || []).find(a => a.id === id);
+  const before = {
+    siteCode: row.site_code, description: row.description, deptId: row.dept_id,
+    serviceCenter: row.service_center, workDate: row.work_date, amount: String(row.amount),
+  }[field];
+  if (String(raw ?? '') === String(before ?? '')) { accrualsRender(); return; }
+
+  const td = document.getElementById(accCellId(id, field));
+  if (td) td.innerHTML = '<span style="color:var(--gray-500);font-size:11px;">saving…</span>';
+  try {
+    const updated = await apiFetch('/api/amazon/accruals/' + id, {
+      method: 'PATCH', body: JSON.stringify({ [field]: raw === '' ? null : raw }),
+    });
+    // Patch the local row rather than refetching the whole list: the grid keeps
+    // its scroll position and the edit feels immediate.
+    Object.assign(row, updated);
+    if (_accrualMeta) accrualsLoad();            // totals move, so refresh them
+    else accrualsRender();
+  } catch (e) {
+    accrualsRender();
+    alert(e.message);
+  }
 }
