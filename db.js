@@ -183,6 +183,20 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_amzloc_bu ON amazon_locations(business_unit);
 
+    -- Retired / variant site codes mapped to the code Amazon uses today.
+    -- Amazon renames sites, but the old code lives forever in the ship-to text
+    -- of every invoice raised before the change (MDT9 became QYY4). Without a
+    -- mapping those invoices orphan from the location master permanently and
+    -- drop out of any business-unit view, which is silent revenue loss on a
+    -- report. Aliases are data, not code, so a rename is a row, not a deploy.
+    CREATE TABLE IF NOT EXISTS site_aliases (
+      alias          TEXT PRIMARY KEY,
+      canonical_code TEXT NOT NULL,
+      note           TEXT,
+      set_by         TEXT,
+      set_at         TEXT DEFAULT (datetime('now'))
+    );
+
     -- Resolved Amazon site per invoice WITH its provenance. site_code is empty
     -- when nothing authoritative said where the work happened; those rows are
     -- the review queue rather than a silent guess. See site-ledger.js.
@@ -823,6 +837,38 @@ function setLocation(recordNo, locationId, locationName) {
     INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(recordNo, locationId || '', locationName || '');
+}
+
+// ─── Retired site codes ─────────────────────────────────────────────────────
+function setSiteAlias(alias, canonicalCode, note, setBy) {
+  const d = getDb();
+  const a = String(alias || '').trim().toUpperCase();
+  const c = String(canonicalCode || '').trim().toUpperCase();
+  if (!a || !c) return false;
+  if (a === c) return false;               // an alias to itself would loop
+  d.prepare(`
+    INSERT INTO site_aliases (alias, canonical_code, note, set_by, set_at)
+    VALUES (?,?,?,?,datetime('now'))
+    ON CONFLICT(alias) DO UPDATE SET
+      canonical_code=excluded.canonical_code, note=excluded.note,
+      set_by=excluded.set_by, set_at=datetime('now')
+  `).run(a, c, note || null, setBy || null);
+  return true;
+}
+
+function deleteSiteAlias(alias) {
+  getDb().prepare('DELETE FROM site_aliases WHERE alias=?').run(String(alias || '').trim().toUpperCase());
+}
+
+function getSiteAliasMap() {
+  const d = getDb();
+  const out = {};
+  try {
+    for (const r of d.prepare('SELECT alias, canonical_code, note FROM site_aliases').all()) {
+      out[r.alias] = { canonical: r.canonical_code, note: r.note || '' };
+    }
+  } catch (e) { /* table missing on an old database */ }
+  return out;
 }
 
 // ─── Amazon location master ─────────────────────────────────────────────────
@@ -1983,6 +2029,9 @@ module.exports = {
   getAuditLog,
   getLocation,
   setLocation,
+  setSiteAlias,
+  deleteSiteAlias,
+  getSiteAliasMap,
   replaceAmazonLocations,
   getAmazonLocationMap,
   getBusinessUnits,

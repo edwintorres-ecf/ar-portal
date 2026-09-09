@@ -140,19 +140,37 @@ function loadPoPins() {
 //   5 po-doc          the PO document's extracted site.
 //   6 suggested       inferred from a non-canonical ship-to. NOT applied.
 //   7 unresolved      nothing said anything. Goes to the review queue.
+// A retired code is folded to the current one at EVERY tier, not just at the
+// ship-to, because an old code can just as easily come off a PO document or a
+// human pin made years ago. The hop is written into the evidence so the ledger
+// still shows what the invoice actually said.
+function canonicalize(site, ctx) {
+  const s = String(site || '').trim().toUpperCase();
+  if (!s) return { site: s, via: '' };
+  const hit = ctx.aliases[s];
+  if (!hit) return { site: s, via: '' };
+  return { site: hit.canonical, via: `${s} is a retired code for ${hit.canonical}${hit.note ? `, ${hit.note}` : ''}` };
+}
+
+function withAlias(result, ctx) {
+  const { site, via } = canonicalize(result.site, ctx);
+  if (!via) return result;
+  return { ...result, site, aliasedFrom: result.site, evidence: `${result.evidence}; ${via}` };
+}
+
 function resolveOne(inv, ctx) {
   const rec = String(inv.recordNo);
 
   const ov = ctx.overrides[rec];
   if (ov && ov.site_code) {
-    return { site: normalizeSite(ov.site_code) || ov.site_code, source: 'manual-invoice', confidence: 'certain',
-             evidence: `pinned by ${ov.set_by || 'unknown'} on ${(ov.set_at || '').slice(0, 10)}`, candidates: [] };
+    return withAlias({ site: normalizeSite(ov.site_code) || ov.site_code, source: 'manual-invoice', confidence: 'certain',
+             evidence: `pinned by ${ov.set_by || 'unknown'} on ${(ov.set_at || '').slice(0, 10)}`, candidates: [] }, ctx);
   }
 
   const own = normalizeSite(inv.siteCode);
   if (isCanonical(own)) {
-    return { site: own, source: 'ship-to', confidence: 'certain',
-             evidence: `invoice ship-to "${String(inv.siteCode).trim()}"`, candidates: [] };
+    return withAlias({ site: own, source: 'ship-to', confidence: 'certain',
+             evidence: `invoice ship-to "${String(inv.siteCode).trim()}"`, candidates: [] }, ctx);
   }
 
   const assign = ctx.assignments[rec];
@@ -160,20 +178,20 @@ function resolveOne(inv, ctx) {
   if (po) {
     const pin = normalizeSite(ctx.poPins[po]);
     if (isCanonical(pin)) {
-      return { site: pin, source: 'po-manual', confidence: 'strong',
-               evidence: `PO ${po} site pinned to ${pin}`, candidates: [] };
+      return withAlias({ site: pin, source: 'po-manual', confidence: 'strong',
+               evidence: `PO ${po} site pinned to ${pin}`, candidates: [] }, ctx);
     }
     const det = ctx.poDetails[po];
     const amz = normalizeSite(det && det.site);
     if (isCanonical(amz)) {
-      return { site: amz, source: 'po-amazon', confidence: 'strong',
-               evidence: `Amazon Ship To on PO ${po}`, candidates: [] };
+      return withAlias({ site: amz, source: 'po-amazon', confidence: 'strong',
+               evidence: `Amazon Ship To on PO ${po}`, candidates: [] }, ctx);
     }
     const doc = ctx.poDocs[po];
     const docSite = normalizeSite(doc && (doc.site || doc.siteCode));
     if (isCanonical(docSite)) {
-      return { site: docSite, source: 'po-doc', confidence: 'strong',
-               evidence: `PO ${po} document ship-to`, candidates: [] };
+      return withAlias({ site: docSite, source: 'po-doc', confidence: 'strong',
+               evidence: `PO ${po} document ship-to`, candidates: [] }, ctx);
     }
   }
 
@@ -199,11 +217,14 @@ function buildContext(invoices) {
   try { overrides = db.getAllInvoiceSiteOverrides(); } catch (e) { /* older schema */ }
   try { assignments = db.getAllPoAssignments(); } catch (e) { /* older schema */ }
   try { master = db.getAmazonLocationMap(); } catch (e) { /* master not loaded */ }
+  let aliases = {};
+  try { aliases = db.getSiteAliasMap(); } catch (e) { /* no alias table yet */ }
   // The master is the authority for gate 2, so its codes join the universe a
   // derived guess is checked against.
   const universe = buildSiteUniverse(invoices, poDetails, poDocs, poPins);
   for (const code of Object.keys(master)) universe.add(code);
-  return { poDetails, poDocs, poPins, overrides, assignments, master, universe };
+  for (const a of Object.keys(aliases)) universe.add(a);
+  return { poDetails, poDocs, poPins, overrides, assignments, master, aliases, universe };
 }
 
 function amazonInvoices(all) {
