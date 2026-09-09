@@ -147,6 +147,22 @@ function initSchema() {
       fetched_at   TEXT DEFAULT (datetime('now'))
     );
 
+    -- Intacct DEPARTMENT per invoice, read from ARINVOICEITEM alongside the
+    -- location. Department is a LINE-level field in Intacct, so dept_id holds
+    -- the invoice's department and dept_mixed flags the case where the lines
+    -- disagree — a mixed invoice cannot be filed under one service line and has
+    -- to be visible rather than silently bucketed by whichever line came first.
+    -- all_depts keeps the full pipe-joined set so the disagreement is inspectable.
+    CREATE TABLE IF NOT EXISTS invoice_department (
+      record_no    TEXT PRIMARY KEY,
+      dept_id      TEXT,
+      dept_name    TEXT,
+      dept_mixed   INTEGER DEFAULT 0,
+      all_depts    TEXT,
+      fetched_at   TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_invdept_dept ON invoice_department(dept_id);
+
     CREATE TABLE IF NOT EXISTS location_map (
       sage_recordno  INTEGER PRIMARY KEY,
       location_id    TEXT NOT NULL,
@@ -770,6 +786,39 @@ function setLocation(recordNo, locationId, locationName) {
     INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(recordNo, locationId || '', locationName || '');
+}
+
+// ─── Intacct department per invoice ─────────────────────────────────────────
+function setDepartment(recordNo, deptId, deptName, allDepts) {
+  const d = getDb();
+  const list = (allDepts || []).filter(Boolean);
+  d.prepare(`
+    INSERT OR REPLACE INTO invoice_department (record_no, dept_id, dept_name, dept_mixed, all_depts, fetched_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `).run(String(recordNo), deptId || '', deptName || '', list.length > 1 ? 1 : 0, list.length ? list.join('|') : null);
+}
+
+function getDepartment(recordNo) {
+  const d = getDb();
+  return d.prepare('SELECT dept_id, dept_name, dept_mixed, all_depts FROM invoice_department WHERE record_no=?')
+    .get(String(recordNo)) || null;
+}
+
+// One call for the whole grid; the Amazon view filters thousands of rows and
+// must not do a query per invoice.
+function getAllDepartments() {
+  const d = getDb();
+  const out = {};
+  for (const r of d.prepare('SELECT record_no, dept_id, dept_name, dept_mixed, all_depts FROM invoice_department').all()) {
+    out[r.record_no] = { deptId: r.dept_id || '', deptName: r.dept_name || '', mixed: !!r.dept_mixed, allDepts: r.all_depts || '' };
+  }
+  return out;
+}
+
+function getMissingDepartmentRecordNos(recordNos) {
+  const d = getDb();
+  const stmt = d.prepare('SELECT record_no FROM invoice_department WHERE record_no=?');
+  return recordNos.filter(rn => !stmt.get(String(rn)));
 }
 
 function getMissingLocationRecordNos(recordNos) {
@@ -1847,6 +1896,10 @@ module.exports = {
   getAuditLog,
   getLocation,
   setLocation,
+  setDepartment,
+  getDepartment,
+  getAllDepartments,
+  getMissingDepartmentRecordNos,
   getMissingLocationRecordNos,
   getLocationMap,
   setLocationMapEntries,

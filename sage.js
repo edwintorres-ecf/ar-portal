@@ -608,6 +608,93 @@ function getCachedInvoices() {
   return _cache || [];
 }
 
+// ─── Intacct department enrichment via ARINVOICEITEM ────────────────────────
+// Same shape and batch size as the location enrichment below, and the same
+// object, because department is a LINE-level field in Intacct exactly like
+// location. Kept as its own pass rather than folded into fetchAndCacheLocations
+// so the 6,281 invoices already cached for location are not invalidated.
+//
+// Verified on live data before writing this: every Amazon invoice resolves to
+// ARINVOICEITEM rows, including the Omnia-series ones. Those are genuine Sage
+// AR invoices; they only look line-less through getInvoiceLines because that
+// function routes non-ECI ids to SODOCUMENTENTRY, which is order entry, not AR.
+//
+// An invoice whose lines disagree is recorded as mixed rather than resolved by
+// first-line-wins. Filing a mixed invoice under one service line would misstate
+// whichever department did not win, and silently.
+
+const DEPARTMENT_BATCH = 50;
+
+async function fetchAndCacheDepartments(recordNos, opts = {}) {
+  const onProgress = opts.onProgress || null;
+  const stats = { fetched: 0, withDept: 0, mixed: 0, noLines: 0, batchErrors: 0 };
+  const batches = [];
+  for (let i = 0; i < recordNos.length; i += DEPARTMENT_BATCH) {
+    batches.push(recordNos.slice(i, i + DEPARTMENT_BATCH));
+  }
+
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batch = batches[bi];
+    const query = batch.map(rn => `RECORDKEY = ${rn}`).join(' OR ');
+    const xml = buildXml(`
+      <readByQuery>
+        <object>ARINVOICEITEM</object>
+        <fields>RECORDNO,RECORDKEY,DEPARTMENTID,DEPARTMENTNAME</fields>
+        <query>${query}</query>
+        <pagesize>1000</pagesize>
+      </readByQuery>
+    `);
+    try {
+      const res = await sagePost(xml);
+      if (extractTag(res, 'status') !== 'success') { stats.batchErrors++; continue; }
+
+      // Collect EVERY line's department per invoice, not just the first.
+      const byKey = {};
+      const re = /<arinvoiceitem>([\s\S]*?)<\/arinvoiceitem>/gi;
+      let m;
+      while ((m = re.exec(res)) !== null) {
+        const b = m[1];
+        const recKey = extractTag(b, 'RECORDKEY') || '';
+        if (!recKey) continue;
+        const id = extractTag(b, 'DEPARTMENTID') || '';
+        if (!byKey[recKey]) byKey[recKey] = { ids: [], names: {} };
+        if (id && !byKey[recKey].ids.includes(id)) {
+          byKey[recKey].ids.push(id);
+          byKey[recKey].names[id] = extractTag(b, 'DEPARTMENTNAME') || '';
+        }
+      }
+
+      for (const rn of batch) {
+        const hit = byKey[String(rn)];
+        if (!hit || !hit.ids.length) { db.setDepartment(rn, '', '', []); stats.noLines++; continue; }
+        const primary = hit.ids[0];
+        db.setDepartment(rn, primary, hit.names[primary] || '', hit.ids);
+        stats.withDept++;
+        if (hit.ids.length > 1) stats.mixed++;
+      }
+      stats.fetched += batch.length;
+    } catch (e) {
+      // Same posture as the location pass: record the batch as resolved-empty
+      // rather than retrying forever, but count it so a bad run is visible.
+      stats.batchErrors++;
+      for (const rn of batch) db.setDepartment(rn, '', '', []);
+    }
+    if (onProgress) onProgress(bi + 1, batches.length, stats);
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return stats;
+}
+
+// Fills only what is missing, so it is cheap to call repeatedly.
+async function enrichDepartments(invoices, opts = {}) {
+  const recordNos = (invoices || []).map(i => i.recordNo).filter(Boolean);
+  const missing = db.getMissingDepartmentRecordNos(recordNos);
+  if (!missing.length) return { fetched: 0, withDept: 0, mixed: 0, noLines: 0, batchErrors: 0, alreadyCached: recordNos.length };
+  const stats = await fetchAndCacheDepartments(missing, opts);
+  stats.alreadyCached = recordNos.length - missing.length;
+  return stats;
+}
+
 
 // ─── Location Enrichment via ARINVOICEITEM ──────────────────────────────────
 // Batches 50 invoice RECORDNO values per readByQuery call on ARINVOICEITEM.
@@ -1144,6 +1231,8 @@ async function getEciInvoiceLines(invoiceId) {
 module.exports = {
   getInvoices,
   enrichLocations,
+  enrichDepartments,
+  fetchAndCacheDepartments,
   getCachedInvoices,
   getCacheAge,
   computeAgingBucket,
