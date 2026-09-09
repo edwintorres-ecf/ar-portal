@@ -2129,6 +2129,29 @@ function accrualSiteScope(req) {
   } catch (e) { return null; }
 }
 
+// Which ECF branch actually bills a given Amazon site, derived from the
+// invoices themselves rather than the location master's `service_center`
+// column: the master says "Hartford" while every portal surface says "Hartford
+// Service Center", and it carries at least one misspelling ("Cincinatti").
+// Observed billing keeps accruals groupable alongside invoices instead of
+// creating a second, subtly different branch vocabulary.
+function siteServiceCenterMap() {
+  const counts = {};
+  let ledger = {};
+  try { ledger = siteLedger.getLedgerMap(); } catch (e) { return {}; }
+  for (const inv of sage.getCachedInvoices()) {
+    const site = (ledger[String(inv.recordNo)] || {}).siteCode;
+    if (!site || !inv.locationName) continue;
+    counts[site] = counts[site] || {};
+    counts[site][inv.locationName] = (counts[site][inv.locationName] || 0) + 1;
+  }
+  const out = {};
+  for (const [site, byName] of Object.entries(counts)) {
+    out[site] = Object.entries(byName).sort((a, b) => b[1] - a[1])[0][0];
+  }
+  return out;
+}
+
 app.get('/api/amazon/accruals', requireAuth, (req, res) => {
   try {
     const siteCodes = accrualSiteScope(req);
@@ -2150,9 +2173,26 @@ app.get('/api/amazon/accruals', requireAuth, (req, res) => {
     }
     // "Open" is what is still waiting on Amazon: not yet invoiced, not cancelled.
     const open = enriched.filter(r => r.status === 'awaiting_po' || r.status === 'po_received');
+    const byServiceCenter = {};
+    for (const r of open) {
+      const k = r.service_center || '(none)';
+      byServiceCenter[k] = byServiceCenter[k] || { count: 0, amount: 0 };
+      byServiceCenter[k].count++;
+      byServiceCenter[k].amount = Math.round((byServiceCenter[k].amount + r.amount) * 100) / 100;
+    }
     res.json({
       accruals: enriched,
       byStatus: by,
+      byServiceCenter,
+      // Same branch vocabulary the invoice views use, ordered by how much work
+      // each branch actually carries, plus the observed site -> branch map so
+      // the form can fill it in automatically.
+      serviceCenters: (() => {
+        const n = {};
+        for (const i of sage.getCachedInvoices()) if (i.locationName) n[i.locationName] = (n[i.locationName] || 0) + 1;
+        return Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+      })(),
+      siteServiceCenters: siteServiceCenterMap(),
       openTotal: Math.round(open.reduce((t, r) => t + r.amount, 0) * 100) / 100,
       openCount: open.length,
       scoped: !!siteCodes,
