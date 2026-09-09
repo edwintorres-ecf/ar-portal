@@ -227,6 +227,21 @@ function resolveOne(inv, ctx) {
     }
   }
 
+  // Nothing authoritative resolved. Before calling it unresolved, check whether
+  // this invoice belongs to a different process entirely — those are not
+  // missing a site, they simply do not have one, and parking them in the
+  // cleanup queue would be permanent phantom work.
+  const shipToUpper = String(inv.siteCode || '').trim().toUpperCase();
+  for (const ex of ctx.exemptions) {
+    if (ex.pattern && shipToUpper.includes(ex.pattern)) {
+      return {
+        site: '', source: 'exempt', confidence: 'n/a',
+        evidence: `${ex.label || ex.pattern}: ${ex.reason || 'separate process, not site-attributed'}`,
+        candidates: [],
+      };
+    }
+  }
+
   const { candidates, note, conflict } = deriveCandidates(inv.siteCode, ctx.universe);
   if (candidates.length === 1 && !conflict) {
     return { site: '', source: 'suggested', confidence: 'suggested',
@@ -253,12 +268,14 @@ function buildContext(invoices) {
   try { aliases = db.getSiteAliasMap(); } catch (e) { /* no alias table yet */ }
   let blocked = {};
   try { blocked = db.getBlockedSiteCodes(); } catch (e) { /* no blocklist table yet */ }
+  let exemptions = [];
+  try { exemptions = db.getShipToExemptions(); } catch (e) { /* no exemption table yet */ }
   // The master is the authority for gate 2, so its codes join the universe a
   // derived guess is checked against.
   const universe = buildSiteUniverse(invoices, poDetails, poDocs, poPins);
   for (const code of Object.keys(master)) universe.add(code);
   for (const a of Object.keys(aliases)) universe.add(a);
-  return { poDetails, poDocs, poPins, overrides, assignments, master, aliases, blocked, universe };
+  return { poDetails, poDocs, poPins, overrides, assignments, master, aliases, blocked, exemptions, universe };
 }
 
 function amazonInvoices(all) {
@@ -337,7 +354,7 @@ function rebuild(allInvoices) {
 
 function summarize(rows) {
   const bySource = {}, byBu = {};
-  let resolved = 0, resolvedAmt = 0, open = 0, openAmt = 0, notInMaster = 0, notInMasterAmt = 0;
+  let resolved = 0, resolvedAmt = 0, open = 0, openAmt = 0, notInMaster = 0, notInMasterAmt = 0, exempt = 0, exemptAmt = 0;
   const add = (bag, key, amt) => {
     bag[key] = bag[key] || { count: 0, amount: 0 };
     bag[key].count++;
@@ -345,11 +362,13 @@ function summarize(rows) {
   };
   for (const r of rows) {
     add(bySource, r.source, r.amount);
-    if (r.site) { resolved++; resolvedAmt += r.amount; } else { open++; openAmt += r.amount; }
+    if (r.site) { resolved++; resolvedAmt += r.amount; }
+    else if (r.source === 'exempt') { exempt++; exemptAmt += r.amount; }
+    else { open++; openAmt += r.amount; }
     if (r.siteNotInMaster) { notInMaster++; notInMasterAmt += r.amount; }
     // A site with no business unit cannot be filed under gate 2; count it as
     // its own bucket rather than letting it disappear into a blank key.
-    add(byBu, r.businessUnit || (r.site ? '(site not in master)' : '(no site yet)'), r.amount);
+    add(byBu, r.businessUnit || (r.site ? '(site not in master)' : (r.source === 'exempt' ? '(separate process)' : '(no site yet)')), r.amount);
   }
   return {
     total: rows.length,
@@ -357,6 +376,7 @@ function summarize(rows) {
     needsReview: open, needsReviewAmount: Math.round(openAmt * 100) / 100,
     coveragePct: rows.length ? Math.round((resolved / rows.length) * 1000) / 10 : 0,
     notInMaster, notInMasterAmount: Math.round(notInMasterAmt * 100) / 100,
+    exempt, exemptAmount: Math.round(exemptAmt * 100) / 100,
     bySource, byBusinessUnit: byBu,
   };
 }
@@ -366,7 +386,8 @@ function getNeedsReview() {
   const d = db.getDb();
   const rows = d.prepare(`
     SELECT record_no, invoice_id, site_code, source, confidence, evidence, candidates, amount
-    FROM invoice_site_ledger WHERE site_code IS NULL OR site_code = ''
+    FROM invoice_site_ledger
+    WHERE (site_code IS NULL OR site_code = '') AND COALESCE(source,'') != 'exempt'
     ORDER BY amount DESC
   `).all();
   return rows.map(r => ({

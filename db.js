@@ -210,6 +210,18 @@ function initSchema() {
       set_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- Ship-to text that marks an invoice as belonging to a DIFFERENT process,
+    -- not as one missing a site. "CW Amazon Services" is its own workflow
+    -- (Edwin 2026-09-09), so those invoices are not site-attributed and must
+    -- not sit in the site cleanup queue pretending to be unfinished work.
+    CREATE TABLE IF NOT EXISTS shipto_exemptions (
+      pattern TEXT PRIMARY KEY,
+      label   TEXT,
+      reason  TEXT,
+      set_by  TEXT,
+      set_at  TEXT DEFAULT (datetime('now'))
+    );
+
     -- Resolved Amazon site per invoice WITH its provenance. site_code is empty
     -- when nothing authoritative said where the work happened; those rows are
     -- the review queue rather than a silent guess. See site-ledger.js.
@@ -850,6 +862,29 @@ function setLocation(recordNo, locationId, locationName) {
     INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(recordNo, locationId || '', locationName || '');
+}
+
+// ─── Ship-to exemptions (separate business processes) ───────────────────────
+function setShipToExemption(pattern, label, reason, setBy) {
+  const p = String(pattern || '').trim().toUpperCase();
+  if (!p) return false;
+  getDb().prepare(`
+    INSERT INTO shipto_exemptions (pattern, label, reason, set_by, set_at)
+    VALUES (?,?,?,?,datetime('now'))
+    ON CONFLICT(pattern) DO UPDATE SET label=excluded.label, reason=excluded.reason,
+      set_by=excluded.set_by, set_at=datetime('now')
+  `).run(p, label || p, reason || null, setBy || null);
+  return true;
+}
+
+function deleteShipToExemption(pattern) {
+  getDb().prepare('DELETE FROM shipto_exemptions WHERE pattern=?').run(String(pattern || '').trim().toUpperCase());
+}
+
+function getShipToExemptions() {
+  try {
+    return getDb().prepare('SELECT pattern, label, reason FROM shipto_exemptions').all();
+  } catch (e) { return []; }
 }
 
 // ─── Non-site codes (corporate HQ / PO header addresses) ────────────────────
@@ -2118,6 +2153,9 @@ module.exports = {
   getAuditLog,
   getLocation,
   setLocation,
+  setShipToExemption,
+  deleteShipToExemption,
+  getShipToExemptions,
   setBlockedSiteCode,
   deleteBlockedSiteCode,
   getBlockedSiteCodes,
