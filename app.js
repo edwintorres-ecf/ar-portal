@@ -1944,6 +1944,74 @@ app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'm
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Amazon accruals: work done with no PO yet ──────────────────────────────
+// ECF performs work for Amazon before a PO exists and waits on an accrual. That
+// revenue is real but cannot be invoiced, so by definition it appears nowhere in
+// AR — this register is the only place it is visible. Site-scoped like every
+// other Amazon surface.
+function accrualSiteScope(req) {
+  try {
+    const lf = req.session.user && req.session.user.location_filter;
+    if (!lf) return null;
+    const scope = siteLedger.siteScopeForLocations(sage.getCachedInvoices(), JSON.parse(lf));
+    return scope ? [...scope] : null;
+  } catch (e) { return null; }
+}
+
+app.get('/api/amazon/accruals', requireAuth, (req, res) => {
+  try {
+    const siteCodes = accrualSiteScope(req);
+    const rows = db.getAccruals({
+      status: req.query.status || undefined,
+      includeCancelled: req.query.includeCancelled === '1',
+      siteCodes: siteCodes || undefined,
+    });
+    const master = db.getAmazonLocationMap();
+    const enriched = rows.map(r => {
+      const loc = r.site_code ? master[r.site_code] : null;
+      return { ...r, businessUnit: loc ? loc.businessUnit : '', siteType: loc ? loc.siteType : '' };
+    });
+    const by = {};
+    for (const r of enriched) {
+      by[r.status] = by[r.status] || { count: 0, amount: 0 };
+      by[r.status].count++;
+      by[r.status].amount = Math.round((by[r.status].amount + r.amount) * 100) / 100;
+    }
+    // "Open" is what is still waiting on Amazon: not yet invoiced, not cancelled.
+    const open = enriched.filter(r => r.status === 'awaiting_po' || r.status === 'po_received');
+    res.json({
+      accruals: enriched,
+      byStatus: by,
+      openTotal: Math.round(open.reduce((t, r) => t + r.amount, 0) * 100) / 100,
+      openCount: open.length,
+      scoped: !!siteCodes,
+      // Stated plainly so nobody builds a workflow on a capability we do not have.
+      intacctOrderEntry: { available: false, reason: 'Order Entry has no transaction definitions configured in Intacct' },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/accruals', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const a = db.createAccrual(req.body || {}, req.session.user.email);
+    db.auditLog(req.session.user.email, 'accrual_create', null,
+      `#${a.id} ${a.site_code || 'no site'} ${a.amount} — ${String(a.description).slice(0, 80)}`);
+    res.json(a);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.patch('/api/amazon/accruals/:id', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const before = db.getAccrual(req.params.id);
+    if (!before) return res.status(404).json({ error: 'Accrual not found' });
+    const a = db.updateAccrual(req.params.id, req.body || {}, req.session.user.email);
+    const changed = Object.keys(req.body || {}).join(',');
+    db.auditLog(req.session.user.email, 'accrual_update', null,
+      `#${a.id} ${before.status}${a.status !== before.status ? ' -> ' + a.status : ''} [${changed}]`);
+    res.json(a);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ─── Amazon Drill-Down: reporting + export ──────────────────────────────────
 // The export must reproduce exactly what the user is looking at, so it takes
 // the SAME filters the screen uses and applies them to the same row builder.

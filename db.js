@@ -222,6 +222,33 @@ function initSchema() {
       set_at  TEXT DEFAULT (datetime('now'))
     );
 
+    -- Work performed for Amazon with no PO yet, waiting on an accrual. This is
+    -- revenue earned that cannot be invoiced, so it is invisible in AR by
+    -- definition — the whole point of the register is that the money is
+    -- somewhere other than an invoice. Never hard-deleted: a mistake becomes
+    -- status 'cancelled' with a reason, per the never-delete rule.
+    CREATE TABLE IF NOT EXISTS amazon_accruals (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id    TEXT NOT NULL DEFAULT 'C-00403',
+      site_code      TEXT,
+      dept_id        TEXT,
+      description    TEXT NOT NULL,
+      amount         REAL NOT NULL,
+      work_date      TEXT,
+      status         TEXT NOT NULL DEFAULT 'awaiting_po',
+      po_number      TEXT,
+      invoice_id     TEXT,
+      service_center TEXT,
+      notes          TEXT,
+      cancel_reason  TEXT,
+      created_by     TEXT,
+      created_at     TEXT DEFAULT (datetime('now')),
+      updated_by     TEXT,
+      updated_at     TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_accrual_status ON amazon_accruals(status);
+    CREATE INDEX IF NOT EXISTS idx_accrual_site ON amazon_accruals(site_code);
+
     -- Resolved Amazon site per invoice WITH its provenance. site_code is empty
     -- when nothing authoritative said where the work happened; those rows are
     -- the review queue rather than a silent guess. See site-ledger.js.
@@ -941,6 +968,81 @@ function getSiteAliasMap() {
     }
   } catch (e) { /* table missing on an old database */ }
   return out;
+}
+
+// ─── Amazon accruals (work done, no PO yet) ─────────────────────────────────
+const ACCRUAL_STATUSES = ['awaiting_po', 'po_received', 'invoiced', 'cancelled'];
+
+function createAccrual(a, byEmail) {
+  const d = getDb();
+  const amount = parseFloat(a.amount);
+  if (!a.description || !String(a.description).trim()) throw new Error('Description is required');
+  if (!isFinite(amount) || amount <= 0) throw new Error('Amount must be a positive number');
+  const info = d.prepare(`
+    INSERT INTO amazon_accruals (customer_id, site_code, dept_id, description, amount, work_date,
+      status, po_number, service_center, notes, created_by, updated_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(a.customerId || 'C-00403', (a.siteCode || '').toUpperCase() || null, a.deptId || null,
+    String(a.description).trim(), amount, a.workDate || null,
+    ACCRUAL_STATUSES.includes(a.status) ? a.status : 'awaiting_po',
+    a.poNumber || null, a.serviceCenter || null, a.notes || null, byEmail || null, byEmail || null);
+  return getAccrual(info.lastInsertRowid);
+}
+
+function getAccrual(id) {
+  return getDb().prepare('SELECT * FROM amazon_accruals WHERE id=?').get(id) || null;
+}
+
+// Status transitions carry their own evidence: receiving a PO means recording
+// which PO, and invoicing means recording which invoice. Enforced here so a
+// row can never claim to be invoiced with nothing to point at.
+function updateAccrual(id, patch, byEmail) {
+  const d = getDb();
+  const cur = getAccrual(id);
+  if (!cur) throw new Error('Accrual not found');
+  const next = { ...cur, ...patch };
+  if (patch.status && !ACCRUAL_STATUSES.includes(patch.status)) throw new Error('Invalid status');
+  if (next.status === 'po_received' && !String(next.po_number || patch.poNumber || '').trim()) {
+    throw new Error('A PO number is required to mark an accrual as PO received');
+  }
+  if (next.status === 'invoiced' && !String(next.invoice_id || patch.invoiceId || '').trim()) {
+    throw new Error('An invoice number is required to mark an accrual as invoiced');
+  }
+  if (next.status === 'cancelled' && !String(next.cancel_reason || patch.cancelReason || '').trim()) {
+    throw new Error('A reason is required to cancel an accrual');
+  }
+  const fields = [], vals = [];
+  const set = (col, v) => { if (v !== undefined) { fields.push(col + '=?'); vals.push(v); } };
+  set('site_code', patch.siteCode !== undefined ? (patch.siteCode || '').toUpperCase() || null : undefined);
+  set('dept_id', patch.deptId);
+  set('description', patch.description);
+  set('amount', patch.amount !== undefined ? parseFloat(patch.amount) : undefined);
+  set('work_date', patch.workDate);
+  set('status', patch.status);
+  set('po_number', patch.poNumber);
+  set('invoice_id', patch.invoiceId);
+  set('service_center', patch.serviceCenter);
+  set('notes', patch.notes);
+  set('cancel_reason', patch.cancelReason);
+  if (!fields.length) return cur;
+  fields.push('updated_by=?'); vals.push(byEmail || null);
+  fields.push("updated_at=datetime('now')");
+  vals.push(id);
+  d.prepare(`UPDATE amazon_accruals SET ${fields.join(', ')} WHERE id=?`).run(...vals);
+  return getAccrual(id);
+}
+
+function getAccruals(opts = {}) {
+  const d = getDb();
+  const where = [], vals = [];
+  if (opts.status) { where.push('status=?'); vals.push(opts.status); }
+  if (opts.siteCodes && opts.siteCodes.length) {
+    where.push(`site_code IN (${opts.siteCodes.map(() => '?').join(',')})`);
+    vals.push(...opts.siteCodes);
+  }
+  if (!opts.includeCancelled && !opts.status) where.push("status != 'cancelled'");
+  const sql = 'SELECT * FROM amazon_accruals' + (where.length ? ' WHERE ' + where.join(' AND ') : '') + ' ORDER BY amount DESC';
+  return d.prepare(sql).all(...vals);
 }
 
 // ─── Amazon location master ─────────────────────────────────────────────────
@@ -2159,6 +2261,11 @@ module.exports = {
   setBlockedSiteCode,
   deleteBlockedSiteCode,
   getBlockedSiteCodes,
+  createAccrual,
+  getAccrual,
+  updateAccrual,
+  getAccruals,
+  ACCRUAL_STATUSES,
   setSiteAlias,
   deleteSiteAlias,
   getSiteAliasMap,
