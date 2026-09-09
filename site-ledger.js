@@ -450,6 +450,26 @@ function departmentGroups() {
   return out;
 }
 
+// Site codes a user scoped to particular ECF locations is allowed to see.
+// Edwin 2026-09-09: Katherine is exclusive to FacilityCare and "should only see
+// the PO's corresponding to the site codes connected to Facility Care". Note
+// this is deliberately SITE-based, not invoice-billing-based: a site belongs to
+// the branch that services it, so once FacilityCare services a site she should
+// see the whole PO for it, including any line another branch happened to bill.
+// A site serviced by more than one branch is visible to all of them.
+function siteScopeForLocations(allInvoices, locationIds) {
+  const wanted = new Set((locationIds || []).filter(Boolean));
+  if (!wanted.size) return null;              // unscoped user: no restriction
+  const ledger = getLedgerMap();
+  const sites = new Set();
+  for (const inv of amazonInvoices(allInvoices)) {
+    if (!wanted.has(inv.locationId)) continue;
+    const s = (ledger[String(inv.recordNo)] || {}).siteCode;
+    if (s) sites.add(s);
+  }
+  return sites;
+}
+
 function buildAmazonRows(allInvoices, opts = {}) {
   const payee = opts.payee || null;
   const invoices = amazonInvoices(allInvoices);
@@ -543,6 +563,6 @@ function buildAmazonRows(allInvoices, opts = {}) {
 module.exports = {
   rebuild, resolveAll, getNeedsReview, getLedgerMap, summarize,
   normalizeSite, isCanonical, deriveCandidates, buildSiteUniverse,
-  buildAmazonRows, departmentGroups, DEPT_GROUPS,
+  buildAmazonRows, departmentGroups, siteScopeForLocations, DEPT_GROUPS,
   AMAZON_CUSTOMERS,
 };

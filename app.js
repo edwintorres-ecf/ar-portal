@@ -1792,7 +1792,18 @@ app.get('/api/po/aging', requireAuth, (req, res) => {
 // missing (D-ARBR has zero open Amazon invoices right now).
 app.get('/api/amazon/explorer', requireAuth, (req, res) => {
   try {
-    const rows = siteLedger.buildAmazonRows(sage.getCachedInvoices(), { payee });
+    const allInvoices = sage.getCachedInvoices();
+    let rows = siteLedger.buildAmazonRows(allInvoices, { payee });
+    // Location-scoped users see only the sites their branch services. Applied
+    // here rather than to the invoice list, because this view is organised by
+    // site and PO: filtering the invoices first would show a PO with pieces
+    // missing and a total that does not match the PO.
+    let scopedSites = null;
+    try {
+      const lf = req.session.user && req.session.user.location_filter;
+      if (lf) scopedSites = siteLedger.siteScopeForLocations(allInvoices, JSON.parse(lf));
+    } catch (e) { /* malformed filter: fail closed to unscoped read-only view */ }
+    if (scopedSites) rows = rows.filter(r => r.site && scopedSites.has(r.site));
     const master = db.getAmazonLocationMap();
     const businessUnits = [...new Set(Object.values(master).map(l => l.businessUnit).filter(Boolean))].sort();
     const siteTypes = [...new Set(Object.values(master).map(l => l.siteType).filter(Boolean))].sort();
@@ -1817,7 +1828,8 @@ app.get('/api/amazon/explorer', requireAuth, (req, res) => {
         departments: siteLedger.DEPT_GROUPS,
         businessUnits, siteTypes, regions,
       },
-      unresolved: siteLedger.getNeedsReview(),
+      scope: scopedSites ? { sites: scopedSites.size, locations: JSON.parse(req.session.user.location_filter) } : null,
+      unresolved: scopedSites ? [] : siteLedger.getNeedsReview(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
