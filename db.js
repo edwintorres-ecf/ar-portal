@@ -994,6 +994,8 @@ function getAmazonLocationMap() {
         zone: r.zone || '', city: r.city || '', state: r.state || '', country: r.country || '',
         serviced: r.serviced || '', omniaLocId: r.omnia_loc_id || '', address: r.address || '',
         opsParent: r.ops_parent || '',
+        siteType: r.site_type || '', serviceCenter: r.service_center || '',
+        source: r.source || '', note: r.note || '',
       };
     }
   } catch (e) { /* not loaded yet */ }
