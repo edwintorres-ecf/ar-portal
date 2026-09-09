@@ -2304,14 +2304,20 @@ app.get('/api/amazon/overview', requireAuth, async (req, res) => {
 
     // Filter to Amazon customer
     const amazon = invoices.filter(i => i.customerId === 'C-00403');
-    const payeeIdx = payee.getIndex();
 
-    // Enrich with payee status
-    const enriched = amazon.map(inv => {
-      const payeeId = (inv.invoiceId || '').replace(/^([A-Z]+)-/, '$1');
-      const ps = payeeIdx[payeeId] || null;
-      return { ...inv, payeeStatus: ps };
-    });
+    // This route used to do its own EXACT-match lookup on the raw feed index,
+    // which reports the dead original of a resubmission chain: Payee Central
+    // refuses a reused invoice number, so a cancelled ECI023300 comes back as
+    // ECI023300A/B/C, and an exact match still says "Cancelled" long after the
+    // work moved on (Edwin 2026-09-09: "a lot of what is under CANCELLED has
+    // subsequent resubmissions"). It also reported "Unknown" for any invoice
+    // whose only live attempt carries a suffix. resolveInvoice walks the chain
+    // and picks the best attempt by status, and is what every other surface
+    // already uses.
+    const enriched = amazon.map(inv => ({
+      ...inv,
+      payeeStatus: payee.resolveInvoice(payee.toPayeeId(inv.invoiceId)) || null,
+    }));
 
     // Summary by payee status
     const byStatus = {};
