@@ -28,7 +28,11 @@ const fs = require('fs');
 const path = require('path');
 const db = require('./db');
 
-const AMAZON_CUSTOMERS = ['C-00403', 'C-00566'];
+// C-00566 is "CW Amazon Services", a SEPARATE PROCESS, not Amazon (Edwin
+// 2026-09-09: "exclude any cw amazon from the platform"). It is 22 invoices /
+// $19,642 against C-00403's 2,757 / $36.68M, and mixing it in was quietly
+// overstating Amazon AR and putting CW work in Amazon-only pipelines.
+const AMAZON_CUSTOMERS = ['C-00403'];
 
 // Canonical Amazon site code: 2-4 letters then 1-2 digits, e.g. DBL1, EWR9, BOS3.
 const CANONICAL_RE = /^[A-Z]{2,4}[0-9]{1,2}$/;
@@ -427,8 +431,8 @@ function getLedgerMap() {
 const AMAZON_SETTLED = new Set(['Paid', 'Applied']);
 
 const DEPT_GROUPS = {
-  'D-SNOW': 'Snow',
-  'D-GRMT': 'Landscape',
+  'D-SNOW': 'Snow Removal',
+  'D-GRMT': 'Landscape Maintenance',
   'D-ARBR': 'Projects',
   'D-LAPR': 'Projects',
   'D-PKLT': 'Projects',

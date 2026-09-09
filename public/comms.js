@@ -5,7 +5,8 @@
 // triage, and dunning console here so index.html stays lean. Relies on globals
 // from index.html: apiFetch, escHtml, currentUser.
 
-const COMMS_AMAZON = ['C-00403', 'C-00566'];
+// C-00566 is CW Amazon Services, a separate process, not Amazon.
+const COMMS_AMAZON = ['C-00403'];
 
 // index.html declares `let currentUser` at top level, which lives in the
 // shared global lexical scope but is NOT a window property, so reading it via
@@ -740,7 +741,7 @@ async function commsLoadInvoices2() {
 function commsInv2Filtered() {
   const m = _gridMeta;
   const f = _inv2.f;
-  const AMZ = ['C-00403', 'C-00566'];
+  const AMZ = ['C-00403'];   // C-00566 is CW Amazon Services, a separate process
   let rows = _inv2.all;
   const csOf = (inv) => (m.csByRecord[inv.recordNo] || {}).status || 'Open';
   if (_inv2.quick === 'amazon') rows = rows.filter(i => AMZ.includes(i.customerId));

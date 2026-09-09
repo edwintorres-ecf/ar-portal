@@ -65,7 +65,8 @@ function getPoDetailsMap() {
 const NON_CONSUMING_STATUSES = new Set(['Rejected', 'Cancelled', 'Cancellation in Progress']);
 
 // PO Funds is Amazon-only — Amazon.com Services LLC and CW Amazon Services.
-const AMAZON_CUSTOMER_IDS = new Set(['C-00403', 'C-00566']);
+// C-00566 is CW Amazon Services, a separate process — see site-ledger.js.
+const AMAZON_CUSTOMER_IDS = new Set(['C-00403']);
 
 // A real Amazon PO number looks like "2D-19170701" (2-char company code, dash,
 // digits). Anything else in the PO field — "NEEDED KRB5", "PO-MSG-KRB5" — is a
