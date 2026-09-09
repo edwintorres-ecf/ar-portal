@@ -197,6 +197,19 @@ function initSchema() {
       set_at         TEXT DEFAULT (datetime('now'))
     );
 
+    -- Codes that appear where a site code belongs but are NOT service sites.
+    -- BNA12 is Amazon's Nashville HQ at 101 Platform Way N: it is the SHIP TO on
+    -- the header of multi-site blanket POs whose real sites are the line items
+    -- (2D-20105615 header BNA12, lines DBL1 / DJR5 / DPP1 / DYY8). Resolving an
+    -- invoice to the header code would file four sites' revenue under a
+    -- corporate address, so these are refused as an answer everywhere.
+    CREATE TABLE IF NOT EXISTS site_code_blocklist (
+      code    TEXT PRIMARY KEY,
+      reason  TEXT,
+      set_by  TEXT,
+      set_at  TEXT DEFAULT (datetime('now'))
+    );
+
     -- Resolved Amazon site per invoice WITH its provenance. site_code is empty
     -- when nothing authoritative said where the work happened; those rows are
     -- the review queue rather than a silent guess. See site-ledger.js.
@@ -837,6 +850,30 @@ function setLocation(recordNo, locationId, locationName) {
     INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(recordNo, locationId || '', locationName || '');
+}
+
+// ─── Non-site codes (corporate HQ / PO header addresses) ────────────────────
+function setBlockedSiteCode(code, reason, setBy) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!c) return false;
+  getDb().prepare(`
+    INSERT INTO site_code_blocklist (code, reason, set_by, set_at)
+    VALUES (?,?,?,datetime('now'))
+    ON CONFLICT(code) DO UPDATE SET reason=excluded.reason, set_by=excluded.set_by, set_at=datetime('now')
+  `).run(c, reason || null, setBy || null);
+  return true;
+}
+
+function deleteBlockedSiteCode(code) {
+  getDb().prepare('DELETE FROM site_code_blocklist WHERE code=?').run(String(code || '').trim().toUpperCase());
+}
+
+function getBlockedSiteCodes() {
+  const out = {};
+  try {
+    for (const r of getDb().prepare('SELECT code, reason FROM site_code_blocklist').all()) out[r.code] = r.reason || '';
+  } catch (e) { /* table missing on an old database */ }
+  return out;
 }
 
 // ─── Retired site codes ─────────────────────────────────────────────────────
@@ -2029,6 +2066,9 @@ module.exports = {
   getAuditLog,
   getLocation,
   setLocation,
+  setBlockedSiteCode,
+  deleteBlockedSiteCode,
+  getBlockedSiteCodes,
   setSiteAlias,
   deleteSiteAlias,
   getSiteAliasMap,

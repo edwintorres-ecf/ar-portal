@@ -158,6 +158,21 @@ function withAlias(result, ctx) {
   return { ...result, site, aliasedFrom: result.site, evidence: `${result.evidence}; ${via}` };
 }
 
+// A code on a PO HEADER is not necessarily where the work happened. Amazon puts
+// its Nashville HQ (BNA12) on the header of multi-site blanket POs whose real
+// sites are the line items, so accepting the header would file several sites'
+// revenue under a corporate address. Blocked codes are refused as an answer and
+// the invoice falls through to review with whatever line-item sites we can see.
+function siteCodesIn(text, ctx) {
+  const out = [];
+  for (const m of String(text || '').toUpperCase().matchAll(/\b[A-Z]{2,4}[0-9]{1,2}\b/g)) {
+    const c = m[0];
+    if (ctx.blocked[c] || out.includes(c)) continue;
+    if (ctx.master[c] || ctx.universe.has(c)) out.push(c);
+  }
+  return out;
+}
+
 function resolveOne(inv, ctx) {
   const rec = String(inv.recordNo);
 
@@ -177,21 +192,38 @@ function resolveOne(inv, ctx) {
   const po = String((assign && assign.assigned_po) || inv.poNumber || '').trim();
   if (po) {
     const pin = normalizeSite(ctx.poPins[po]);
-    if (isCanonical(pin)) {
+    if (isCanonical(pin) && !ctx.blocked[pin]) {
       return withAlias({ site: pin, source: 'po-manual', confidence: 'strong',
                evidence: `PO ${po} site pinned to ${pin}`, candidates: [] }, ctx);
     }
     const det = ctx.poDetails[po];
     const amz = normalizeSite(det && det.site);
-    if (isCanonical(amz)) {
+    if (isCanonical(amz) && !ctx.blocked[amz]) {
       return withAlias({ site: amz, source: 'po-amazon', confidence: 'strong',
                evidence: `Amazon Ship To on PO ${po}`, candidates: [] }, ctx);
     }
     const doc = ctx.poDocs[po];
     const docSite = normalizeSite(doc && (doc.site || doc.siteCode));
-    if (isCanonical(docSite)) {
+    if (isCanonical(docSite) && !ctx.blocked[docSite]) {
       return withAlias({ site: docSite, source: 'po-doc', confidence: 'strong',
                evidence: `PO ${po} document ship-to`, candidates: [] }, ctx);
+    }
+  }
+
+  // The PO named a blocked header code. Say so explicitly and offer the line
+  // sites we can actually see, rather than reporting a bare "unresolved".
+  if (po) {
+    const det2 = ctx.poDetails[po];
+    const headerCode = normalizeSite(det2 && det2.site);
+    if (headerCode && ctx.blocked[headerCode]) {
+      const lineSites = siteCodesIn(det2 && det2.desc, ctx);
+      return {
+        site: '', source: 'header-only-po', confidence: 'ambiguous',
+        evidence: `PO ${po} ship-to is ${headerCode}, ${ctx.blocked[headerCode] || 'not a service site'}`
+          + (lineSites.length ? `; line items name ${lineSites.join(', ')} but a blanket PO covers more lines than we store`
+                              : '; no line-item site is visible in what we hold'),
+        candidates: lineSites,
+      };
     }
   }
 
@@ -219,12 +251,14 @@ function buildContext(invoices) {
   try { master = db.getAmazonLocationMap(); } catch (e) { /* master not loaded */ }
   let aliases = {};
   try { aliases = db.getSiteAliasMap(); } catch (e) { /* no alias table yet */ }
+  let blocked = {};
+  try { blocked = db.getBlockedSiteCodes(); } catch (e) { /* no blocklist table yet */ }
   // The master is the authority for gate 2, so its codes join the universe a
   // derived guess is checked against.
   const universe = buildSiteUniverse(invoices, poDetails, poDocs, poPins);
   for (const code of Object.keys(master)) universe.add(code);
   for (const a of Object.keys(aliases)) universe.add(a);
-  return { poDetails, poDocs, poPins, overrides, assignments, master, aliases, universe };
+  return { poDetails, poDocs, poPins, overrides, assignments, master, aliases, blocked, universe };
 }
 
 function amazonInvoices(all) {
