@@ -79,8 +79,16 @@ function amzFiltered() {
   });
 }
 
-function amzLevelIndex() { return _amzPath.length; }
-function amzCurrentLevel() { return AMZ_LEVELS[amzLevelIndex()] || null; }
+// The next level is the one AFTER the deepest level already in the path, not
+// simply path.length. That distinction is what lets a search jump land you at a
+// site: the path becomes a single Site step and the view groups by PO, instead
+// of pretending you are one level below Department.
+function amzCurrentLevel() {
+  if (!_amzPath.length) return AMZ_LEVELS[0];
+  const last = _amzPath[_amzPath.length - 1].key;
+  const idx = AMZ_LEVELS.findIndex(l => l.key === last);
+  return idx === -1 ? null : (AMZ_LEVELS[idx + 1] || null);
+}
 
 // ─── render ──────────────────────────────────────────────────────────────────
 function amazonRender() {
@@ -92,6 +100,7 @@ function amazonRender() {
 
   el.innerHTML = `
     ${amzHeaderHtml(rows, total)}
+    ${amzJumpHtml()}
     ${amzFreshnessHtml()}
     ${amzFilterBarHtml()}
     ${amzCrumbHtml()}
@@ -145,7 +154,9 @@ function amzFilterBarHtml() {
   const depts = Object.keys(v.departments || {});
   const sites = [...new Set((_amzRows || []).map(r => r.site).filter(Boolean))].sort();
   const scs = [...new Set((_amzRows || []).map(r => r.serviceCenter).filter(Boolean))].sort();
-  const active = Object.entries(_amzFilters).filter(([, val]) => val).length;
+  // Underscore keys are UI state (the jump box text), not filters, so they must
+  // not show up in the "Clear N filters" count.
+  const active = Object.entries(_amzFilters).filter(([k, val]) => val && !k.startsWith('_')).length;
   return `
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       ${amzSelect('deptGroup', 'Department', groups, _amzFilters.deptGroup)}
@@ -368,5 +379,98 @@ function amzPoDetailHtml(g) {
 function amazonShowPaidNotApplied() {
   _amzPath = [];
   _amzFilters = { needsCashApplication: true };
+  amazonRender();
+}
+
+
+// ─── Jump to a site ──────────────────────────────────────────────────────────
+// Edwin: "a search feature on these amazon pages to get to a site code". Site
+// codes are opaque (DBL1, KRB5, QYY4), so matching the code alone is not enough
+// — you often know the city or the business unit and not the code. This matches
+// code, city, region, business unit, site type and ECF branch, and also finds a
+// PO or an invoice, so one box gets you anywhere in the hierarchy.
+let _amzJumpOpen = false;
+
+function amzJumpIndex() {
+  const sites = {};
+  for (const r of (_amzRows || [])) {
+    if (!r.site) continue;
+    if (!sites[r.site]) sites[r.site] = { site: r.site, n: 0, amount: 0, bu: r.businessUnit, region: r.region, type: r.siteType, sc: r.serviceCenter };
+    sites[r.site].n++; sites[r.site].amount += r.amount;
+  }
+  return Object.values(sites);
+}
+
+function amzJumpMatches(q) {
+  const s = q.trim().toUpperCase();
+  if (s.length < 2) return [];
+  const out = [];
+  for (const site of amzJumpIndex()) {
+    const hay = [site.site, site.bu, site.region, site.type, site.sc].filter(Boolean).join(' ').toUpperCase();
+    if (hay.includes(s)) {
+      out.push({ kind: 'site', key: site.site, amount: site.amount, n: site.n,
+                 sub: [site.bu, site.type, site.region, site.sc].filter(Boolean).join(' · '),
+                 exact: site.site === s });
+    }
+  }
+  const pos = {};
+  for (const r of (_amzRows || [])) {
+    if (r.po && r.po.toUpperCase().includes(s)) {
+      if (!pos[r.po]) { pos[r.po] = { kind: 'po', key: r.po, amount: 0, n: 0, sub: r.site ? 'site ' + r.site : 'PO' }; out.push(pos[r.po]); }
+      pos[r.po].amount += r.amount; pos[r.po].n++;
+    }
+  }
+  for (const r of (_amzRows || [])) {
+    if (r.invoiceId && r.invoiceId.toUpperCase().includes(s)) {
+      out.push({ kind: 'invoice', key: r.invoiceId, amount: r.amount, n: 1,
+                 sub: [r.site, r.po].filter(Boolean).join(' · '), recordNo: r.recordNo });
+    }
+  }
+  // Exact site code first, then biggest balances; a code typed in full should
+  // never sit below a fuzzy match on some other site's city.
+  out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0) || b.amount - a.amount);
+  return out.slice(0, 8);
+}
+
+function amzJumpHtml() {
+  const q = _amzFilters._jump || '';
+  const matches = _amzJumpOpen ? amzJumpMatches(q) : [];
+  return `<div style="position:relative;margin-bottom:12px;">
+    <input id="amz-jump" type="text" value="${escHtml(q)}" placeholder="🔎 Jump to a site code, city, business unit, PO or invoice…"
+      autocomplete="off"
+      oninput="amazonJumpInput(this.value)" onfocus="amazonJumpInput(this.value)"
+      onkeydown="if(event.key==='Escape'){amazonJumpClose();}"
+      style="width:100%;max-width:560px;padding:9px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;">
+    ${matches.length ? `<div style="position:absolute;z-index:50;background:var(--white);border:1px solid var(--gray-300);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);margin-top:4px;max-width:560px;width:100%;overflow:hidden;">
+      ${matches.map(m => `<div onclick="amazonJumpGo('${m.kind}', ${JSON.stringify(m.key).replace(/"/g, '&quot;')}, ${JSON.stringify(m.recordNo || '').replace(/"/g, '&quot;')})"
+        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100);display:flex;gap:10px;align-items:center;"
+        onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+        <span style="font-size:10px;text-transform:uppercase;color:var(--gray-500);width:52px;">${escHtml(m.kind)}</span>
+        <span style="font-weight:600;color:var(--navy);">${escHtml(m.key)}</span>
+        <span style="color:var(--gray-500);font-size:12px;">${escHtml(m.sub || '')}</span>
+        <span style="margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;">${amzMoney(m.amount)}${m.kind !== 'invoice' ? ` · ${m.n}` : ''}</span>
+      </div>`).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+function amazonJumpInput(v) {
+  _amzFilters._jump = v;
+  _amzJumpOpen = true;
+  amazonRender();
+  const el = document.getElementById('amz-jump');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
+function amazonJumpClose() { _amzJumpOpen = false; amazonRender(); }
+
+function amazonJumpGo(kind, key, recordNo) {
+  _amzJumpOpen = false;
+  _amzFilters._jump = '';
+  if (kind === 'invoice') { if (recordNo) openDrawer(recordNo); return; }
+  // Land AT the thing, not above it: a site jump groups by PO, a PO jump lands
+  // on its invoices. Other filters are left alone on purpose.
+  _amzPath = kind === 'site' ? [{ key: 'site', value: key }]
+                             : [{ key: 'po', value: key }];
   amazonRender();
 }
