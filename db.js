@@ -940,7 +940,7 @@ function replaceAmazonLocations(rows) {
 // master wins on business unit because it is the network-wide list.
 function ensureAmazonLocationColumns() {
   const d = getDb();
-  for (const col of ['source TEXT', 'site_type TEXT', 'service_center TEXT', 'service_months TEXT']) {
+  for (const col of ['source TEXT', 'site_type TEXT', 'service_center TEXT', 'service_months TEXT', 'note TEXT']) {
     try { d.exec(`ALTER TABLE amazon_locations ADD COLUMN ${col}`); } catch (e) { /* already present */ }
   }
 }
@@ -953,8 +953,8 @@ function mergeAmazonLocations(rows, source) {
   const d = getDb();
   const existing = new Set(d.prepare('SELECT site_code FROM amazon_locations').all().map(r => r.site_code));
   const ins = d.prepare(`
-    INSERT INTO amazon_locations (site_code, business_unit, region, city, state, country, address, site_type, service_center, service_months, source, loaded_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+    INSERT INTO amazon_locations (site_code, business_unit, region, city, state, country, address, site_type, service_center, service_months, source, note, loaded_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
   `);
   const enrich = d.prepare(`
     UPDATE amazon_locations SET site_type=COALESCE(NULLIF(?,''), site_type),
@@ -974,7 +974,7 @@ function mergeAmazonLocations(rows, source) {
       } else {
         ins.run(code, r.businessUnit || '', r.region || '', r.city || '', r.state || '',
                 r.country || '', r.address || '', r.siteType || '', r.serviceCenter || '',
-                r.serviceMonths || '', source || 'secondary');
+                r.serviceMonths || '', source || 'secondary', r.note || null);
         existing.add(code);
         added++;
       }
