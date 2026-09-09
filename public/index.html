@@ -578,6 +578,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="amazon-drilldown" onclick="navGo('amazon-drilldown')">🔎 Drill-Down</div>
         <div class="nav-drop-item" data-view="po-funds" onclick="navGo('po-funds')">💵 PO Manager</div>
         <div class="nav-drop-item" data-view="amazon" onclick="navGo('amazon')">📊 Amazon AR</div>
+        <div class="nav-drop-item" data-view="amazon-accruals" onclick="navGo('amazon-accruals')">📝 Accruals</div>
       </div>
     </div>
 
@@ -885,6 +886,17 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 </div>
 
 <!-- ─── PO FUNDS ─── -->
+<div id="view-amazon-accruals" class="view">
+  <div style="max-width:1500px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:4px;">
+      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0;">Accruals</h2>
+      <button onclick="accrualsLoad()" style="padding:5px 11px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;color:var(--gray-600);">↻ Refresh</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:14px;">Work performed for Amazon with no PO yet. Earned revenue that cannot be invoiced, so it appears nowhere in AR.</div>
+    <div id="accruals-content"><div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div></div>
+  </div>
+</div>
+
 <div id="view-amazon-drilldown" class="view">
   <div style="max-width:1500px;margin:0 auto;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px;">
@@ -2459,7 +2471,7 @@ const NAV_GROUP_OF = {
   'reports': 'insights', 'activity': 'insights',
   'comms-mailbox': 'comms', 'comms-triage': 'comms', 'comms-dunning': 'comms', 'comms-statements': 'comms', 'training': 'help', 'velocity': 'finance', 'permissions': 'admin',
   'admin': 'admin',
-  'amazon': 'amazon', 'po-funds': 'amazon', 'amazon-drilldown': 'amazon',
+  'amazon': 'amazon', 'po-funds': 'amazon', 'amazon-drilldown': 'amazon', 'amazon-accruals': 'amazon',
 };
 
 function switchView(name, el) {
@@ -2487,6 +2499,7 @@ function switchView(name, el) {
   if (name === 'my-work') { loadMyWork(); }
   if (name === 'amazon') { loadAmazonView(); }
   if (name === 'amazon-drilldown' && typeof amazonLoad === 'function') { amazonLoad(); }
+  if (name === 'amazon-accruals' && typeof accrualsLoad === 'function') { accrualsLoad(); }
   if (name === 'activity') { loadActivityLog(); }
   if (name === 'ptp-board') { loadPtpBoard(); }
   if (name === 'reports') { loadReports(); }
@@ -6028,6 +6041,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260909d"></script>
-<script src="/amazon.js?v=20260909h"></script>
+<script src="/amazon.js?v=20260909i"></script>
 </body>
 </html>

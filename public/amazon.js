@@ -574,3 +574,219 @@ function amzReportHtml(rows) {
   };
   return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">${dims.map(block).join('')}</div>`;
 }
+
+
+// ─── Accrual register: work done for Amazon with no PO yet ───────────────────
+// Edwin 2026-09-09: work is performed before a PO exists and we wait on an
+// accrual. That revenue is real and earned but cannot be invoiced, so it shows
+// up nowhere in AR — this register is the only place it exists. Tracking is the
+// point; pushing to Intacct is a bonus and is currently blocked upstream.
+let _accruals = null, _accrualMeta = null, _accrualShowCancelled = false;
+
+async function accrualsLoad() {
+  const el = document.getElementById('accruals-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>';
+  try {
+    const d = await apiFetch('/api/amazon/accruals' + (_accrualShowCancelled ? '?includeCancelled=1' : ''));
+    _accruals = d.accruals || [];
+    _accrualMeta = d;
+    accrualsRender();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+const ACCRUAL_LABEL = {
+  awaiting_po: 'Awaiting PO', po_received: 'PO received', invoiced: 'Invoiced', cancelled: 'Cancelled',
+};
+const ACCRUAL_TONE = {
+  awaiting_po: { bg: '#fef3c7', color: '#92400e' },
+  po_received: { bg: '#e0f2fe', color: '#075985' },
+  invoiced:    { bg: '#dcfce7', color: '#166534' },
+  cancelled:   { bg: '#f3f4f6', color: '#6b7280' },
+};
+
+function accrualDays(r) {
+  const t = Date.parse(r.work_date || r.created_at || '');
+  return isNaN(t) ? null : Math.floor((Date.now() - t) / 86400000);
+}
+
+function accrualsRender() {
+  const el = document.getElementById('accruals-content');
+  if (!el || !_accruals) return;
+  const m = _accrualMeta || {};
+  const by = m.byStatus || {};
+  const tile = (label, v, sub, color) => `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 16px;min-width:150px;border-left:3px solid ${color};">
+    <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;">${escHtml(label)}</div>
+    <div style="font-size:19px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;">${escHtml(v)}</div>
+    <div style="font-size:11px;color:var(--gray-500);">${escHtml(sub)}</div></div>`;
+  const st = (k) => by[k] || { count: 0, amount: 0 };
+
+  const rows = _accruals.slice().sort((a, b) => b.amount - a.amount);
+  el.innerHTML = `
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+      ${tile('Open accrual value', amzMoney(m.openTotal || 0), `${m.openCount || 0} not yet invoiced`, '#d97706')}
+      ${tile('Awaiting PO', amzMoney(st('awaiting_po').amount), `${st('awaiting_po').count} entries`, '#f59e0b')}
+      ${tile('PO received', amzMoney(st('po_received').amount), `${st('po_received').count} ready to invoice`, '#0284c7')}
+      ${tile('Invoiced', amzMoney(st('invoiced').amount), `${st('invoiced').count} closed out`, '#16a34a')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <button onclick="accrualOpenForm()" style="padding:7px 14px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">+ Record accrual</button>
+      <button onclick="accrualExportCsv()" style="padding:7px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ CSV</button>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-700);cursor:pointer;">
+        <input type="checkbox" ${_accrualShowCancelled ? 'checked' : ''} onchange="_accrualShowCancelled=this.checked;accrualsLoad()"> show cancelled
+      </label>
+      ${m.scoped ? '<span style="font-size:11px;color:var(--gray-500);">showing your sites only</span>' : ''}
+      ${m.intacctOrderEntry && !m.intacctOrderEntry.available ? `<span title="${escHtml(m.intacctOrderEntry.reason)}" style="margin-left:auto;font-size:11px;color:#92400e;background:#fef3c7;border-radius:10px;padding:2px 10px;">Push to Intacct unavailable — ${escHtml(m.intacctOrderEntry.reason)}</span>` : ''}
+    </div>
+    ${rows.length ? accrualTableHtml(rows) : '<div style="padding:30px;text-align:center;color:var(--gray-500);background:var(--white);border-radius:10px;box-shadow:var(--shadow);">Nothing recorded yet. Use “Record accrual” when work is done before a PO exists.</div>'}
+  `;
+}
+
+function accrualTableHtml(rows) {
+  return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--gray-100);">
+        <th style="text-align:left;padding:9px 12px;">Site</th>
+        <th style="text-align:left;padding:9px 12px;">Work</th>
+        <th style="text-align:left;padding:9px 12px;">Department</th>
+        <th style="text-align:left;padding:9px 12px;">Work date</th>
+        <th style="text-align:right;padding:9px 12px;">Amount</th>
+        <th style="text-align:right;padding:9px 12px;">Age</th>
+        <th style="text-align:left;padding:9px 12px;">Status</th>
+        <th style="text-align:left;padding:9px 12px;">PO / Invoice</th>
+        <th style="text-align:left;padding:9px 12px;">Actions</th>
+      </tr></thead>
+      <tbody>${rows.map(r => {
+        const tone = ACCRUAL_TONE[r.status] || ACCRUAL_TONE.cancelled;
+        const age = accrualDays(r);
+        return `<tr style="border-top:1px solid var(--gray-200);">
+          <td style="padding:8px 12px;font-weight:600;color:var(--navy);">${escHtml(r.site_code || '—')}
+            ${r.businessUnit ? `<span style="display:block;font-size:11px;font-weight:400;color:var(--gray-500);">${escHtml(r.businessUnit)}</span>` : ''}</td>
+          <td style="padding:8px 12px;max-width:280px;">${escHtml(r.description)}
+            ${r.notes ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.notes)}</span>` : ''}</td>
+          <td style="padding:8px 12px;font-size:12px;">${escHtml(r.dept_id || '—')}</td>
+          <td style="padding:8px 12px;font-size:12px;">${escHtml(r.work_date || '—')}</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(r.amount)}</td>
+          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${age !== null && age > 90 ? '#dc2626' : 'var(--gray-600)'};">${age === null ? '—' : age + 'd'}</td>
+          <td style="padding:8px 12px;"><span style="background:${tone.bg};color:${tone.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;">${escHtml(ACCRUAL_LABEL[r.status] || r.status)}</span>
+            ${r.cancel_reason ? `<span style="display:block;font-size:11px;color:var(--gray-500);">${escHtml(r.cancel_reason)}</span>` : ''}</td>
+          <td style="padding:8px 12px;font-size:12px;">${escHtml(r.po_number || '')}${r.po_number && r.invoice_id ? ' · ' : ''}${escHtml(r.invoice_id || '')}${!r.po_number && !r.invoice_id ? '—' : ''}</td>
+          <td style="padding:8px 12px;white-space:nowrap;">${accrualActionsHtml(r)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function accrualActionsHtml(r) {
+  const btn = (label, fn, tone) => `<button onclick="${fn}" style="margin-right:4px;padding:2px 8px;border:1px solid ${tone};background:var(--white);color:${tone};border-radius:5px;font-size:11px;cursor:pointer;">${label}</button>`;
+  if (r.status === 'awaiting_po') return btn('PO received', `accrualMarkPo(${r.id})`, '#0284c7') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626');
+  if (r.status === 'po_received') return btn('Invoiced', `accrualMarkInvoiced(${r.id})`, '#16a34a') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626');
+  return '<span style="font-size:11px;color:var(--gray-500);">—</span>';
+}
+
+async function accrualPatch(id, body) {
+  try {
+    await apiFetch('/api/amazon/accruals/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    accrualsLoad();
+  } catch (e) { alert(e.message); }
+}
+
+// The prompts ask for the evidence the server requires anyway, so a transition
+// can never be recorded without the thing that justifies it.
+function accrualMarkPo(id) {
+  const po = prompt('PO number Amazon issued for this work:');
+  if (po && po.trim()) accrualPatch(id, { status: 'po_received', poNumber: po.trim().toUpperCase() });
+}
+function accrualMarkInvoiced(id) {
+  const inv = prompt('Invoice number raised for this work:');
+  if (inv && inv.trim()) accrualPatch(id, { status: 'invoiced', invoiceId: inv.trim().toUpperCase() });
+}
+function accrualCancel(id) {
+  const why = prompt('Why is this accrual being cancelled? (kept on the record, never deleted)');
+  if (why && why.trim()) accrualPatch(id, { status: 'cancelled', cancelReason: why.trim() });
+}
+
+function accrualOpenForm() {
+  const m = document.getElementById('accrual-modal');
+  if (!m) return;
+  ['ac-site', 'ac-desc', 'ac-amount', 'ac-date', 'ac-notes'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  document.getElementById('ac-msg').innerHTML = '';
+  m.style.display = 'flex';
+  setTimeout(() => { const e = document.getElementById('ac-site'); if (e) e.focus(); }, 30);
+}
+function accrualCloseForm() { const m = document.getElementById('accrual-modal'); if (m) m.style.display = 'none'; }
+
+async function accrualSave() {
+  const msg = document.getElementById('ac-msg');
+  const body = {
+    siteCode: (document.getElementById('ac-site').value || '').trim(),
+    deptId: document.getElementById('ac-dept').value,
+    description: (document.getElementById('ac-desc').value || '').trim(),
+    amount: document.getElementById('ac-amount').value,
+    workDate: document.getElementById('ac-date').value,
+    notes: (document.getElementById('ac-notes').value || '').trim(),
+  };
+  if (!body.description) { msg.innerHTML = '<span style="color:var(--red)">Describe the work — this is what tells someone later what the money is for.</span>'; return; }
+  if (!(parseFloat(body.amount) > 0)) { msg.innerHTML = '<span style="color:var(--red)">Enter the amount accrued.</span>'; return; }
+  try {
+    await apiFetch('/api/amazon/accruals', { method: 'POST', body: JSON.stringify(body) });
+    accrualCloseForm();
+    accrualsLoad();
+  } catch (e) { msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`; }
+}
+
+function accrualExportCsv() {
+  const rows = _accruals || [];
+  if (!rows.length) return;
+  const cols = [['Site','site_code'],['Business Unit','businessUnit'],['Description','description'],['Department','dept_id'],
+    ['Work Date','work_date'],['Amount','amount'],['Status','status'],['PO','po_number'],['Invoice','invoice_id'],
+    ['Service Center','service_center'],['Notes','notes'],['Cancel Reason','cancel_reason'],['Created By','created_by'],['Created At','created_at']];
+  const esc = (v) => { if (v === null || v === undefined) return ''; const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = [cols.map(c => c[0]).join(',')].concat(rows.map(r => cols.map(c => esc(r[c[1]])).join(','))).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ecf-amazon-accruals-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 800);
+}
+
+(function injectAccrualModal() {
+  const html = `
+<div id="accrual-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)accrualCloseForm()">
+  <div class="modal-box" style="width:540px;max-width:95vw">
+    <h3 style="margin-bottom:2px">Record an accrual</h3>
+    <div style="font-size:12px;color:var(--gray-500);margin-bottom:12px">Work performed for Amazon with no PO yet. It stays here until a PO arrives and it can be invoiced.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Site code</label>
+        <input id="ac-site" placeholder="DBL1" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Department</label>
+        <select id="ac-dept" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+          <option value="">—</option><option value="D-SNOW">Snow Removal</option><option value="D-GRMT">Landscape Maintenance</option>
+          <option value="D-ARBR">Arbor</option><option value="D-LAPR">Landscape Projects</option><option value="D-PKLT">Parking Lot</option><option value="D-IRMG">Irrigation</option>
+        </select></div>
+    </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">What was done</label>
+    <input id="ac-desc" placeholder="e.g. Dec 18 snow event, 3 pushes" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Amount accrued</label>
+        <input id="ac-amount" type="number" step="0.01" min="0" placeholder="12500.00" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+      <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Work date</label>
+        <input id="ac-date" type="date" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px"></div>
+    </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Notes <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
+    <input id="ac-notes" placeholder="who authorised it, what we are waiting on" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px">
+    <div id="ac-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="accrualCloseForm()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="accrualSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save accrual</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
