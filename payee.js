@@ -208,6 +208,45 @@ function isAmazonInvoice(sageInvoiceId) {
   return !!feed.index[payeeId.toUpperCase()];
 }
 
+/**
+ * Payee ids that a LATER attempt has superseded.
+ *
+ * Payee Central refuses a reused invoice number, so a rejected or cancelled
+ * invoice is resubmitted as S8604A, then S8604B. The dead original stays in the
+ * feed forever. Anything that walks the raw index therefore double-counts: it
+ * sees ECI021128 "Cancelled" as live work needing attention while ECI021128C is
+ * already Scheduled for payment. 106 of the 117 chains in the feed are exactly
+ * that shape (Edwin 2026-09-09: a resubmitted invoice "is captured elsewhere and
+ * should be excluded by the superseding status").
+ *
+ * Returns { superseded: Set<id>, supersededBy: {id -> winning id} }. One pass
+ * over the feed, so callers can filter without a per-invoice resolve.
+ */
+function getSupersededIds() {
+  const feed = loadFeed();
+  const chains = {};
+  for (const id of Object.keys(feed.index)) {
+    const m = /^([A-Z]+[0-9]+)([A-Z]{1,2})?$/.exec(id);
+    if (!m) continue;
+    (chains[m[1]] = chains[m[1]] || []).push(id);
+  }
+  const superseded = new Set();
+  const supersededBy = {};
+  for (const ids of Object.values(chains)) {
+    if (ids.length < 2) continue;
+    let best = ids[0];
+    for (const id of ids.slice(1)) {
+      if (moreCurrentEntry(feed.index[best], feed.index[id]) === feed.index[id]) best = id;
+    }
+    for (const id of ids) {
+      if (id === best) continue;
+      superseded.add(id);
+      supersededBy[id] = best;
+    }
+  }
+  return { superseded, supersededBy };
+}
+
 function feedMeta() {
   const feed = loadFeed();
   return { generatedAt: feed.generatedAt, total: feed.total };
@@ -270,4 +309,4 @@ function getOpenPoMap() {
 
 function invalidateOpenPoCache() { _openPoCache = null; _openPoCacheTs = 0; }
 
-module.exports = { lookupInvoice, resolveInvoice, isAmazonInvoice, feedMeta, getIndex, invalidateCache, toPayeeId, getOpenPoMap, invalidateOpenPoCache };
+module.exports = { lookupInvoice, resolveInvoice, isAmazonInvoice, feedMeta, getIndex, getSupersededIds, invalidateCache, toPayeeId, getOpenPoMap, invalidateOpenPoCache };

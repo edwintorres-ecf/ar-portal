@@ -984,8 +984,20 @@ function getPayeeAging(opts = {}) {
     b.count++; b.amount += inv.amount; b.invoices.push(inv);
   };
 
+  // A resubmitted invoice leaves its dead original in the feed forever. Counting
+  // those as parked work overstates the backlog and, worse, points people at an
+  // invoice that has already moved on under a suffixed id.
+  let superseded = new Set(), supersededBy = {};
+  try { ({ superseded, supersededBy } = payee.getSupersededIds()); } catch (e) { /* older payee.js */ }
+  let excludedSuperseded = 0, excludedSupersededAmount = 0;
+
   for (const [invNo, item] of Object.entries(payee.getIndex())) {
     const status = (item.status || '').trim();
+    if (superseded.has(invNo)) {
+      excludedSuperseded++;
+      excludedSupersededAmount += parseAmount(item.amount) || 0;
+      continue;
+    }
     const isAging = reasons.has(status);
     const dueMs = Date.parse(item.dueDate);
     const pastDue = !isNaN(dueMs) && dueMs < now;
@@ -1035,6 +1047,10 @@ function getPayeeAging(opts = {}) {
   return {
     generatedAt: new Date().toISOString(),
     feedGeneratedAt,
+    // Reported rather than hidden: the exclusion is a judgement, so the number
+    // it removed should be visible.
+    supersededExcluded: excludedSuperseded,
+    supersededExcludedAmount: Math.round(excludedSupersededAmount * 100) / 100,
     totals: { count: all.length, amount: Math.round(all.reduce((t, i) => t + i.amount, 0) * 100) / 100 },
     bands: { '0-30': band(0, 30), '31-60': band(31, 60), '61-90': band(61, 90), '90+': band(91, null) },
     buckets: out,
