@@ -25,6 +25,7 @@ const { scrapePayeeCentral, scrapeOpenPOs } = require('./payee-scraper');
 const { scrapePoDetails } = require('./payee-po-detail-scraper');
 const { scanPoDocs } = require('./po-doc-watcher');
 const poLedger = require('./po-ledger');
+const siteLedger = require('./site-ledger');
 const ai       = require('./ai');
 const ediBridge = require('./edi-bridge');
 // Live EDI transmission stays OFF until explicitly armed via env. Dry-run
@@ -1781,6 +1782,39 @@ app.post('/api/ai/prioritize', requireAuth, async (req, res) => {
 app.get('/api/po/aging', requireAuth, (req, res) => {
   try {
     res.json(poLedger.getPayeeAging({ minDays: parseInt(req.query.minDays, 10) || 0 }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Amazon view: Department > Business Unit > Site > PO > Invoice ──────────
+// Returns the flat row set plus the filter vocabularies. The vocabularies come
+// from the CODE LISTS, not from the rows, so a department or business unit with
+// no open invoices today is still a pickable filter rather than silently
+// missing (D-ARBR has zero open Amazon invoices right now).
+app.get('/api/amazon/explorer', requireAuth, (req, res) => {
+  try {
+    const rows = siteLedger.buildAmazonRows(sage.getCachedInvoices(), { payee });
+    const master = db.getAmazonLocationMap();
+    const businessUnits = [...new Set(Object.values(master).map(l => l.businessUnit).filter(Boolean))].sort();
+    const siteTypes = [...new Set(Object.values(master).map(l => l.siteType).filter(Boolean))].sort();
+    const regions = [...new Set(Object.values(master).map(l => l.region).filter(Boolean))].sort();
+    res.json({
+      generatedAt: new Date().toISOString(),
+      rows,
+      vocab: {
+        departmentGroups: siteLedger.departmentGroups(),
+        departments: siteLedger.DEPT_GROUPS,
+        businessUnits, siteTypes, regions,
+      },
+      unresolved: siteLedger.getNeedsReview(),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Pin a site onto one invoice from the review queue, then recompute the ledger
+// so the fix is visible immediately rather than at the next scheduled rebuild.
+app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'manager', 'ar_specialist'), (req, res) => {
+  try {
+    res.json(siteLedger.rebuild(sage.getCachedInvoices()));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

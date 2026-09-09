@@ -376,8 +376,91 @@ function getLedgerMap() {
   return out;
 }
 
+// ─── The Amazon view ────────────────────────────────────────────────────────
+// Edwin's structure narrows Department → Business Unit → Site → PO → Invoice,
+// but every filter must also work on its own, in any order. So this returns ONE
+// flat row per invoice carrying every dimension, and the client groups it.
+// Pre-aggregating the hierarchy server-side would hard-code the drill order and
+// make "show me every Landscape invoice at one site regardless of BU" a second
+// endpoint. A flat set is ~2,800 rows, which is nothing to group in the browser.
+
+const DEPT_GROUPS = {
+  'D-SNOW': 'Snow',
+  'D-GRMT': 'Landscape',
+  'D-ARBR': 'Projects',
+  'D-LAPR': 'Projects',
+  'D-PKLT': 'Projects',
+  'D-IRMG': 'Projects',
+};
+
+// Built from the code list, NOT from what happens to appear in the data:
+// D-ARBR currently has zero open invoices and must still be a pickable filter.
+function departmentGroups() {
+  const out = {};
+  for (const [code, group] of Object.entries(DEPT_GROUPS)) {
+    out[group] = out[group] || [];
+    out[group].push(code);
+  }
+  return out;
+}
+
+function buildAmazonRows(allInvoices, opts = {}) {
+  const payee = opts.payee || null;
+  const invoices = amazonInvoices(allInvoices);
+  const ledger = getLedgerMap();
+  let depts = {}, master = {}, assignments = {};
+  try { depts = db.getAllDepartments(); } catch (e) {}
+  try { master = db.getAmazonLocationMap(); } catch (e) {}
+  try { assignments = db.getAllPoAssignments(); } catch (e) {}
+
+  let payeeIndex = {};
+  if (payee) { try { payeeIndex = payee.getIndex() || {}; } catch (e) {} }
+
+  return invoices.map(inv => {
+    const rec = String(inv.recordNo);
+    const dep = depts[rec] || {};
+    const sl = ledger[rec] || {};
+    const loc = sl.siteCode ? master[sl.siteCode] : null;
+    const assigned = assignments[rec];
+    const po = String((assigned && assigned.assigned_po) || inv.poNumber || '').trim();
+    const pay = payeeIndex[inv.invoiceId] || null;
+    return {
+      recordNo: rec,
+      invoiceId: inv.invoiceId || '',
+      customerId: inv.customerId || '',
+      amount: parseFloat(inv.totalDue || 0) || 0,
+      billed: parseFloat(inv.totalEntered || 0) || 0,
+      invoiceDate: inv.whenCreated || '',
+      dueDate: inv.whenDue || '',
+      daysOverdue: inv.daysOverdue || 0,
+      bucket: inv.bucket || '',
+      // gate 1
+      deptId: dep.deptId || '',
+      deptName: dep.deptName || '',
+      deptGroup: DEPT_GROUPS[dep.deptId] || 'Unclassified',
+      deptMixed: !!dep.mixed,
+      // gate 2
+      businessUnit: loc ? (loc.businessUnit || '') : '',
+      region: loc ? (loc.region || '') : '',
+      siteType: loc ? (loc.siteType || '') : '',
+      // gate 3
+      site: sl.siteCode || '',
+      siteSource: sl.source || '',
+      siteConfidence: sl.confidence || '',
+      siteEvidence: sl.evidence || '',
+      // gate 4
+      po,
+      poAssigned: !!(assigned && assigned.assigned_po),
+      // gate 5 context
+      payeeStatus: pay ? (pay.status || '') : '',
+      serviceCenter: inv.locationName || '',
+    };
+  });
+}
+
 module.exports = {
   rebuild, resolveAll, getNeedsReview, getLedgerMap, summarize,
   normalizeSite, isCanonical, deriveCandidates, buildSiteUniverse,
+  buildAmazonRows, departmentGroups, DEPT_GROUPS,
   AMAZON_CUSTOMERS,
 };
