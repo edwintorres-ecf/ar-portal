@@ -1948,7 +1948,7 @@ app.get('/api/health/data', requireAuth, (req, res) => {
 // ─── Manual PO→site assignment ───────────────────────────────────────────
 // For POs whose documents/invoices don't reveal a site: a human pins it here
 // and the assignment wins over every automatic attribution source.
-app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.edit'), (req, res) => {
+app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();

@@ -4300,6 +4300,16 @@ function pbsDrill(site) {
 }
 
 // Manually pin a PO to a site — wins over every automatic source.
+function canAssignPoSite() {
+  // /auth/me does not return capabilities, so use comms.js's commsHasCap: it
+  // uses the real list once loaded and falls back to correct role tiers before
+  // then. ar_specialist has po.edit but NOT po.admin, which is exactly the line
+  // being drawn here. The server gate is the real rule; this only hides a
+  // control the user cannot use.
+  if (typeof commsHasCap === 'function') return commsHasCap('po.admin');
+  return !!(currentUser && currentUser.role === 'admin');
+}
+
 async function assignPoSite(poNumber) {
   const known = [...new Set((_poLedger || []).map(r => r.siteCode).filter(Boolean))].sort().join(', ');
   const input = prompt(`Site code for ${poNumber} (e.g. DTW1).\nLeave empty to clear a manual assignment.\n\nKnown sites: ${known.slice(0, 300)}${known.length > 300 ? '…' : ''}`);
@@ -4473,8 +4483,8 @@ function renderPendingBySite() {
     return s.poRows.map((r, i) => {
       const remFrac = (r.available != null && r.ceilingAmount > 0) ? r.available / r.ceilingAmount : null;
       const assignBtn = isNoSite
-        ? ` <button class="btn-sm" style="font-size:10px;padding:1px 7px;background:#ede9fe;color:#5b21b6;border:none;border-radius:5px;cursor:pointer" title="Manually assign this PO to a site" onclick="assignPoSite('${escHtml(r.poNumber)}')">🏷 Set site</button>`
-        : (r.siteManual ? ` <span title="Site manually assigned — click to change" onclick="assignPoSite('${escHtml(r.poNumber)}')" style="font-size:9px;background:#e0f2fe;color:#0369a1;border-radius:5px;padding:0 5px;cursor:pointer;vertical-align:middle">manual</span>` : '');
+        ? (canAssignPoSite() ? ` <button class="btn-sm" style="font-size:10px;padding:1px 7px;background:#ede9fe;color:#5b21b6;border:none;border-radius:5px;cursor:pointer" title="Manually assign this PO to a site" onclick="assignPoSite('${escHtml(r.poNumber)}')">🏷 Set site</button>` : '')
+        : (r.siteManual ? ` <span title="Site manually assigned${canAssignPoSite() ? ' — click to change' : ''}"${canAssignPoSite() ? ` onclick="assignPoSite('${escHtml(r.poNumber)}')"` : ''} style="font-size:9px;background:#e0f2fe;color:#0369a1;border-radius:5px;padding:0 5px;${canAssignPoSite() ? 'cursor:pointer;' : ''}vertical-align:middle">manual</span>` : '');
       return `<tr style="border-bottom:1px solid var(--gray-100)">
         ${i === 0 ? siteCell : ''}
         <td style="padding:6px 8px;color:var(--navy);font-weight:600;white-space:nowrap">${escHtml(r.poNumber)}${pbsServiceChip(r.serviceType)}${r.serviceManual ? '<span title="Service set manually" style="font-size:9px;color:#0369a1">✎</span>' : ''}${r.needsServiceReview ? ` <span title="Service not identified from the PO document — click to classify (hidden by the ❄️ snow filter until you do)" style="cursor:pointer" onclick="openServiceReview()">⚠️</span>` : ''}${r.noRealPo ? ` <span title="Not a real Amazon PO — invoice is waiting for a PO to be assigned before it can be uploaded" style="font-size:9px;background:#fee2e2;color:#991b1b;border-radius:5px;padding:0 5px;vertical-align:middle">no PO</span>` : ''}${r.docUrl ? ` <a href="${escHtml(r.docUrl)}" target="_blank" onclick="event.stopPropagation()" title="PO document${r.docVersion ? ' v' + r.docVersion : ''}">📄</a>` : ''}${r.docRevised ? `<span title="PO has been uplifted/revised (v${r.docVersion})" style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:6px;padding:0 5px;margin-left:3px;vertical-align:middle">v${r.docVersion}</span>` : ''}${assignBtn}${(r.orderDate || r.docDate) ? `<div style="font-size:9.5px;color:var(--gray-400);font-weight:400" title="PO issue date (Amazon)${r.docDate ? (r.docDateIsRevision ? ' · latest revision date (from the PDF\'s REVISED DATE field)' : ' · PO document date') : ''}">${r.orderDate ? 'PO ' + escHtml(r.orderDate) : ''}${r.docDate ? (r.orderDate ? ' · ' : '') + (r.docDateIsRevision ? 'rev ' : 'doc ') + pbsShortDate(r.docDate) : ''}</div>` : ''}</td>
@@ -5835,6 +5845,42 @@ async function loadAmazonView() {
   }
 }
 
+// ─── Amazon AR: click a tile to see what feeds it ────────────────────────────
+// Every tile is an aggregate, and the question "which invoices make up this
+// number" was previously unanswerable without exporting. The tile now sets a
+// predicate over the same invoice array the totals were computed from, so the
+// table below cannot disagree with the tile above it.
+let _amzArFilter = null;   // { label, test(inv) }
+
+const AMZ_AR_FILTERS = {
+  all:      { label: 'All open invoices',        test: () => true },
+  pastdue:  { label: 'Past due',                 test: (i) => i.bucket && i.bucket !== 'current' },
+  current:  { label: 'Current, not yet due',     test: (i) => i.bucket === 'current' },
+  covered:  { label: 'Found in Payee Central',   test: (i) => !!i.payeeStatus },
+  nodata:   { label: 'Not in Payee Central',     test: (i) => !i.payeeStatus },
+};
+
+function amzArSetFilter(kind, statusKey) {
+  if (kind === 'status') {
+    const same = _amzArFilter && _amzArFilter.key === 'status:' + statusKey;
+    _amzArFilter = same ? null : {
+      key: 'status:' + statusKey,
+      label: 'Payee status: ' + statusKey,
+      test: (i) => (i.payeeStatus && i.payeeStatus.status) === statusKey,
+    };
+  } else if (kind === 'all' || !AMZ_AR_FILTERS[kind]) {
+    _amzArFilter = null;
+  } else {
+    const same = _amzArFilter && _amzArFilter.key === kind;
+    _amzArFilter = same ? null : { key: kind, ...AMZ_AR_FILTERS[kind] };
+  }
+  renderAmazonView();
+  const el = document.getElementById('amazon-table-wrap');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function amzArClearFilter() { _amzArFilter = null; renderAmazonView(); }
+
 function renderAmazonView() {
   if (!_amazonData) return;
   const d = _amazonData;
@@ -5850,15 +5896,19 @@ function renderAmazonView() {
 
   // Summary cards
   sumEl.innerHTML = [
-    { label: 'Total Amazon AR', value: fmt$(d.totalAR), sub: `${d.invoiceCount} invoices`, color: 'var(--navy)' },
-    { label: 'Past Due', value: fmt$(pastDue), sub: d.totalAR > 0 ? Math.round(pastDue/d.totalAR*100) + '%' : '0%', color: '#dc2626' },
-    { label: 'Current', value: fmt$(d.buckets.current || 0), sub: '', color: '#16a34a' },
-    { label: 'Payee Coverage', value: covPct + '%', sub: `${d.payeeCoverage} / ${d.invoiceCount} invoices`, color: '#0369a1' },
-  ].map(c => `<div style="background:var(--white);border-radius:8px;padding:12px 18px;box-shadow:var(--shadow);min-width:150px">
-    <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em">${c.label}</div>
-    <div style="font-size:20px;font-weight:700;color:${c.color}">${c.value}</div>
-    ${c.sub ? `<div style="font-size:11px;color:var(--gray-500)">${c.sub}</div>` : ''}
-  </div>`).join('');
+    { kind: 'all', label: 'Total Amazon AR', value: fmt$(d.totalAR), sub: `${d.invoiceCount} invoices`, color: 'var(--navy)' },
+    { kind: 'pastdue', label: 'Past Due', value: fmt$(pastDue), sub: d.totalAR > 0 ? Math.round(pastDue/d.totalAR*100) + '%' : '0%', color: '#dc2626' },
+    { kind: 'current', label: 'Current', value: fmt$(d.buckets.current || 0), sub: '', color: '#16a34a' },
+    { kind: 'covered', label: 'Payee Coverage', value: covPct + '%', sub: `${d.payeeCoverage} / ${d.invoiceCount} invoices`, color: '#0369a1' },
+  ].map(c => {
+    const on = (_amzArFilter && _amzArFilter.key === c.kind) || (!_amzArFilter && c.kind === 'all');
+    return `<div onclick="amzArSetFilter('${c.kind}')" title="Show the invoices behind this number"
+      style="background:var(--white);border-radius:8px;padding:12px 18px;box-shadow:var(--shadow);min-width:150px;cursor:pointer;border:1px solid ${on ? c.color : 'transparent'};transition:border-color .12s ease">
+      <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em">${c.label}</div>
+      <div style="font-size:20px;font-weight:700;color:${c.color}">${c.value}</div>
+      ${c.sub ? `<div style="font-size:11px;color:var(--gray-500)">${c.sub}</div>` : ''}
+    </div>`;
+  }).join('');
 
   // Payee status breakdown
   const statusEntries = Object.entries(d.byStatus).sort((a, b) => b[1].amount - a[1].amount);
@@ -5868,7 +5918,9 @@ function renderAmazonView() {
       const bg = meta.bg || '#f3f4f6';
       const color = meta.color || '#374151';
       const icon = meta.icon || '•';
-      return `<div style="background:var(--white);border-radius:8px;padding:10px 16px;box-shadow:var(--shadow);min-width:160px;border-left:4px solid ${color}">
+      const on = _amzArFilter && _amzArFilter.key === 'status:' + status;
+      return `<div onclick="amzArSetFilter('status', ${JSON.stringify(status).replace(/"/g, '&quot;')})" title="Show these invoices"
+        style="background:var(--white);border-radius:8px;padding:10px 16px;box-shadow:var(--shadow);min-width:160px;border-left:4px solid ${color};cursor:pointer;outline:${on ? '2px solid ' + color : 'none'};outline-offset:1px">
         <div style="font-size:12px;font-weight:600;color:${color}">${icon} ${status}</div>
         <div style="font-size:18px;font-weight:700;color:var(--navy)">${fmt$(info.amount)}</div>
         <div style="font-size:11px;color:var(--gray-500)">${info.count} invoice${info.count!==1?'s':''}</div>
@@ -5881,7 +5933,9 @@ function renderAmazonView() {
   }
 
   // Invoice table (top 200 by amount)
-  const invoices = d.invoices.slice().sort((a, b) => b.totalDue - a.totalDue).slice(0, 300);
+  const matching = _amzArFilter ? d.invoices.filter(_amzArFilter.test) : d.invoices;
+  const matchTotal = matching.reduce((t, i) => t + (i.totalDue || 0), 0);
+  const invoices = matching.slice().sort((a, b) => b.totalDue - a.totalDue).slice(0, 300);
   const rows = invoices.map(inv => {
     const ps = inv.payeeStatus;
     const statusBadge = ps
@@ -5899,7 +5953,12 @@ function renderAmazonView() {
     </tr>`;
   }).join('');
 
-  tblEl.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--gray-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Open Invoices (${d.invoiceCount.toLocaleString()})</div>
+  tblEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+    <div style="font-size:12px;font-weight:600;color:var(--gray-700);text-transform:uppercase;letter-spacing:.05em">Open Invoices (${matching.length.toLocaleString()}${_amzArFilter ? ' of ' + d.invoiceCount.toLocaleString() : ''})</div>
+    ${_amzArFilter ? `<span style="background:#e0f2fe;color:#075985;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600">${escHtml(_amzArFilter.label)} · ${fmt$(matchTotal)}</span>
+      <button onclick="amzArClearFilter()" style="border:1px solid var(--gray-300);background:var(--white);border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer">Clear</button>` : ''}
+    ${invoices.length < matching.length ? `<span style="font-size:11px;color:var(--gray-500);margin-left:auto">showing the largest ${invoices.length} of ${matching.length.toLocaleString()}</span>` : ''}
+  </div>
   <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto">
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
