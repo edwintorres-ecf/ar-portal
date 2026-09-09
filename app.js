@@ -3455,6 +3455,17 @@ app.get('/api/stop-service-view', requireAuth, async (req, res) => {
 // Fills ONLY invoices with no effective collector (invoice- or customer-
 // level); never reassigns existing ownership. First matching rule by
 // priority wins. Runs daily + on demand.
+// Negative = not due yet, 0 = due today, positive = past due.
+function daysRelativeToDue(inv) {
+  const due = Date.parse(inv.whenDue);
+  if (isNaN(due)) return inv.daysOverdue == null ? null : inv.daysOverdue;
+  const d = new Date(due);
+  const dueDay = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const n = new Date();
+  const today = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+  return Math.round((today - dueDay) / 86400000);
+}
+
 function applyAssignmentRules(triggeredBy) {
   const rules = db.listAssignmentRules().filter(r => r.active);
   if (!rules.length) return { assigned: 0, rules: 0 };
@@ -3469,11 +3480,20 @@ function applyAssignmentRules(triggeredBy) {
     if (invColl[inv.recordNo]) continue;
     const acct = acctByCust[inv.customerId];
     if (acct && acct.collector_email) continue;
-    const d = inv.daysOverdue || 0;
-    const rule = rules.find(r =>
-      (!r.location_id || r.location_id === inv.locationId) &&
-      d >= (r.min_days_past_due || 0) &&
-      (r.max_days_past_due == null || d <= r.max_days_past_due));
+    // Days relative to the DUE DATE, signed. `inv.daysOverdue` is floored at 0
+    // by computeAgingBucket, so it cannot express "not due yet" — an invoice
+    // due next week and one due today both read 0. Recomputing from whenDue is
+    // what lets a rule fire BEFORE the due date (Edwin's "Auto Assign <5 Days
+    // to Due Date" was unbuildable against the floored value).
+    const d = daysRelativeToDue(inv);
+    if (d === null) continue;
+    const rule = rules.find(r => {
+      const locs = r.locationIds && r.locationIds.length ? r.locationIds : (r.location_id ? [r.location_id] : []);
+      if (locs.length && !locs.includes(inv.locationId)) return false;
+      const min = r.min_days_past_due == null ? -99999 : r.min_days_past_due;
+      const max = r.max_days_past_due == null ? 99999 : r.max_days_past_due;
+      return d >= min && d <= max;
+    });
     if (!rule) continue;
     db.setInvoiceCollector(inv.recordNo, inv.invoiceId, rule.collector_email, 'auto-rule:' + rule.id);
     assigned++;

@@ -1561,22 +1561,49 @@ function updateUserJobTitle(email, jobTitle) {
   d.prepare("UPDATE user_roles SET job_title=? WHERE email=?").run(jobTitle || null, email);
 }
 
+// `location_ids` (JSON array) supersedes the single `location_id`; the old
+// column is kept and still honoured so existing rules keep working untouched.
+function ensureAssignmentRuleColumns() {
+  const d = getDb();
+  try { d.exec('ALTER TABLE assignment_rules ADD COLUMN location_ids TEXT'); } catch (e) { /* already present */ }
+}
+
 function listAssignmentRules() {
-  return getDb().prepare('SELECT * FROM assignment_rules ORDER BY priority ASC, id ASC').all();
+  ensureAssignmentRuleColumns();
+  return getDb().prepare('SELECT * FROM assignment_rules ORDER BY priority ASC, id ASC').all().map(r => {
+    let ids = [];
+    try { ids = JSON.parse(r.location_ids || '[]'); } catch (e) { ids = []; }
+    if (!ids.length && r.location_id) ids = [r.location_id];
+    return { ...r, locationIds: ids };
+  });
 }
 function upsertAssignmentRule(id, f, by) {
   const d2 = getDb();
+  ensureAssignmentRuleColumns();
+  // Accept an array of locations from the caller and store it as JSON, keeping
+  // the legacy single column in step so nothing that still reads it breaks.
+  if (Array.isArray(f.locationIds)) {
+    const list = f.locationIds.filter(Boolean);
+    f.location_ids = list.length ? JSON.stringify(list) : null;
+    f.location_id = list.length === 1 ? list[0] : null;
+  }
   if (id) {
     const sets = [], vals = [];
-    for (const k of ['name', 'active', 'priority', 'location_id', 'min_days_past_due', 'max_days_past_due', 'collector_email']) {
+    for (const k of ['name', 'active', 'priority', 'location_id', 'location_ids', 'min_days_past_due', 'max_days_past_due', 'collector_email']) {
       if (f[k] !== undefined) { sets.push(k + '=?'); vals.push(f[k]); }
     }
     if (sets.length) { sets.push("updated_at=datetime('now')"); vals.push(id);
       d2.prepare('UPDATE assignment_rules SET ' + sets.join(',') + ' WHERE id=?').run(...vals); }
     return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(id);
   }
-  const r = d2.prepare('INSERT INTO assignment_rules (name, active, priority, location_id, min_days_past_due, max_days_past_due, collector_email, created_by) VALUES (?,?,?,?,?,?,?,?)')
-    .run(f.name, f.active ? 1 : 0, f.priority || 1, f.location_id || null, f.min_days_past_due || 0, f.max_days_past_due ?? null, f.collector_email, by || null);
+  const r = d2.prepare('INSERT INTO assignment_rules (name, active, priority, location_id, location_ids, min_days_past_due, max_days_past_due, collector_email, created_by) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(f.name, f.active ? 1 : 0, f.priority || 1, f.location_id || null, f.location_ids || null,
+      // Days are relative to the DUE DATE and may be negative, so a rule can
+      // fire before an invoice is due. `|| 0` would swallow a legitimate 0 but
+      // also a legitimate negative, hence the explicit null check.
+      f.min_days_past_due == null ? 0 : parseInt(f.min_days_past_due, 10),
+      f.max_days_past_due == null || f.max_days_past_due === '' ? null : parseInt(f.max_days_past_due, 10),
+      f.collector_email, by || null);
   return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(r.lastInsertRowid);
 }
 function deleteAssignmentRule(id) { getDb().prepare('DELETE FROM assignment_rules WHERE id=?').run(id); }
@@ -2433,6 +2460,7 @@ module.exports = {
   updateUserJobTitle,
   updateUserPhone,
   setUserPermissions,
+  ensureAssignmentRuleColumns,
   listAssignmentRules,
   upsertAssignmentRule,
   deleteAssignmentRule,
