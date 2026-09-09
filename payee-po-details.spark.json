@@ -1,10 +1,12 @@
 {
-  "generatedAt": "2026-09-09T12:51:36.575Z",
+  "generatedAt": "2026-09-09T13:13:04.802Z",
   "source": "payee-po-detail-scraper",
   "openTotal": 1218,
-  "ok": 625,
+  "scraped": 586,
+  "ok": 586,
   "failed": 0,
-  "partial": true,
+  "failRatio": 0,
+  "trustworthy": true,
   "details": {
     "2D-22065956": {
       "available": 198137.27,
@@ -22752,11 +22754,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927322": {
-      "available": 27511.73,
+      "available": 18341.15,
       "poAmount": 73364.63,
       "status": "Open",
       "site": "RYY2",
@@ -22792,14 +22794,20 @@
           "date": "Aug 3, 2026",
           "amount": 9170.58,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025585",
+          "date": "Sep 9, 2026",
+          "amount": 9170.58,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927314": {
-      "available": 32000,
+      "available": 24000,
       "poAmount": 96000,
       "status": "Open",
       "site": "MCO1",
@@ -22853,14 +22861,20 @@
           "date": "Aug 3, 2026",
           "amount": 8000,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025640",
+          "date": "Sep 9, 2026",
+          "amount": 8000,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927268": {
-      "available": 33753.14,
+      "available": 25314.97,
       "poAmount": 101258.5,
       "status": "Open",
       "site": "TMB8",
@@ -22914,10 +22928,16 @@
           "date": "Aug 3, 2026",
           "amount": 8438.17,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025734",
+          "date": "Sep 9, 2026",
+          "amount": 8438.17,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927237": {
@@ -23008,7 +23028,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927214": {
@@ -23039,7 +23059,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19927209": {
@@ -23100,7 +23120,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19903844": {
@@ -23161,11 +23181,11 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19883237": {
-      "available": 4563.44,
+      "available": 3422.58,
       "poAmount": 13690.32,
       "status": "Open",
       "site": "LAS5",
@@ -23219,14 +23239,20 @@
           "date": "Aug 3, 2026",
           "amount": 1140.86,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025639",
+          "date": "Sep 9, 2026",
+          "amount": 1140.86,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19883226": {
-      "available": 11522.76,
+      "available": 7668.99,
       "poAmount": 30830.15,
       "status": "Open",
       "site": "DSM9",
@@ -23262,14 +23288,20 @@
           "date": "Aug 3, 2026",
           "amount": 3853.77,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025603",
+          "date": "Sep 9, 2026",
+          "amount": 3853.77,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19883219": {
-      "available": 10604.17,
+      "available": 7922.64,
       "poAmount": 32178.41,
       "status": "Open",
       "site": "AZA5",
@@ -23323,14 +23355,20 @@
           "date": "Aug 3, 2026",
           "amount": 2681.53,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025637",
+          "date": "Sep 9, 2026",
+          "amount": 2681.53,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19883222": {
-      "available": 12340.61,
+      "available": 9223.05,
       "poAmount": 37410.77,
       "status": "Open",
       "site": "AZA9",
@@ -23384,14 +23422,20 @@
           "date": "Aug 3, 2026",
           "amount": 3117.56,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025638",
+          "date": "Sep 9, 2026",
+          "amount": 3117.56,
+          "status": "Scheduled for payment"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19883216": {
-      "available": 16898.48,
+      "available": 12673.88,
       "poAmount": 42246.08,
       "status": "Open",
       "site": "CLT9",
@@ -23433,10 +23477,16 @@
           "date": "Aug 3, 2026",
           "amount": 4224.6,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025636",
+          "date": "Sep 9, 2026",
+          "amount": 4224.6,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19865668": {
@@ -23455,7 +23505,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19815581": {
@@ -23552,12 +23602,12 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19815576": {
-      "available": 0,
-      "poAmount": 21490.02,
+      "available": 1665.69,
+      "poAmount": 23155.71,
       "status": "Open",
       "site": "DBK6",
       "desc": "DBK6 - 144 Pilling St Snow Removal",
@@ -23613,11 +23663,11 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19777382": {
-      "available": 13201.21,
+      "available": 8543.97,
       "poAmount": 36592.2,
       "status": "Open",
       "site": "DCL9",
@@ -23653,14 +23703,20 @@
           "date": "Aug 3, 2026",
           "amount": 4657.24,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025579",
+          "date": "Sep 9, 2026",
+          "amount": 4657.24,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19777339": {
-      "available": 7168.02,
+      "available": 4778.68,
       "poAmount": 19114.72,
       "status": "Open",
       "site": "DDC4",
@@ -23696,14 +23752,20 @@
           "date": "Aug 3, 2026",
           "amount": 2389.34,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025595",
+          "date": "Sep 9, 2026",
+          "amount": 2389.34,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19777235": {
-      "available": 16256.25,
+      "available": 12133.7,
       "poAmount": 36869,
       "status": "Open",
       "site": "HBO2",
@@ -23739,14 +23801,20 @@
           "date": "Aug 3, 2026",
           "amount": 4122.55,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025614",
+          "date": "Sep 9, 2026",
+          "amount": 4122.55,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19777233": {
-      "available": 4963.43,
+      "available": 3284.46,
       "poAmount": 13431.74,
       "status": "Open",
       "site": "DYY8",
@@ -23782,10 +23850,16 @@
           "date": "Aug 3, 2026",
           "amount": 1678.97,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025599",
+          "date": "Sep 9, 2026",
+          "amount": 1678.97,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19777230": {
@@ -23822,11 +23896,11 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19776540": {
-      "available": 30687.44,
+      "available": 20458.29,
       "poAmount": 81833.19,
       "status": "Open",
       "site": "SYR1",
@@ -23862,14 +23936,20 @@
           "date": "Aug 3, 2026",
           "amount": 10229.15,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025593",
+          "date": "Sep 9, 2026",
+          "amount": 10229.15,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19776511": {
-      "available": 26994.17,
+      "available": 17996.1,
       "poAmount": 71984.52,
       "status": "Open",
       "site": "TTN2",
@@ -23905,14 +23985,20 @@
           "date": "Aug 3, 2026",
           "amount": 8998.07,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025617",
+          "date": "Sep 9, 2026",
+          "amount": 8998.07,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19776501": {
-      "available": 16179.27,
+      "available": 10786.16,
       "poAmount": 43144.82,
       "status": "Open",
       "site": "DAE7",
@@ -23948,10 +24034,16 @@
           "date": "Aug 6, 2026",
           "amount": 5393.11,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025573",
+          "date": "Sep 9, 2026",
+          "amount": 5393.11,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19769582": {
@@ -23963,7 +24055,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19769581": {
@@ -24024,11 +24116,11 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764191": {
-      "available": 25678.48,
+      "available": 19258.85,
       "poAmount": 77035.52,
       "status": "Open",
       "site": "DFH3",
@@ -24082,14 +24174,20 @@
           "date": "Aug 3, 2026",
           "amount": 6419.63,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025591",
+          "date": "Sep 9, 2026",
+          "amount": 6419.63,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764159": {
-      "available": 13020.38,
+      "available": 8680.24,
       "poAmount": 34721.08,
       "status": "Open",
       "site": "DJR3",
@@ -24125,14 +24223,20 @@
           "date": "Aug 3, 2026",
           "amount": 4340.14,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025613",
+          "date": "Sep 9, 2026",
+          "amount": 4340.14,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764154": {
-      "available": 5520.16,
+      "available": 3680.03,
       "poAmount": 14720.81,
       "status": "Open",
       "site": "DKO9",
@@ -24168,14 +24272,20 @@
           "date": "Aug 3, 2026",
           "amount": 1840.13,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025587",
+          "date": "Sep 9, 2026",
+          "amount": 1840.13,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764120": {
-      "available": 19214.07,
+      "available": 12809.38,
       "poAmount": 51237.52,
       "status": "Open",
       "site": "DIA5",
@@ -24211,14 +24321,20 @@
           "date": "Aug 3, 2026",
           "amount": 6404.69,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025586",
+          "date": "Sep 9, 2026",
+          "amount": 6404.69,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764088": {
-      "available": 17913.92,
+      "available": 13120.05,
       "poAmount": 41883.27,
       "status": "Open",
       "site": "DKY9",
@@ -24254,14 +24370,20 @@
           "date": "Aug 3, 2026",
           "amount": 4793.87,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025560",
+          "date": "Sep 9, 2026",
+          "amount": 4793.87,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19764084": {
-      "available": 6169.76,
+      "available": 4113.16,
       "poAmount": 16452.76,
       "status": "Open",
       "site": "DJZ3",
@@ -24297,14 +24419,20 @@
           "date": "Aug 3, 2026",
           "amount": 2056.6,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025618",
+          "date": "Sep 9, 2026",
+          "amount": 2056.6,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19763828": {
-      "available": 98727.84,
+      "available": 88855.07,
       "poAmount": 157964.46,
       "status": "Open",
       "site": "DRC6",
@@ -24346,10 +24474,16 @@
           "date": "Aug 3, 2026",
           "amount": 9872.77,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025610",
+          "date": "Sep 9, 2026",
+          "amount": 9872.77,
+          "status": "Scheduled for payment"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19760649": {
@@ -24361,7 +24495,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19753073": {
@@ -24373,7 +24507,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19725636": {
@@ -24392,7 +24526,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19720975": {
@@ -24411,7 +24545,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19709244": {
@@ -24514,11 +24648,11 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19695796": {
-      "available": 23415.39,
+      "available": 18662.82,
       "poAmount": 47202,
       "status": "Open",
       "site": null,
@@ -24554,10 +24688,16 @@
           "date": "Aug 3, 2026",
           "amount": 4752.57,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025562",
+          "date": "Sep 9, 2026",
+          "amount": 4752.57,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19683616": {
@@ -24672,7 +24812,7 @@
         }
       ],
       "matchedCount": 17,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19683619": {
@@ -24684,7 +24824,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19683615": {
@@ -24733,7 +24873,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19683618": {
@@ -24745,7 +24885,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19619036": {
@@ -24764,7 +24904,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19601221": {
@@ -24783,7 +24923,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19601216": {
@@ -24910,7 +25050,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19550685": {
@@ -24971,7 +25111,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19544450": {
@@ -24990,7 +25130,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19517886": {
@@ -25009,7 +25149,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19550700": {
@@ -25058,7 +25198,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506352": {
@@ -25070,7 +25210,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506350": {
@@ -25082,7 +25222,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506349": {
@@ -25094,7 +25234,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506348": {
@@ -25106,7 +25246,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506347": {
@@ -25118,7 +25258,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506346": {
@@ -25130,7 +25270,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506345": {
@@ -25142,7 +25282,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506344": {
@@ -25154,7 +25294,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506288": {
@@ -25166,7 +25306,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506287": {
@@ -25209,7 +25349,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506285": {
@@ -25221,7 +25361,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506284": {
@@ -25258,7 +25398,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506283": {
@@ -25283,7 +25423,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506282": {
@@ -25295,7 +25435,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506281": {
@@ -25307,7 +25447,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506280": {
@@ -25319,7 +25459,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506279": {
@@ -25331,7 +25471,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506278": {
@@ -25343,7 +25483,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506277": {
@@ -25355,7 +25495,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506276": {
@@ -25367,7 +25507,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506274": {
@@ -25379,7 +25519,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19506273": {
@@ -25391,7 +25531,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505437": {
@@ -25403,7 +25543,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505435": {
@@ -25415,7 +25555,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505433": {
@@ -25427,7 +25567,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505432": {
@@ -25439,7 +25579,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505430": {
@@ -25451,7 +25591,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505427": {
@@ -25463,7 +25603,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505425": {
@@ -25500,7 +25640,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19505424": {
@@ -25512,7 +25652,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504113": {
@@ -25524,7 +25664,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504111": {
@@ -25536,7 +25676,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504107": {
@@ -25548,7 +25688,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504106": {
@@ -25560,7 +25700,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504105": {
@@ -25572,7 +25712,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504102": {
@@ -25609,7 +25749,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504100": {
@@ -25658,7 +25798,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19504099": {
@@ -25713,7 +25853,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19501843": {
@@ -25725,7 +25865,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19503769": {
@@ -25768,7 +25908,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19494970": {
@@ -25787,7 +25927,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19469887": {
@@ -25806,7 +25946,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19464897": {
@@ -25825,7 +25965,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19494149": {
@@ -25837,7 +25977,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19433801": {
@@ -25856,7 +25996,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19468938": {
@@ -26037,7 +26177,7 @@
         }
       ],
       "matchedCount": 28,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19433439": {
@@ -26056,7 +26196,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19402615": {
@@ -26105,7 +26245,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19402612": {
@@ -26136,7 +26276,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19402611": {
@@ -26197,7 +26337,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19401219": {
@@ -26209,7 +26349,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19392481": {
@@ -26221,7 +26361,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19387346": {
@@ -26233,7 +26373,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19383837": {
@@ -26252,7 +26392,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19383816": {
@@ -26264,7 +26404,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19371223": {
@@ -26331,7 +26471,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19371212": {
@@ -26392,7 +26532,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19367311": {
@@ -26404,7 +26544,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19351158": {
@@ -26423,7 +26563,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19340584": {
@@ -26435,7 +26575,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19331766": {
@@ -26454,7 +26594,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19331761": {
@@ -26473,7 +26613,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19293222": {
@@ -26492,7 +26632,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19325689": {
@@ -26511,7 +26651,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19268227": {
@@ -26530,7 +26670,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19262211": {
@@ -26549,7 +26689,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19265825": {
@@ -26574,7 +26714,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19256959": {
@@ -26635,7 +26775,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19256956": {
@@ -26654,7 +26794,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19256939": {
@@ -26703,7 +26843,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19251278": {
@@ -26722,7 +26862,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19256960": {
@@ -26765,7 +26905,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19233575": {
@@ -26784,7 +26924,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222818": {
@@ -26809,7 +26949,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222679": {
@@ -26864,7 +27004,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222676": {
@@ -26955,7 +27095,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222418": {
@@ -27016,7 +27156,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222339": {
@@ -27071,7 +27211,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222303": {
@@ -27144,7 +27284,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222286": {
@@ -27205,7 +27345,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222234": {
@@ -27278,7 +27418,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222233": {
@@ -27387,7 +27527,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19222216": {
@@ -27454,7 +27594,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19221081": {
@@ -27515,7 +27655,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19221071": {
@@ -27576,7 +27716,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19221067": {
@@ -27649,7 +27789,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19221063": {
@@ -27674,7 +27814,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19221059": {
@@ -27723,7 +27863,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220968": {
@@ -27820,7 +27960,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220821": {
@@ -27869,7 +28009,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220810": {
@@ -27894,7 +28034,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220727": {
@@ -27906,7 +28046,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220722": {
@@ -28009,7 +28149,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220711": {
@@ -28052,7 +28192,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19220705": {
@@ -28125,7 +28265,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19208740": {
@@ -28144,7 +28284,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207051": {
@@ -28205,7 +28345,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207042": {
@@ -28260,7 +28400,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19213979": {
@@ -28279,7 +28419,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207037": {
@@ -28352,7 +28492,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207034": {
@@ -28425,7 +28565,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207027": {
@@ -28540,7 +28680,7 @@
         }
       ],
       "matchedCount": 17,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207026": {
@@ -28607,7 +28747,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207024": {
@@ -28686,7 +28826,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207022": {
@@ -28753,7 +28893,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207021": {
@@ -28820,7 +28960,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207012": {
@@ -28893,7 +29033,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19207010": {
@@ -29026,7 +29166,7 @@
         }
       ],
       "matchedCount": 20,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19206999": {
@@ -29111,7 +29251,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19197113": {
@@ -29178,7 +29318,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19197112": {
@@ -29203,7 +29343,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19197106": {
@@ -29420,7 +29560,7 @@
         }
       ],
       "matchedCount": 34,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196992": {
@@ -29481,7 +29621,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196989": {
@@ -29572,7 +29712,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196977": {
@@ -29675,7 +29815,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196969": {
@@ -29736,7 +29876,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196978": {
@@ -29821,7 +29961,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196963": {
@@ -29882,7 +30022,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196856": {
@@ -29949,7 +30089,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196844": {
@@ -30010,7 +30150,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196846": {
@@ -30071,7 +30211,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196837": {
@@ -30138,7 +30278,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196839": {
@@ -30193,7 +30333,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196803": {
@@ -30260,7 +30400,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196791": {
@@ -30303,7 +30443,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196797": {
@@ -30364,7 +30504,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196790": {
@@ -30485,7 +30625,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196778": {
@@ -30552,7 +30692,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196780": {
@@ -30619,7 +30759,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196776": {
@@ -30680,7 +30820,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196678": {
@@ -30783,7 +30923,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196638": {
@@ -30844,7 +30984,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196616": {
@@ -30911,7 +31051,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196641": {
@@ -30974,11 +31114,11 @@
           "inv": "ECI023328",
           "date": "Apr 8, 2026",
           "amount": 35607.75,
-          "status": "Scheduled for payment"
+          "status": "Paid"
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196615": {
@@ -31045,7 +31185,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196611": {
@@ -31106,7 +31246,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196617": {
@@ -31169,11 +31309,11 @@
           "inv": "ECI023734",
           "date": "May 6, 2026",
           "amount": 25947,
-          "status": "In Progress"
+          "status": "Paid"
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196602": {
@@ -31222,7 +31362,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196599": {
@@ -31271,7 +31411,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196580": {
@@ -31320,7 +31460,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196550": {
@@ -31369,7 +31509,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196548": {
@@ -31424,7 +31564,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196586": {
@@ -31461,7 +31601,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196547": {
@@ -31600,7 +31740,7 @@
         }
       ],
       "matchedCount": 21,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196543": {
@@ -31781,7 +31921,7 @@
         }
       ],
       "matchedCount": 28,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19196530": {
@@ -31800,7 +31940,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189301": {
@@ -31927,7 +32067,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189302": {
@@ -32186,7 +32326,7 @@
         }
       ],
       "matchedCount": 41,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189298": {
@@ -32235,7 +32375,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189295": {
@@ -32290,7 +32430,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189293": {
@@ -32441,7 +32581,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189294": {
@@ -32718,7 +32858,7 @@
         }
       ],
       "matchedCount": 44,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189292": {
@@ -32953,7 +33093,7 @@
         }
       ],
       "matchedCount": 37,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189290": {
@@ -33230,7 +33370,7 @@
         }
       ],
       "matchedCount": 44,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189291": {
@@ -33513,7 +33653,7 @@
         }
       ],
       "matchedCount": 45,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189288": {
@@ -33622,7 +33762,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189286": {
@@ -33845,7 +33985,7 @@
         }
       ],
       "matchedCount": 35,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189088": {
@@ -34056,7 +34196,7 @@
         }
       ],
       "matchedCount": 33,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189087": {
@@ -34207,7 +34347,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19189086": {
@@ -34484,7 +34624,7 @@
         }
       ],
       "matchedCount": 44,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19179176": {
@@ -34509,7 +34649,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19177654": {
@@ -34528,7 +34668,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19177103": {
@@ -34547,7 +34687,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19173413": {
@@ -34620,7 +34760,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171136": {
@@ -34687,7 +34827,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171135": {
@@ -34826,7 +34966,7 @@
         }
       ],
       "matchedCount": 21,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171134": {
@@ -34905,7 +35045,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171132": {
@@ -34942,7 +35082,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171133": {
@@ -34954,7 +35094,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171131": {
@@ -35021,7 +35161,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171129": {
@@ -35040,7 +35180,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171130": {
@@ -35059,7 +35199,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171128": {
@@ -35114,7 +35254,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171127": {
@@ -35139,7 +35279,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171126": {
@@ -35302,7 +35442,7 @@
         }
       ],
       "matchedCount": 25,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171125": {
@@ -35321,7 +35461,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171124": {
@@ -35448,7 +35588,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171123": {
@@ -35521,12 +35661,12 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171122": {
-      "available": 0,
-      "poAmount": 129397.88,
+      "available": 150034,
+      "poAmount": 279431.88,
       "status": "Open",
       "site": "WSP1",
       "desc": "WSP1-RSR-2026-Snow Removal",
@@ -35612,12 +35752,12 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171121": {
-      "available": 0,
-      "poAmount": 106597.9,
+      "available": 79009.25,
+      "poAmount": 185607.15,
       "status": "Open",
       "site": "WRK1",
       "desc": "WRK1-RSR-2026-Snow Removal",
@@ -35685,7 +35825,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19171075": {
@@ -35734,7 +35874,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170917": {
@@ -35759,7 +35899,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170907": {
@@ -35886,7 +36026,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170867": {
@@ -36031,7 +36171,7 @@
         }
       ],
       "matchedCount": 22,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170857": {
@@ -36152,7 +36292,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170858": {
@@ -36297,7 +36437,7 @@
         }
       ],
       "matchedCount": 22,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170824": {
@@ -36340,7 +36480,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170792": {
@@ -36377,7 +36517,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170770": {
@@ -36426,7 +36566,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170768": {
@@ -36463,7 +36603,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170757": {
@@ -36524,7 +36664,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170755": {
@@ -36645,7 +36785,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170750": {
@@ -36657,7 +36797,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170718": {
@@ -36724,7 +36864,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170753": {
@@ -36869,7 +37009,7 @@
         }
       ],
       "matchedCount": 22,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170715": {
@@ -36936,7 +37076,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170721": {
@@ -37009,7 +37149,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170701": {
@@ -37412,7 +37552,7 @@
         }
       ],
       "matchedCount": 65,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170697": {
@@ -37479,7 +37619,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170693": {
@@ -37491,7 +37631,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170692": {
@@ -37503,7 +37643,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170691": {
@@ -37630,7 +37770,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170653": {
@@ -37667,7 +37807,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170649": {
@@ -37722,7 +37862,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170648": {
@@ -37771,7 +37911,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170644": {
@@ -37832,7 +37972,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170643": {
@@ -37899,7 +38039,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170650": {
@@ -37960,7 +38100,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170595": {
@@ -37985,7 +38125,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19165223": {
@@ -38004,7 +38144,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19164250": {
@@ -38071,7 +38211,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19164246": {
@@ -38144,7 +38284,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19170592": {
@@ -38295,7 +38435,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19164242": {
@@ -38362,7 +38502,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19164240": {
@@ -38441,7 +38581,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19164224": {
@@ -38453,7 +38593,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19159250": {
@@ -38472,13 +38612,13 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19156352": {
-      "available": 0,
-      "poAmount": 24409.75,
-      "status": "Closed",
+      "available": 1911.55,
+      "poAmount": 26321.3,
+      "status": "Open",
       "site": "DBK6",
       "desc": "DBL6 5381 Kings Highway - Offsite Parking Snow Removal",
       "masked": false,
@@ -38551,7 +38691,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19150661": {
@@ -38612,7 +38752,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19150660": {
@@ -38673,7 +38813,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19149365": {
@@ -38692,7 +38832,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147797": {
@@ -38753,7 +38893,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147795": {
@@ -38814,7 +38954,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147794": {
@@ -38875,7 +39015,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147791": {
@@ -38936,7 +39076,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147789": {
@@ -39003,7 +39143,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147784": {
@@ -39070,7 +39210,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147782": {
@@ -39131,7 +39271,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147790": {
@@ -39210,7 +39350,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147779": {
@@ -39271,7 +39411,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147778": {
@@ -39338,7 +39478,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147736": {
@@ -39393,7 +39533,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147780": {
@@ -39454,7 +39594,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147722": {
@@ -39515,7 +39655,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147721": {
@@ -39576,7 +39716,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147720": {
@@ -39631,12 +39771,12 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147719": {
-      "available": 7754.24,
-      "poAmount": 483681.3,
+      "available": 30221.35,
+      "poAmount": 506148.41,
       "status": "Open",
       "site": "DCY2",
       "desc": "DCY2 - 2026 - Snow Removal Maintenance",
@@ -39698,7 +39838,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147717": {
@@ -39765,12 +39905,12 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147715": {
-      "available": 10721.05,
-      "poAmount": 232120,
+      "available": 16051.4,
+      "poAmount": 237450.35,
       "status": "Open",
       "site": "DCM5",
       "desc": "DCM5 - 2026 - Snow Removal Maintenance",
@@ -39826,7 +39966,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147706": {
@@ -39887,7 +40027,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147701": {
@@ -39954,7 +40094,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147700": {
@@ -40015,7 +40155,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147697": {
@@ -40094,7 +40234,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147688": {
@@ -40155,7 +40295,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147687": {
@@ -40216,7 +40356,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147685": {
@@ -40277,7 +40417,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147684": {
@@ -40338,7 +40478,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147682": {
@@ -40399,7 +40539,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147669": {
@@ -40466,7 +40606,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147668": {
@@ -40533,7 +40673,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147667": {
@@ -40594,7 +40734,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147664": {
@@ -40655,7 +40795,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147663": {
@@ -40722,7 +40862,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147660": {
@@ -40783,7 +40923,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147659": {
@@ -40844,7 +40984,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147658": {
@@ -40905,7 +41045,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147653": {
@@ -40966,12 +41106,12 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147646": {
-      "available": 0,
-      "poAmount": 45570.05,
+      "available": 3019.01,
+      "poAmount": 48589.06,
       "status": "Open",
       "site": "DJZ2",
       "desc": "DJZ2 - 2026 - Snow Removal Maintenance",
@@ -41027,7 +41167,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147644": {
@@ -41088,7 +41228,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147586": {
@@ -41143,7 +41283,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147572": {
@@ -41204,7 +41344,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147569": {
@@ -41265,7 +41405,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147568": {
@@ -41326,7 +41466,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147560": {
@@ -41429,7 +41569,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147536": {
@@ -41490,7 +41630,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147535": {
@@ -41551,7 +41691,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147533": {
@@ -41612,7 +41752,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147532": {
@@ -41673,7 +41813,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147531": {
@@ -41734,7 +41874,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147528": {
@@ -41795,7 +41935,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147527": {
@@ -41862,7 +42002,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147520": {
@@ -41917,7 +42057,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147519": {
@@ -41984,7 +42124,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147485": {
@@ -42045,7 +42185,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147484": {
@@ -42106,7 +42246,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147483": {
@@ -42167,7 +42307,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147482": {
@@ -42228,7 +42368,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147480": {
@@ -42289,7 +42429,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147479": {
@@ -42350,7 +42490,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147477": {
@@ -42411,7 +42551,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147475": {
@@ -42472,7 +42612,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147471": {
@@ -42533,7 +42673,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147459": {
@@ -42600,7 +42740,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147452": {
@@ -42667,7 +42807,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147344": {
@@ -42728,7 +42868,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147320": {
@@ -42765,7 +42905,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147317": {
@@ -42802,7 +42942,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147316": {
@@ -42845,7 +42985,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147312": {
@@ -42876,7 +43016,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147311": {
@@ -42913,7 +43053,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147310": {
@@ -42950,7 +43090,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147305": {
@@ -43011,7 +43151,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147302": {
@@ -43072,7 +43212,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147265": {
@@ -43115,7 +43255,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147262": {
@@ -43158,7 +43298,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147261": {
@@ -43321,7 +43461,7 @@
         }
       ],
       "matchedCount": 25,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19147301": {
@@ -43388,7 +43528,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146453": {
@@ -43425,7 +43565,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146452": {
@@ -43474,7 +43614,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146450": {
@@ -43541,7 +43681,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146449": {
@@ -43638,7 +43778,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146445": {
@@ -43663,7 +43803,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146448": {
@@ -43784,7 +43924,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146435": {
@@ -43863,7 +44003,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146433": {
@@ -43882,7 +44022,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146052": {
@@ -43931,7 +44071,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146007": {
@@ -43974,7 +44114,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146006": {
@@ -44017,7 +44157,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146004": {
@@ -44066,7 +44206,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146001": {
@@ -44115,7 +44255,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19146000": {
@@ -44164,7 +44304,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145995": {
@@ -44261,7 +44401,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145991": {
@@ -44310,7 +44450,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145986": {
@@ -44347,7 +44487,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145998": {
@@ -44390,7 +44530,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145982": {
@@ -44451,7 +44591,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145981": {
@@ -44536,7 +44676,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145916": {
@@ -44573,7 +44713,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145915": {
@@ -44634,7 +44774,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145914": {
@@ -44665,7 +44805,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145911": {
@@ -44702,7 +44842,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145910": {
@@ -44751,7 +44891,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145907": {
@@ -44763,7 +44903,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145730": {
@@ -44782,7 +44922,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145642": {
@@ -44849,7 +44989,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145541": {
@@ -44886,7 +45026,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145540": {
@@ -44929,7 +45069,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145539": {
@@ -45116,7 +45256,7 @@
         }
       ],
       "matchedCount": 29,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145536": {
@@ -45147,7 +45287,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145532": {
@@ -45190,7 +45330,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145535": {
@@ -45275,7 +45415,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145530": {
@@ -45360,7 +45500,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145473": {
@@ -45397,7 +45537,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145471": {
@@ -45452,7 +45592,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145467": {
@@ -45489,7 +45629,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145364": {
@@ -45526,7 +45666,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145351": {
@@ -45563,7 +45703,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19145324": {
@@ -45594,7 +45734,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144874": {
@@ -45606,7 +45746,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144869": {
@@ -45667,7 +45807,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144867": {
@@ -45764,7 +45904,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144866": {
@@ -45795,7 +45935,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144864": {
@@ -45850,7 +45990,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144865": {
@@ -45905,7 +46045,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144862": {
@@ -45954,7 +46094,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144860": {
@@ -46021,7 +46161,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144855": {
@@ -46070,7 +46210,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144771": {
@@ -46119,7 +46259,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144769": {
@@ -46150,7 +46290,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144756": {
@@ -46217,7 +46357,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19139524": {
@@ -46278,7 +46418,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19144775": {
@@ -46290,7 +46430,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19134670": {
@@ -46302,7 +46442,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19133276": {
@@ -46314,7 +46454,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130518": {
@@ -46375,7 +46515,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130515": {
@@ -46436,7 +46576,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130512": {
@@ -46503,7 +46643,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130506": {
@@ -46576,7 +46716,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130369": {
@@ -46709,7 +46849,7 @@
         }
       ],
       "matchedCount": 20,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130367": {
@@ -46770,7 +46910,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19130361": {
@@ -46837,7 +46977,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19125478": {
@@ -46856,7 +46996,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19117605": {
@@ -46881,7 +47021,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19117603": {
@@ -46948,7 +47088,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19103081": {
@@ -47003,7 +47143,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19096097": {
@@ -47015,7 +47155,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19075030": {
@@ -47034,7 +47174,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19073112": {
@@ -47053,7 +47193,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19070405": {
@@ -47084,7 +47224,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19066824": {
@@ -47103,7 +47243,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19065954": {
@@ -47122,7 +47262,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19065682": {
@@ -47141,7 +47281,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19047380": {
@@ -47160,7 +47300,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19035549": {
@@ -47179,7 +47319,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19024292": {
@@ -47198,7 +47338,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19024285": {
@@ -47217,7 +47357,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19016011": {
@@ -47236,7 +47376,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19014399": {
@@ -47261,7 +47401,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-19010341": {
@@ -47280,7 +47420,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18988115": {
@@ -47299,7 +47439,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18981834": {
@@ -47318,7 +47458,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18961799": {
@@ -47343,7 +47483,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18993289": {
@@ -47368,7 +47508,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18934089": {
@@ -47393,7 +47533,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18934016": {
@@ -47418,7 +47558,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18934014": {
@@ -47443,7 +47583,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18934004": {
@@ -47468,7 +47608,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18957744": {
@@ -47487,7 +47627,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18934003": {
@@ -47518,7 +47658,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18914993": {
@@ -47537,7 +47677,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18905563": {
@@ -47556,7 +47696,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18886987": {
@@ -47575,7 +47715,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18875841": {
@@ -47594,7 +47734,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18859958": {
@@ -47619,7 +47759,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18853985": {
@@ -47638,7 +47778,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18839398": {
@@ -47657,7 +47797,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18813893": {
@@ -47669,7 +47809,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18813507": {
@@ -47688,7 +47828,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18811590": {
@@ -47707,7 +47847,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18813907": {
@@ -47732,7 +47872,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18808567": {
@@ -47751,7 +47891,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18790575": {
@@ -47770,7 +47910,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18767863": {
@@ -47789,7 +47929,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18758689": {
@@ -47808,7 +47948,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18762876": {
@@ -47827,7 +47967,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18754522": {
@@ -47846,7 +47986,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18745457": {
@@ -47949,7 +48089,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18752228": {
@@ -47968,7 +48108,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18734850": {
@@ -47987,7 +48127,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18733885": {
@@ -48006,7 +48146,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18709404": {
@@ -48025,12 +48165,12 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18679890": {
-      "available": 1301.88,
-      "poAmount": 55000,
+      "available": 11501.88,
+      "poAmount": 65200,
       "status": "Open",
       "site": "UNY2",
       "desc": null,
@@ -48128,12 +48268,12 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18679887": {
-      "available": 684.64,
-      "poAmount": 29282,
+      "available": 8084.64,
+      "poAmount": 36682,
       "status": "Open",
       "site": "UNY5",
       "desc": null,
@@ -48231,7 +48371,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18666876": {
@@ -48250,7 +48390,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18679123": {
@@ -48275,7 +48415,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18666873": {
@@ -48294,7 +48434,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18599243": {
@@ -48313,7 +48453,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18604471": {
@@ -48338,7 +48478,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18596314": {
@@ -48357,7 +48497,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18581162": {
@@ -48376,7 +48516,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18579100": {
@@ -48407,7 +48547,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18568717": {
@@ -48426,7 +48566,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18638353": {
@@ -48469,7 +48609,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18566572": {
@@ -48506,7 +48646,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18543769": {
@@ -48525,7 +48665,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18529136": {
@@ -48544,7 +48684,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18527714": {
@@ -48563,7 +48703,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18527582": {
@@ -48594,7 +48734,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18505129": {
@@ -48613,7 +48753,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18505128": {
@@ -48632,7 +48772,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18495433": {
@@ -48651,7 +48791,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18486216": {
@@ -48670,7 +48810,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18519698": {
@@ -48689,7 +48829,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18481240": {
@@ -48701,7 +48841,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18481237": {
@@ -48720,7 +48860,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18481230": {
@@ -48739,7 +48879,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18448346": {
@@ -48758,7 +48898,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18478131": {
@@ -48777,7 +48917,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18434204": {
@@ -48796,7 +48936,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18432904": {
@@ -48815,7 +48955,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18418450": {
@@ -48834,7 +48974,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18403837": {
@@ -48853,7 +48993,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18386737": {
@@ -48890,7 +49030,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18385038": {
@@ -48909,7 +49049,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18381635": {
@@ -48928,7 +49068,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18366571": {
@@ -48959,7 +49099,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18344946": {
@@ -48978,7 +49118,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18337265": {
@@ -48997,7 +49137,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18266693": {
@@ -49022,7 +49162,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18316394": {
@@ -49041,7 +49181,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18246768": {
@@ -49060,7 +49200,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18240241": {
@@ -49079,7 +49219,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18212441": {
@@ -49098,7 +49238,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18227076": {
@@ -49117,7 +49257,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18192243": {
@@ -49160,7 +49300,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18192240": {
@@ -49191,7 +49331,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18192238": {
@@ -49203,7 +49343,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18169660": {
@@ -49222,7 +49362,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18153787": {
@@ -49241,7 +49381,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18162829": {
@@ -49260,7 +49400,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18141748": {
@@ -49279,7 +49419,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18131564": {
@@ -49298,7 +49438,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18125723": {
@@ -49317,7 +49457,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18116050": {
@@ -49336,7 +49476,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18116047": {
@@ -49355,7 +49495,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18113304": {
@@ -49374,7 +49514,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18103063": {
@@ -49393,7 +49533,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18091266": {
@@ -49412,7 +49552,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18077365": {
@@ -49431,7 +49571,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18023240": {
@@ -49450,7 +49590,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18018563": {
@@ -49469,7 +49609,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18015513": {
@@ -49488,7 +49628,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-18015939": {
@@ -49507,7 +49647,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17995856": {
@@ -49526,7 +49666,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17946099": {
@@ -49545,7 +49685,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17948284": {
@@ -49557,7 +49697,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17929590": {
@@ -49576,7 +49716,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17924840": {
@@ -49595,7 +49735,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17869205": {
@@ -49614,7 +49754,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17923417": {
@@ -49633,7 +49773,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17856762": {
@@ -49652,7 +49792,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17854503": {
@@ -49671,7 +49811,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17843954": {
@@ -49690,7 +49830,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17842774": {
@@ -49709,7 +49849,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17838562": {
@@ -49752,7 +49892,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17844991": {
@@ -49837,7 +49977,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17828252": {
@@ -49856,7 +49996,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17794996": {
@@ -49875,7 +50015,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17810242": {
@@ -49894,7 +50034,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17825234": {
@@ -49913,7 +50053,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17734497": {
@@ -49932,7 +50072,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17755906": {
@@ -49951,7 +50091,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17690706": {
@@ -49970,7 +50110,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17678002": {
@@ -49989,7 +50129,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17643694": {
@@ -50008,7 +50148,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17638152": {
@@ -50027,7 +50167,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17637499": {
@@ -50046,7 +50186,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17627640": {
@@ -50071,7 +50211,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17612928": {
@@ -50210,7 +50350,7 @@
         }
       ],
       "matchedCount": 21,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17586905": {
@@ -50229,7 +50369,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17538201": {
@@ -50248,7 +50388,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17498942": {
@@ -50267,7 +50407,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17490160": {
@@ -50292,7 +50432,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17379642": {
@@ -50311,7 +50451,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17376428": {
@@ -50372,7 +50512,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17550483": {
@@ -50391,7 +50531,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17367474": {
@@ -50452,7 +50592,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17365814": {
@@ -50471,7 +50611,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17350462": {
@@ -50490,7 +50630,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17321236": {
@@ -50521,7 +50661,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17285781": {
@@ -50540,7 +50680,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17254317": {
@@ -50559,7 +50699,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17239113": {
@@ -50578,7 +50718,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17228036": {
@@ -50597,7 +50737,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17202750": {
@@ -50616,7 +50756,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17192482": {
@@ -50635,7 +50775,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17186436": {
@@ -50654,7 +50794,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17181640": {
@@ -50673,7 +50813,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17177340": {
@@ -50692,7 +50832,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17158732": {
@@ -50711,7 +50851,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17151384": {
@@ -50730,7 +50870,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17142651": {
@@ -50749,7 +50889,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17134135": {
@@ -50768,7 +50908,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17088496": {
@@ -50787,7 +50927,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17068040": {
@@ -50842,7 +50982,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17067640": {
@@ -50861,7 +51001,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17063706": {
@@ -50880,7 +51020,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17046330": {
@@ -50899,7 +51039,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-17046327": {
@@ -50918,7 +51058,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16985378": {
@@ -50937,7 +51077,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16967415": {
@@ -50949,7 +51089,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16966746": {
@@ -50961,7 +51101,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16962155": {
@@ -51022,7 +51162,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16910241": {
@@ -51041,7 +51181,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16831298": {
@@ -51066,7 +51206,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-16959360": {
@@ -51127,7 +51267,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T13:13:04.802Z",
       "stale": false
     },
     "2D-22072221": {
