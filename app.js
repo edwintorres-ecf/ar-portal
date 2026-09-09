@@ -3456,11 +3456,25 @@ app.get('/api/stop-service-view', requireAuth, async (req, res) => {
 // level); never reassigns existing ownership. First matching rule by
 // priority wins. Runs daily + on demand.
 // Negative = not due yet, 0 = due today, positive = past due.
+// Sage hands back dates in more than one shape ("11/30/2025" and "2025-11-30"),
+// and the two parse in DIFFERENT timezones: Date.parse treats the ISO form as
+// UTC and the slashed form as local. Reading local parts off a UTC-parsed date
+// shifted every answer by a day. Pull the parts out explicitly instead.
+function dueDayUTC(str) {
+  if (!str) return null;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(str));
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(str));
+  if (m) return Date.UTC(+m[3], +m[1] - 1, +m[2]);
+  const t = Date.parse(str);
+  if (isNaN(t)) return null;
+  const d = new Date(t);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
 function daysRelativeToDue(inv) {
-  const due = Date.parse(inv.whenDue);
-  if (isNaN(due)) return inv.daysOverdue == null ? null : inv.daysOverdue;
-  const d = new Date(due);
-  const dueDay = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const dueDay = dueDayUTC(inv.whenDue);
+  if (dueDay === null) return inv.daysOverdue == null ? null : inv.daysOverdue;
   const n = new Date();
   const today = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
   return Math.round((today - dueDay) / 86400000);
