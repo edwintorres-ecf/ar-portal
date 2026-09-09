@@ -33,6 +33,56 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (parseInt(errs, 10) > 0) throw new Error('auth/reconnect errors in last 2h');
     return `connected events last 26h: ${recent}`;
   });
+  // 2a. Gateway token drift — catches the break BEFORE the node dies.
+  // AUTH_TOKEN_MISMATCH has now orphaned spark three times (June, July,
+  // 2026-09-09). Every occurrence is the same: the iMac gateway's
+  // gateway.auth.token is rewritten, usually by an upgrade, nothing propagates
+  // it here, and the node keeps running on the old token until its NEXT
+  // restart, which can be days later. By then the check above reports a dead
+  // service and the cause is already history. Comparing the two tokens finds
+  // the drift on the first nightly run after a rotation, while the node is
+  // still happily connected.
+  //
+  // Both sides hash their own token and only the digests are compared, so no
+  // secret is read into this process, crosses the tailnet, or reaches the
+  // failure email. Unreachable iMac is NOT a failure here: tailnet-imac owns
+  // reachability, and duplicating it would just double the page.
+  check('openclaw-token-drift', () => {
+    const fs = require('fs');
+    const crypto = require('crypto');
+    const LOCAL_CFG = process.env.OC_LOCAL_CFG || '/home/ecf-admin/.openclaw/openclaw.json';
+    const REMOTE_CFG = process.env.OC_REMOTE_CFG || '/Users/openclaw/.openclaw/openclaw.json';
+    const IMAC = process.env.OC_IMAC || 'openclaw@easts-imac-pro.taildac2b4.ts.net';
+    const KEY = process.env.OC_KEY || '/home/ecf-admin/.ssh/id_ed25519_dispatch';
+
+    let localTok;
+    try {
+      localTok = JSON.parse(fs.readFileSync(LOCAL_CFG, 'utf8')).gateway.auth.token;
+    } catch (e) {
+      throw new Error(`cannot read local gateway.auth.token from ${LOCAL_CFG}: ${e.message}`);
+    }
+    if (!localTok) throw new Error(`no gateway.auth.token set in ${LOCAL_CFG}`);
+    const localSha = crypto.createHash('sha256').update(localTok).digest('hex').slice(0, 12);
+
+    let remoteSha;
+    try {
+      const py = `import json,hashlib;print(hashlib.sha256(json.load(open("${REMOTE_CFG}"))["gateway"]["auth"]["token"].encode()).hexdigest()[:12])`;
+      remoteSha = sh(`ssh -i ${KEY} -o BatchMode=yes -o ConnectTimeout=10 ${IMAC} '/usr/bin/python3 -c ${JSON.stringify(py)}'`);
+    } catch (e) {
+      return 'skipped — iMac gateway config unreadable over tailnet (see tailnet-imac)';
+    }
+    if (!/^[0-9a-f]{12}$/.test(remoteSha)) {
+      return `skipped — unexpected response from iMac (${remoteSha.slice(0, 40)})`;
+    }
+    if (remoteSha !== localSha) {
+      throw new Error(`gateway token DRIFT: spark ${localSha} != gateway ${remoteSha}. `
+        + 'The node still runs on the old token and will fail to reconnect at its next restart. '
+        + 'Fix: copy the gateway token into spark ~/.openclaw/openclaw.json (verbatim string swap, keep 0600), '
+        + 'then systemctl --user reset-failed openclaw-node.service && systemctl --user start openclaw-node.service. '
+        + 'Do NOT run openclaw doctor --generate-gateway-token: it rotates the gateway token and orphans every other paired device.');
+    }
+    return `token in sync (${localSha})`;
+  });
   // 3. Payee feed freshness (independent re-check of the scraper's invariant)
   check('payee-feed-freshness', () => {
     const fs = require('fs');
