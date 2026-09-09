@@ -27,14 +27,25 @@ for f in "$@"; do
   echo "  ✓ $f"
 done
 
+# Two signals, because neither covers the other. The audit query only sees
+# transmits that FINISHED: the route writes its audit row after the upload
+# returns, so a send that is in flight right now leaves nothing for it to
+# find. The Velocity browser lock IS held on the iMac for the duration of an
+# upload, so it closes exactly that gap. Restarting mid-upload is what leaves
+# invoices accepted by InterNex with no portal record of the send.
+# The lock check fails open: lockState() reports unlocked when the iMac is
+# unreachable, so a down iMac can never block a deploy.
 echo "── [2/6] transmit-quiet gate (waits up to 15 min)"
 for i in $(seq 1 60); do
-  ST=$(sqlite3 ar-portal.db "SELECT CASE WHEN datetime(MAX(created_at), '+3 minutes') < datetime('now') THEN 'CLEAR' ELSE 'ACTIVE' END FROM audit_log WHERE action='edi_transmit';")
-  [ "$ST" = "CLEAR" ] && break
+  ST=$(sqlite3 ar-portal.db "SELECT CASE WHEN datetime(MAX(created_at), '+3 minutes') < datetime('now') THEN 'CLEAR' ELSE 'ACTIVE' END FROM audit_log WHERE action IN ('edi_transmit','velocity_transmit');")
+  LK=$(node -e 'require("./velocity-bridge").lockState().then(s=>process.stdout.write(s.locked?("HELD by "+s.tool+" since "+s.since):"FREE")).catch(()=>process.stdout.write("FREE"))' 2>/dev/null || echo FREE)
+  [ -n "$LK" ] || LK=FREE
+  if [ "$ST" = "CLEAR" ] && [ "$LK" = "FREE" ]; then break; fi
   sleep 15
 done
-[ "$ST" = "CLEAR" ] || { echo "✗ EDI transmission active — aborting deploy"; exit 3; }
-echo "  ✓ no active transmission"
+[ "$ST" = "CLEAR" ] || { echo "✗ recent EDI/Velocity transmit — aborting deploy"; exit 3; }
+[ "$LK" = "FREE" ] || { echo "✗ Velocity browser lock $LK — upload in flight, aborting deploy"; exit 3; }
+echo "  ✓ no active transmission (audit quiet, Velocity browser free)"
 
 echo "── [3/6] backup (git snapshot + .bak)"
 git add -A >/dev/null 2>&1 || true
