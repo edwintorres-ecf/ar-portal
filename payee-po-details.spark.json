@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-09T15:28:07.567Z",
+  "generatedAt": "2026-09-09T16:53:29.913Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1218,
-  "scraped": 586,
-  "ok": 586,
+  "openTotal": 1219,
+  "scraped": 1,
+  "ok": 1,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -54654,6 +54654,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-09T12:51:36.575Z",
+      "stale": false
+    },
+    "2D-22588282": {
+      "available": 607.52,
+      "poAmount": 607.52,
+      "status": "Open",
+      "site": "DCL9",
+      "desc": "DCL9 - Landscaping",
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-09T16:53:29.913Z",
       "stale": false
     }
   }
