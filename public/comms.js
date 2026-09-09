@@ -1106,16 +1106,90 @@ async function commsAutoAssignRun(btn) {
 }
 
 // ─── Invite user (Admin) ─────────────────────────────────────────────────────
-async function commsInviteUser() {
-  const email = prompt('Invite who? (@eastcoastfacilities.com email)');
-  if (!email) return;
-  const name = prompt('Their name (for the invitation):') || '';
-  const role = prompt('Role: admin, manager, ar_specialist, or viewer', 'ar_specialist');
-  if (!role) return;
+// Three chained window.prompts were easy to abandon halfway and gave no way to
+// see or fix a typo before sending. A real form also lets the copy say the
+// thing that actually matters: the role is provisioned on SEND, so the invitee
+// can be assigned work and tested against immediately, without waiting for them
+// to log in first (Edwin 2026-09-09).
+(function commsInjectInviteModal() {
+  const html = `
+<div id="invite-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)commsCloseInvite()">
+  <div class="modal-box" style="width:520px;max-width:95vw">
+    <h3 style="margin-bottom:2px">✉️ Invite a user</h3>
+    <div style="font-size:12px;color:var(--gray-500);margin-bottom:12px">
+      They sign in with their ECF Microsoft account. There is no separate password.
+    </div>
+    <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:14px">
+      Access is granted the moment you send this. You can assign them work and test
+      against their account straight away — you do not have to wait for their first login.
+    </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Work email</label>
+    <input id="invite-email" type="email" placeholder="first.last@eastcoastfacilities.com" autocomplete="off"
+      style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Name</label>
+    <input id="invite-name" type="text" placeholder="Jane Doe"
+      style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Job title <span style="font-weight:400;color:var(--gray-500)">(optional)</span></label>
+    <input id="invite-title" type="text" placeholder="AR Specialist"
+      style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Access level</label>
+    <select id="invite-role" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;margin-bottom:4px">
+      <option value="viewer">Viewer — read only</option>
+      <option value="ar_specialist" selected>AR Specialist — notes, promises, collections work</option>
+      <option value="manager">Manager — everything a specialist can do, plus dunning and finance</option>
+      <option value="admin">Admin — full access including user management</option>
+    </select>
+    <div id="invite-msg" style="font-size:12px;margin:10px 0 0 0;min-height:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button onclick="commsCloseInvite()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button id="invite-send" onclick="commsSendInvite()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Send invitation</button>
+    </div>
+  </div>
+</div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+})();
+
+function commsInviteUser() {
+  const m = document.getElementById('invite-modal');
+  if (!m) return;
+  ['invite-email', 'invite-name', 'invite-title'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  document.getElementById('invite-role').value = 'ar_specialist';
+  document.getElementById('invite-msg').innerHTML = '';
+  m.style.display = 'flex';
+  setTimeout(() => { const e = document.getElementById('invite-email'); if (e) e.focus(); }, 30);
+}
+
+function commsCloseInvite() {
+  const m = document.getElementById('invite-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function commsSendInvite() {
+  const msg = document.getElementById('invite-msg');
+  const btn = document.getElementById('invite-send');
+  const email = (document.getElementById('invite-email').value || '').trim().toLowerCase();
+  const name = (document.getElementById('invite-name').value || '').trim();
+  const job_title = (document.getElementById('invite-title').value || '').trim();
+  const role = document.getElementById('invite-role').value;
+  const fail = (t) => { msg.innerHTML = `<span style="color:var(--red)">${escHtml(t)}</span>`; };
+  // Check the domain here as well as on the server: a typo caught before the
+  // request is a clearer message than a 400 bounced back.
+  if (!email.endsWith('@eastcoastfacilities.com')) return fail('Must be an @eastcoastfacilities.com address.');
+  if (!name) return fail('Please give their name — it goes in the invitation.');
+  btn.disabled = true;
+  msg.innerHTML = '<span style="color:var(--gray-500)">Sending…</span>';
   try {
-    const r = await apiFetch('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email, name, role }) });
-    alert(`Invitation sent to ${r.email} (${r.role}). They sign in with their ECF Microsoft account — no separate password.`);
-  } catch (e) { alert('Invite failed: ' + e.message); }
+    const r = await apiFetch('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email, name, role, job_title }) });
+    msg.innerHTML = `<span style="color:#15803d">Invitation sent to ${escHtml(r.email)} as ${escHtml(String(r.role).replace('_', ' '))}. Their access is live now.</span>`;
+    setTimeout(commsCloseInvite, 2200);
+    if (typeof loadAdminUsers === 'function') setTimeout(loadAdminUsers, 300);
+  } catch (e) {
+    fail('Invite failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ─── Reports v2 (real charts from live data; legacy kept one click away) ─────
