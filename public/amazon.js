@@ -101,6 +101,7 @@ function amazonRender() {
   el.innerHTML = `
     ${amzHeaderHtml(rows, total)}
     ${amzJumpHtml()}
+    ${amzToolbarHtml(rows)}
     ${amzFreshnessHtml()}
     ${amzFilterBarHtml()}
     ${amzCrumbHtml()}
@@ -473,4 +474,103 @@ function amazonJumpGo(kind, key, recordNo) {
   _amzPath = kind === 'site' ? [{ key: 'site', value: key }]
                              : [{ key: 'po', value: key }];
   amazonRender();
+}
+
+
+// ─── Reporting + export ──────────────────────────────────────────────────────
+// Both take the CURRENT filters and drill path. An export that quietly differs
+// from what is on screen is worse than no export, so the server route re-applies
+// the same filters to the same row builder rather than trusting a payload.
+let _amzShowReport = false;
+
+// The drill path is a set of equality filters, so it serialises alongside them.
+function amzExportParams() {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(_amzFilters)) {
+    if (!v || k.startsWith('_')) continue;
+    p.set(k, v === true ? '1' : v);
+  }
+  for (const step of _amzPath) p.set(step.key, step.value);
+  return p;
+}
+
+function amazonExportExcel() {
+  const p = amzExportParams();
+  // Cloudflare edge-caches .xlsx URLs by default; the query string is part of
+  // the cache key, so a timestamp guarantees a fresh file (2026-08-05 lesson).
+  p.set('t', Date.now());
+  window.location = '/api/amazon/export.xlsx?' + p.toString();
+}
+
+function amazonExportCsv() {
+  const rows = amzFiltered();
+  if (!rows.length) return;
+  const cols = [
+    ['Invoice', 'invoiceId'], ['Invoice Date', 'invoiceDate'], ['Due Date', 'dueDate'],
+    ['Days Overdue', 'daysOverdue'], ['Aging', 'bucket'], ['Open AR', 'amount'],
+    ['Department', 'deptGroup'], ['Intacct Code', 'deptId'], ['Business Unit', 'businessUnit'],
+    ['Site', 'site'], ['Site Type', 'siteType'], ['Region', 'region'], ['City', 'city'], ['State', 'state'],
+    ['Site Source', 'siteSource'], ['PO', 'po'], ['PO Status', 'poStatus'],
+    ['Amazon Status', 'payeeStatus'], ['Needs Applying', 'needsCashApplication'], ['ECF Branch', 'serviceCenter'],
+  ];
+  const esc = (v) => {
+    if (v === true) return 'YES';
+    if (v === false || v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = [cols.map(c => c[0]).join(',')]
+    .concat(rows.map(r => cols.map(c => esc(r[c[1]])).join(','))).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ecf-amazon-drilldown-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 800);
+}
+
+function amazonToggleReport() { _amzShowReport = !_amzShowReport; amazonRender(); }
+
+function amzToolbarHtml(rows) {
+  const n = rows.length;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+    <button onclick="amazonToggleReport()" style="padding:6px 12px;border:1px solid var(--gray-300);background:${_amzShowReport ? 'var(--navy)' : 'var(--white)'};color:${_amzShowReport ? '#fff' : 'var(--gray-700)'};border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+      ${_amzShowReport ? '▼' : '▶'} Report
+    </button>
+    <button onclick="amazonExportCsv()" title="The ${n.toLocaleString()} rows currently shown" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ CSV</button>
+    <button onclick="amazonExportExcel()" title="Excel workbook with summary sheets plus the detail rows" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ Excel report</button>
+    <span style="font-size:11px;color:var(--gray-500);">exports follow the filters and drill you have set — ${n.toLocaleString()} invoice${n === 1 ? '' : 's'}</span>
+  </div>
+  ${_amzShowReport ? amzReportHtml(rows) : ''}`;
+}
+
+// Grouped totals for every dimension at once, so the shape is visible without
+// clicking down the hierarchy one level at a time.
+function amzReportHtml(rows) {
+  const dims = [
+    ['Department', 'deptGroup'], ['Business Unit', 'businessUnit'], ['Amazon Status', 'payeeStatus'],
+    ['Site Type', 'siteType'], ['Region', 'region'], ['Aging', 'bucket'],
+    ['ECF Branch', 'serviceCenter'], ['Site', 'site'],
+  ];
+  const total = rows.reduce((t, r) => t + r.amount, 0) || 1;
+  const block = ([label, key]) => {
+    const g = {};
+    for (const r of rows) {
+      const k = r[key] || '(none)';
+      if (!g[k]) g[k] = { k, n: 0, amt: 0 };
+      g[k].n++; g[k].amt += r.amount;
+    }
+    const list = Object.values(g).sort((a, b) => b.amt - a.amt).slice(0, 12);
+    return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;min-width:280px;flex:1;">
+      <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">${escHtml(label)}</div>
+      ${list.map(x => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;">
+        <span style="flex:1;color:var(--gray-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.k)}</span>
+        <span style="color:var(--gray-500);font-variant-numeric:tabular-nums;">${x.n.toLocaleString()}</span>
+        <span style="width:92px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(x.amt)}</span>
+        <span style="width:44px;"><span style="display:block;height:6px;border-radius:3px;background:var(--navy);width:${Math.max(2, Math.round(x.amt / total * 44))}px;"></span></span>
+      </div>`).join('')}
+      ${Object.keys(g).length > 12 ? `<div style="font-size:11px;color:var(--gray-500);margin-top:4px;">+${Object.keys(g).length - 12} more — see the Excel report</div>` : ''}
+    </div>`;
+  };
+  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">${dims.map(block).join('')}</div>`;
 }
