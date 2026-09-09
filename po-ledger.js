@@ -993,15 +993,19 @@ function getPayeeAging(opts = {}) {
 
   for (const [invNo, item] of Object.entries(payee.getIndex())) {
     const status = (item.status || '').trim();
+
+    const isAging = reasons.has(status);
+    const dueMs = Date.parse(item.dueDate);
+    const pastDue = !isNaN(dueMs) && dueMs < now;
+    if (!isAging && !(status === 'Scheduled for payment' && pastDue)) continue;
+    // Checked AFTER the status filter so the reported count is the number this
+    // exclusion actually removed from the list, not every dead attempt in the
+    // feed. A superseded entry is work that has already moved to a suffixed id.
     if (superseded.has(invNo)) {
       excludedSuperseded++;
       excludedSupersededAmount += parseAmount(item.amount) || 0;
       continue;
     }
-    const isAging = reasons.has(status);
-    const dueMs = Date.parse(item.dueDate);
-    const pastDue = !isNaN(dueMs) && dueMs < now;
-    if (!isAging && !(status === 'Scheduled for payment' && pastDue)) continue;
 
     const entryMs = Date.parse(item.entryDate);
     const ageDays = isNaN(entryMs) ? null : Math.floor((now - entryMs) / DAY);
