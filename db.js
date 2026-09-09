@@ -163,6 +163,43 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_invdept_dept ON invoice_department(dept_id);
 
+    -- Amazon's own location master: site code -> business unit, region, zone,
+    -- address. Loaded from the network location workbook, and the authority for
+    -- gate 2 of the Amazon view. Kept as a table rather than read from the
+    -- spreadsheet at request time so a filter is a join, not a file parse.
+    CREATE TABLE IF NOT EXISTS amazon_locations (
+      site_code     TEXT PRIMARY KEY,
+      business_unit TEXT,
+      region        TEXT,
+      zone          TEXT,
+      city          TEXT,
+      state         TEXT,
+      country       TEXT,
+      serviced      TEXT,
+      omnia_loc_id  TEXT,
+      address       TEXT,
+      ops_parent    TEXT,
+      loaded_at     TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_amzloc_bu ON amazon_locations(business_unit);
+
+    -- Resolved Amazon site per invoice WITH its provenance. site_code is empty
+    -- when nothing authoritative said where the work happened; those rows are
+    -- the review queue rather than a silent guess. See site-ledger.js.
+    CREATE TABLE IF NOT EXISTS invoice_site_ledger (
+      record_no   TEXT PRIMARY KEY,
+      invoice_id  TEXT,
+      site_code   TEXT,
+      source      TEXT,
+      confidence  TEXT,
+      evidence    TEXT,
+      candidates  TEXT,
+      amount      REAL,
+      resolved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sledger_site ON invoice_site_ledger(site_code);
+    CREATE INDEX IF NOT EXISTS idx_sledger_source ON invoice_site_ledger(source);
+
     CREATE TABLE IF NOT EXISTS location_map (
       sage_recordno  INTEGER PRIMARY KEY,
       location_id    TEXT NOT NULL,
@@ -786,6 +823,56 @@ function setLocation(recordNo, locationId, locationName) {
     INSERT OR REPLACE INTO invoice_location (record_no, location_id, location_name, fetched_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(recordNo, locationId || '', locationName || '');
+}
+
+// ─── Amazon location master ─────────────────────────────────────────────────
+function replaceAmazonLocations(rows) {
+  const d = getDb();
+  const ins = d.prepare(`
+    INSERT INTO amazon_locations (site_code, business_unit, region, zone, city, state, country, serviced, omnia_loc_id, address, ops_parent, loaded_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+    ON CONFLICT(site_code) DO UPDATE SET
+      business_unit=excluded.business_unit, region=excluded.region, zone=excluded.zone,
+      city=excluded.city, state=excluded.state, country=excluded.country,
+      serviced=excluded.serviced, omnia_loc_id=excluded.omnia_loc_id,
+      address=excluded.address, ops_parent=excluded.ops_parent, loaded_at=datetime('now')
+  `);
+  d.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const code = String(r.siteCode || '').trim().toUpperCase();
+      if (!code) continue;
+      ins.run(code, r.businessUnit || '', r.region || '', r.zone || '', r.city || '',
+              r.state || '', r.country || '', r.serviced || '', r.omniaLocId || '',
+              r.address || '', r.opsParent || '');
+    }
+    d.exec('COMMIT');
+  } catch (e) { d.exec('ROLLBACK'); throw e; }
+  return d.prepare('SELECT COUNT(*) n FROM amazon_locations').get().n;
+}
+
+function getAmazonLocationMap() {
+  const d = getDb();
+  const out = {};
+  try {
+    for (const r of d.prepare('SELECT * FROM amazon_locations').all()) {
+      out[r.site_code] = {
+        siteCode: r.site_code, businessUnit: r.business_unit || '', region: r.region || '',
+        zone: r.zone || '', city: r.city || '', state: r.state || '', country: r.country || '',
+        serviced: r.serviced || '', omniaLocId: r.omnia_loc_id || '', address: r.address || '',
+        opsParent: r.ops_parent || '',
+      };
+    }
+  } catch (e) { /* not loaded yet */ }
+  return out;
+}
+
+function getBusinessUnits() {
+  const d = getDb();
+  try {
+    return d.prepare(`SELECT business_unit bu, COUNT(*) n FROM amazon_locations
+                      WHERE business_unit != '' GROUP BY business_unit ORDER BY business_unit`).all();
+  } catch (e) { return []; }
 }
 
 // ─── Intacct department per invoice ─────────────────────────────────────────
@@ -1896,6 +1983,9 @@ module.exports = {
   getAuditLog,
   getLocation,
   setLocation,
+  replaceAmazonLocations,
+  getAmazonLocationMap,
+  getBusinessUnits,
   setDepartment,
   getDepartment,
   getAllDepartments,
