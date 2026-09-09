@@ -26,6 +26,7 @@ let _amzVocab = null;
 let _amzUnresolved = [];
 let _amzFresh = {};
 let _amzAccruals = null;
+let _amzSiteCollectors = {};
 let _amzPath = [];                 // [{key,value}] one per level descended
 let _amzFilters = {};              // {businessUnit, siteType, region, bucket, q, ...}
 let _amzSort = { key: 'amount', dir: -1 };
@@ -47,6 +48,7 @@ async function amazonLoad() {
     _amzUnresolved = data.unresolved || [];
     _amzFresh = data.freshness || {};
     _amzAccruals = data.accruals || null;
+    _amzSiteCollectors = data.siteCollectors || {};
     amazonRender();
   } catch (e) {
     el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
@@ -69,6 +71,10 @@ function amzFiltered() {
     if (f.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== f.payeeStatus) return false;
     if (f.poStatus && (r.poStatus || '') !== f.poStatus) return false;
     if (f.needsCashApplication && !r.needsCashApplication) return false;
+    if (f.collector) {
+      const c = (_amzSiteCollectors[r.site] || {}).email || '';
+      if (f.collector === '(unassigned)' ? !!c : c !== f.collector) return false;
+    }
     if (f.site && r.site !== f.site) return false;
     if (f.serviceCenter && r.serviceCenter !== f.serviceCenter) return false;
     // One switch for both gaps the header warns about: no site at all, or a
@@ -173,6 +179,7 @@ function amzFilterBarHtml() {
       ${amzSelect('bucket', 'Aging', ['current', '1-30', '31-60', '61-90', '91+'], _amzFilters.bucket)}
       ${amzSelect('payeeStatus', 'Amazon status', amzStatusVocab(), _amzFilters.payeeStatus)}
       ${amzSelect('poStatus', 'PO status', ['Open', 'Closed'], _amzFilters.poStatus)}
+      ${amzSelect('collector', 'Collector', amzCollectorVocab(), _amzFilters.collector)}
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-700);cursor:pointer;">
         <input type="checkbox" ${_amzFilters.needsCashApplication ? 'checked' : ''} onchange="amazonSetFilter('needsCashApplication', this.checked)"> Needs applying in Intacct
       </label>
@@ -213,6 +220,7 @@ function amzGroupTableHtml(rows, level) {
   const list = Object.values(groups).sort((a, b) => b.amount - a.amount);
   const total = list.reduce((s, g) => s + g.amount, 0) || 1;
   const showAccrued = amzAccrualHasAny(level.key);
+  const isSiteLevel = level.key === 'site';
   if (!list.length) return `<div style="padding:24px;text-align:center;color:var(--gray-500);">No invoices match these filters.</div>`;
 
   return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;">
@@ -223,6 +231,7 @@ function amzGroupTableHtml(rows, level) {
         <th style="text-align:right;padding:9px 12px;">Invoices</th>
         <th style="text-align:right;padding:9px 12px;">Open AR</th>
         ${showAccrued ? '<th style="text-align:right;padding:9px 12px;color:#92400e;" title="Earned but not yet invoiced — not part of Open AR">Accrued</th>' : ''}
+        ${isSiteLevel ? '<th style="text-align:left;padding:9px 12px;">Collector</th>' : ''}
         <th style="text-align:left;padding:9px 12px;width:150px;">Share</th>
       </tr></thead>
       <tbody>
@@ -235,6 +244,7 @@ function amzGroupTableHtml(rows, level) {
             <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;">${g.n.toLocaleString()}</td>
             <td style="padding:9px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(g.amount)}</td>
             ${showAccrued ? `<td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${amzAccrualFor(level.key, g.key) ? '#92400e' : 'var(--gray-400)'};">${amzAccrualFor(level.key, g.key) ? amzMoney(amzAccrualFor(level.key, g.key)) : '—'}</td>` : ''}
+            ${isSiteLevel ? `<td style="padding:9px 12px;font-size:12px;" onclick="event.stopPropagation();amazonAssignSiteCollector(${JSON.stringify(g.key).replace(/"/g, '&quot;')})">${amzCollectorCellHtml(g.key)}</td>` : ''}
             <td style="padding:9px 12px;"><div style="background:var(--gray-200);border-radius:3px;height:7px;"><div style="width:${pct}%;background:var(--navy);height:7px;border-radius:3px;"></div></div></td>
           </tr>`;
         }).join('')}
@@ -545,6 +555,7 @@ function amzToolbarHtml(rows) {
     </button>
     <button onclick="amazonExportCsv()" title="The ${n.toLocaleString()} rows currently shown" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ CSV</button>
     <button onclick="amazonExportExcel()" title="Excel workbook with summary sheets plus the detail rows" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ Excel report</button>
+    <button onclick="amazonAssignVisibleSites()" title="Assign a collector to every site currently in view" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">👤 Assign collector</button>
     <span style="font-size:11px;color:var(--gray-500);">exports follow the filters and drill you have set — ${n.toLocaleString()} invoice${n === 1 ? '' : 's'}</span>
   </div>
   ${_amzShowReport ? amzReportHtml(rows) : ''}`;
@@ -839,4 +850,52 @@ function amzAccrualHasAny(levelKey) {
   const a = _amzAccruals;
   if (!a || !a.openCount) return false;
   return ['site', 'deptGroup', 'businessUnit'].includes(levelKey);
+}
+
+
+// ─── Site ownership ──────────────────────────────────────────────────────────
+// Amazon is one customer with 219 sites, so the site is the only unit that can
+// actually divide the work between collectors.
+function amzCollectorVocab() {
+  const set = new Set(Object.values(_amzSiteCollectors || {}).map(c => c.email).filter(Boolean));
+  return ['(unassigned)'].concat([...set].sort());
+}
+
+function amzCollectorCellHtml(site) {
+  const c = (_amzSiteCollectors || {})[site];
+  if (!c || !c.email) {
+    return `<span style="color:var(--gray-400);cursor:pointer;text-decoration:underline dotted;" title="Click to assign a collector">unassigned</span>`;
+  }
+  const name = c.email.split('@')[0].replace(/[._]/g, ' ');
+  return `<span style="cursor:pointer;text-decoration:underline dotted;" title="${escHtml(c.email)} — assigned by ${escHtml(c.assignedBy || 'unknown')} on ${escHtml((c.assignedAt || '').slice(0, 10))}. Click to change.">${escHtml(name)}</span>`;
+}
+
+async function amazonAssignSiteCollector(site) {
+  const cur = (_amzSiteCollectors[site] || {}).email || '';
+  const who = prompt(`Collector for site ${site}\n\nEnter an @eastcoastfacilities.com address, or leave blank to clear.`, cur);
+  if (who === null) return;
+  const email = who.trim().toLowerCase();
+  if (email && !email.endsWith('@eastcoastfacilities.com')) { alert('Must be an @eastcoastfacilities.com address.'); return; }
+  try {
+    await apiFetch('/api/amazon/site-collectors', { method: 'POST', body: JSON.stringify({ siteCode: site, collectorEmail: email || null }) });
+    if (email) _amzSiteCollectors[site] = { email, assignedBy: 'you', assignedAt: new Date().toISOString() };
+    else delete _amzSiteCollectors[site];
+    amazonRender();
+  } catch (e) { alert(e.message); }
+}
+
+// Assign every site currently in view at once — dividing 219 sites one at a
+// time is not a workflow.
+async function amazonAssignVisibleSites() {
+  const sites = [...new Set(amzFiltered().map(r => r.site).filter(Boolean))];
+  if (!sites.length) return;
+  const who = prompt(`Assign a collector to all ${sites.length} site${sites.length === 1 ? '' : 's'} currently in view.\n\nEnter an @eastcoastfacilities.com address, or leave blank to clear them.`);
+  if (who === null) return;
+  const email = who.trim().toLowerCase();
+  if (email && !email.endsWith('@eastcoastfacilities.com')) { alert('Must be an @eastcoastfacilities.com address.'); return; }
+  if (!confirm(`${email ? 'Assign ' + email + ' to' : 'Clear the collector on'} ${sites.length} site${sites.length === 1 ? '' : 's'}?`)) return;
+  try {
+    await apiFetch('/api/amazon/site-collectors/bulk', { method: 'POST', body: JSON.stringify({ siteCodes: sites, collectorEmail: email || null }) });
+    amazonLoad();
+  } catch (e) { alert(e.message); }
 }
