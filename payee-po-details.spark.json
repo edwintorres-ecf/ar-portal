@@ -1,12 +1,10 @@
 {
-  "generatedAt": "2026-09-09T10:17:38.839Z",
+  "generatedAt": "2026-09-09T12:51:36.575Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1217,
-  "scraped": 7,
-  "ok": 7,
+  "openTotal": 1218,
+  "ok": 625,
   "failed": 0,
-  "failRatio": 0,
-  "trustworthy": true,
+  "partial": true,
   "details": {
     "2D-22065956": {
       "available": 198137.27,
@@ -17,7 +15,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22065475": {
@@ -126,7 +124,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22055124": {
@@ -145,7 +143,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22033285": {
@@ -157,7 +155,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22033446": {
@@ -176,7 +174,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22033214": {
@@ -188,7 +186,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22024720": {
@@ -207,7 +205,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22028435": {
@@ -226,11 +224,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22023458": {
-      "available": 31020,
+      "available": 23265,
       "poAmount": 46530,
       "status": "Open",
       "site": "BOI2",
@@ -248,10 +246,16 @@
           "date": "Aug 31, 2026",
           "amount": 7755,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025813",
+          "date": "Sep 9, 2026",
+          "amount": 7755,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 3,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22021041": {
@@ -263,7 +267,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22015892": {
@@ -282,7 +286,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22013251": {
@@ -301,7 +305,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22012858": {
@@ -313,7 +317,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22007833": {
@@ -338,7 +342,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22007832": {
@@ -375,7 +379,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22003744": {
@@ -424,7 +428,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21997244": {
@@ -443,7 +447,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21996302": {
@@ -455,7 +459,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21993764": {
@@ -492,7 +496,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21993007": {
@@ -643,7 +647,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992958": {
@@ -728,7 +732,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992821": {
@@ -879,7 +883,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21993003": {
@@ -1192,7 +1196,7 @@
         }
       ],
       "matchedCount": 50,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992957": {
@@ -1403,7 +1407,7 @@
         }
       ],
       "matchedCount": 33,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992816": {
@@ -1494,7 +1498,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992792": {
@@ -1939,7 +1943,7 @@
         }
       ],
       "matchedCount": 72,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992457": {
@@ -1976,7 +1980,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21992093": {
@@ -2001,7 +2005,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21991585": {
@@ -2074,7 +2078,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21991579": {
@@ -2123,7 +2127,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21991583": {
@@ -2256,7 +2260,7 @@
         }
       ],
       "matchedCount": 20,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21991578": {
@@ -2575,11 +2579,11 @@
         }
       ],
       "matchedCount": 51,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21989423": {
-      "available": 119355.35,
+      "available": 108504.86,
       "poAmount": 130205.84,
       "status": "Open",
       "site": "2D",
@@ -2591,10 +2595,16 @@
           "date": "Aug 3, 2026",
           "amount": 10850.49,
           "status": "In Progress"
+        },
+        {
+          "inv": "ECI025735",
+          "date": "Sep 9, 2026",
+          "amount": 10850.49,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 2,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21989522": {
@@ -2619,7 +2629,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21989287": {
@@ -2716,7 +2726,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21989284": {
@@ -2728,7 +2738,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21988477": {
@@ -2747,7 +2757,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21988152": {
@@ -2766,7 +2776,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21980431": {
@@ -2785,7 +2795,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21979754": {
@@ -2870,7 +2880,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976624": {
@@ -2955,7 +2965,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976622": {
@@ -3100,7 +3110,7 @@
         }
       ],
       "matchedCount": 22,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976620": {
@@ -3665,7 +3675,7 @@
         }
       ],
       "matchedCount": 92,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976613": {
@@ -3696,7 +3706,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976612": {
@@ -3727,7 +3737,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976609": {
@@ -3752,7 +3762,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976606": {
@@ -3777,7 +3787,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21976604": {
@@ -3862,7 +3872,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21973530": {
@@ -3881,7 +3891,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21971895": {
@@ -3912,7 +3922,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21968924": {
@@ -3937,7 +3947,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21961847": {
@@ -3962,7 +3972,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21954110": {
@@ -3981,7 +3991,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21953635": {
@@ -4006,7 +4016,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21953669": {
@@ -4018,7 +4028,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21952876": {
@@ -4049,7 +4059,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21952835": {
@@ -4061,7 +4071,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21952834": {
@@ -4152,7 +4162,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21949972": {
@@ -4183,7 +4193,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21948327": {
@@ -4220,7 +4230,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947565": {
@@ -4269,7 +4279,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947497": {
@@ -4281,7 +4291,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947308": {
@@ -4330,7 +4340,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21948693": {
@@ -4595,7 +4605,7 @@
         }
       ],
       "matchedCount": 42,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947133": {
@@ -4704,7 +4714,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947129": {
@@ -4716,7 +4726,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947067": {
@@ -4915,7 +4925,7 @@
         }
       ],
       "matchedCount": 31,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947065": {
@@ -5000,7 +5010,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21947240": {
@@ -5259,7 +5269,7 @@
         }
       ],
       "matchedCount": 41,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21946689": {
@@ -5271,7 +5281,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21946667": {
@@ -5283,7 +5293,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21940808": {
@@ -5314,7 +5324,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21940574": {
@@ -5333,7 +5343,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938549": {
@@ -5388,7 +5398,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938545": {
@@ -5437,7 +5447,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938544": {
@@ -5606,7 +5616,7 @@
         }
       ],
       "matchedCount": 26,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938510": {
@@ -5667,7 +5677,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938503": {
@@ -5794,7 +5804,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938501": {
@@ -5806,7 +5816,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938473": {
@@ -5825,7 +5835,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938404": {
@@ -5837,7 +5847,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21937433": {
@@ -5874,7 +5884,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21938502": {
@@ -5935,7 +5945,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21937430": {
@@ -5947,7 +5957,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21934672": {
@@ -5966,7 +5976,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21933635": {
@@ -6003,7 +6013,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21933438": {
@@ -6064,7 +6074,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21937432": {
@@ -6089,7 +6099,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21933361": {
@@ -6456,7 +6466,7 @@
         }
       ],
       "matchedCount": 59,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21931575": {
@@ -6505,7 +6515,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21931573": {
@@ -6674,7 +6684,7 @@
         }
       ],
       "matchedCount": 26,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21930009": {
@@ -6693,7 +6703,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21927975": {
@@ -6796,7 +6806,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21927973": {
@@ -6833,7 +6843,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21927859": {
@@ -6852,7 +6862,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21925480": {
@@ -6864,7 +6874,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21925319": {
@@ -6889,7 +6899,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21925283": {
@@ -6914,7 +6924,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21925277": {
@@ -6926,7 +6936,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21924121": {
@@ -6963,7 +6973,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21923600": {
@@ -6988,7 +6998,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21923283": {
@@ -7000,7 +7010,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21923281": {
@@ -7025,7 +7035,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21921794": {
@@ -7037,7 +7047,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920991": {
@@ -7049,7 +7059,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920989": {
@@ -7080,7 +7090,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920894": {
@@ -7105,7 +7115,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920528": {
@@ -7124,7 +7134,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920414": {
@@ -7155,7 +7165,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21920351": {
@@ -7167,7 +7177,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21919037": {
@@ -7179,7 +7189,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21918830": {
@@ -7191,7 +7201,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21918829": {
@@ -7210,7 +7220,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21918828": {
@@ -7222,7 +7232,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21914446": {
@@ -7247,7 +7257,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21914442": {
@@ -7259,7 +7269,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21913003": {
@@ -7271,7 +7281,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21913002": {
@@ -7283,7 +7293,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21912791": {
@@ -7332,7 +7342,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21911904": {
@@ -7344,7 +7354,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21911859": {
@@ -7363,7 +7373,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21911078": {
@@ -7375,7 +7385,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21908098": {
@@ -7400,7 +7410,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21908002": {
@@ -7419,7 +7429,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21911149": {
@@ -7444,7 +7454,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21907775": {
@@ -7456,7 +7466,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21907390": {
@@ -7631,7 +7641,7 @@
         }
       ],
       "matchedCount": 27,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21907387": {
@@ -7643,7 +7653,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21907386": {
@@ -7716,7 +7726,7 @@
         }
       ],
       "matchedCount": 10,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21907278": {
@@ -7849,7 +7859,7 @@
         }
       ],
       "matchedCount": 20,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21905901": {
@@ -7904,7 +7914,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21905900": {
@@ -8025,7 +8035,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21905795": {
@@ -8037,7 +8047,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21905504": {
@@ -8056,7 +8066,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21905287": {
@@ -8075,7 +8085,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21902807": {
@@ -8094,7 +8104,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21902844": {
@@ -8106,7 +8116,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21901274": {
@@ -8125,7 +8135,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21897794": {
@@ -8144,7 +8154,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21897771": {
@@ -8169,7 +8179,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21896557": {
@@ -8188,7 +8198,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21892606": {
@@ -8231,7 +8241,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21891972": {
@@ -8250,7 +8260,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21891843": {
@@ -8269,7 +8279,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21888910": {
@@ -8288,7 +8298,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21886220": {
@@ -8300,7 +8310,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21885767": {
@@ -8325,7 +8335,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21882705": {
@@ -8337,7 +8347,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21880119": {
@@ -8356,7 +8366,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21877337": {
@@ -8368,7 +8378,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21874881": {
@@ -8387,7 +8397,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21846301": {
@@ -8399,7 +8409,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21830738": {
@@ -8418,7 +8428,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21815527": {
@@ -8437,7 +8447,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21824681": {
@@ -8456,7 +8466,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21809820": {
@@ -8475,7 +8485,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21800200": {
@@ -8494,7 +8504,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21799009": {
@@ -8519,7 +8529,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21785756": {
@@ -8538,7 +8548,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21779826": {
@@ -8557,7 +8567,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21775819": {
@@ -8576,7 +8586,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21752566": {
@@ -8607,7 +8617,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21733841": {
@@ -8626,7 +8636,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21731855": {
@@ -8645,7 +8655,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21729314": {
@@ -8664,7 +8674,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21710124": {
@@ -8683,7 +8693,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21708800": {
@@ -8702,7 +8712,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21696533": {
@@ -8714,11 +8724,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21685750": {
-      "available": 21000,
+      "available": 15750,
       "poAmount": 34125,
       "status": "Open",
       "site": "MCO1",
@@ -8742,10 +8752,16 @@
           "date": "Aug 3, 2026",
           "amount": 5250,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025720",
+          "date": "Sep 9, 2026",
+          "amount": 5250,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 4,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21684469": {
@@ -8770,7 +8786,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21673622": {
@@ -8789,7 +8805,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21666960": {
@@ -8810,11 +8826,11 @@
           "inv": "ECI025545",
           "date": "Aug 31, 2026",
           "amount": 20972.81,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21660542": {
@@ -8833,7 +8849,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21652075": {
@@ -8852,7 +8868,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21646090": {
@@ -8864,7 +8880,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21642489": {
@@ -8883,12 +8899,12 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21622355": {
-      "available": 6147.61,
-      "poAmount": 15000,
+      "available": 21147.61,
+      "poAmount": 30000,
       "status": "Open",
       "site": "ORF3",
       "desc": "ORF3 - 2026 - Landscaping AdHoc Services",
@@ -8920,7 +8936,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21622299": {
@@ -8951,7 +8967,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21611650": {
@@ -8970,7 +8986,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21619607": {
@@ -9013,7 +9029,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21604532": {
@@ -9032,7 +9048,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21595913": {
@@ -9051,7 +9067,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21592073": {
@@ -9082,7 +9098,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21587119": {
@@ -9113,7 +9129,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21586233": {
@@ -9132,7 +9148,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21582367": {
@@ -9151,7 +9167,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21580156": {
@@ -9170,7 +9186,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21576446": {
@@ -9189,7 +9205,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21575852": {
@@ -9208,7 +9224,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21575778": {
@@ -9227,7 +9243,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21553914": {
@@ -9246,7 +9262,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21549225": {
@@ -9265,7 +9281,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21548749": {
@@ -9314,7 +9330,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21539299": {
@@ -9333,7 +9349,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21515852": {
@@ -9352,7 +9368,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21502663": {
@@ -9364,7 +9380,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21502099": {
@@ -9376,7 +9392,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21498919": {
@@ -9395,7 +9411,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21498643": {
@@ -9414,7 +9430,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21497638": {
@@ -9433,7 +9449,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21497468": {
@@ -9452,7 +9468,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21496550": {
@@ -9471,7 +9487,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21496364": {
@@ -9490,7 +9506,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21493761": {
@@ -9509,7 +9525,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21486777": {
@@ -9528,7 +9544,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21486239": {
@@ -9547,7 +9563,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21473981": {
@@ -9662,7 +9678,7 @@
         }
       ],
       "matchedCount": 17,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21479102": {
@@ -9681,7 +9697,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21472945": {
@@ -9700,7 +9716,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21458210": {
@@ -9719,7 +9735,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21455245": {
@@ -9738,7 +9754,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21453521": {
@@ -9757,7 +9773,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21441994": {
@@ -9776,7 +9792,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21441347": {
@@ -9795,7 +9811,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21429135": {
@@ -9814,7 +9830,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21426959": {
@@ -9839,7 +9855,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21414238": {
@@ -9858,7 +9874,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21398337": {
@@ -9877,7 +9893,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21383358": {
@@ -9896,7 +9912,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21376365": {
@@ -9915,7 +9931,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21375690": {
@@ -9934,7 +9950,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21375140": {
@@ -9953,7 +9969,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21368126": {
@@ -9972,7 +9988,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21366277": {
@@ -9984,7 +10000,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21353561": {
@@ -10003,7 +10019,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21345877": {
@@ -10022,7 +10038,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21344231": {
@@ -10041,7 +10057,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21325912": {
@@ -10066,7 +10082,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21315873": {
@@ -10085,7 +10101,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21310683": {
@@ -10097,7 +10113,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21289364": {
@@ -10116,7 +10132,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21289813": {
@@ -10141,11 +10157,11 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21257997": {
-      "available": 18552.34,
+      "available": 12034.9,
       "poAmount": 51139.54,
       "status": "Open",
       "site": "QYY4",
@@ -10181,10 +10197,16 @@
           "date": "Aug 3, 2026",
           "amount": 6517.44,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025648",
+          "date": "Sep 9, 2026",
+          "amount": 6517.44,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21258607": {
@@ -10203,7 +10225,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21278261": {
@@ -10222,7 +10244,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21254090": {
@@ -10241,7 +10263,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21230262": {
@@ -10266,7 +10288,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21245487": {
@@ -10278,7 +10300,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21230036": {
@@ -10297,7 +10319,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21230011": {
@@ -10316,7 +10338,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21226118": {
@@ -10335,7 +10357,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21217752": {
@@ -10360,7 +10382,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21214485": {
@@ -10379,7 +10401,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21210570": {
@@ -10416,11 +10438,11 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21206674": {
-      "available": 14321.86,
+      "available": 9547.91,
       "poAmount": 38191.61,
       "status": "Open",
       "site": "SPA4",
@@ -10456,10 +10478,16 @@
           "date": "Aug 3, 2026",
           "amount": 4773.95,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025646",
+          "date": "Sep 9, 2026",
+          "amount": 4773.95,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21188699": {
@@ -10478,7 +10506,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21187097": {
@@ -10503,7 +10531,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21187096": {
@@ -10564,7 +10592,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21184839": {
@@ -10583,7 +10611,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21180382": {
@@ -10602,7 +10630,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21179648": {
@@ -10621,7 +10649,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21178089": {
@@ -10640,7 +10668,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21157237": {
@@ -10659,7 +10687,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21149761": {
@@ -10762,7 +10790,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21149760": {
@@ -10847,7 +10875,7 @@
         }
       ],
       "matchedCount": 12,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148757": {
@@ -10914,7 +10942,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148756": {
@@ -10993,7 +11021,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21154830": {
@@ -11024,7 +11052,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148755": {
@@ -11151,7 +11179,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148754": {
@@ -11200,7 +11228,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148753": {
@@ -11309,7 +11337,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148752": {
@@ -11352,7 +11380,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21148751": {
@@ -11467,7 +11495,7 @@
         }
       ],
       "matchedCount": 17,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21143751": {
@@ -11486,7 +11514,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21141448": {
@@ -11505,7 +11533,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21141371": {
@@ -11542,7 +11570,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21141370": {
@@ -11579,7 +11607,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21140679": {
@@ -11598,7 +11626,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21137073": {
@@ -11617,7 +11645,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21136849": {
@@ -11636,7 +11664,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21135743": {
@@ -11661,7 +11689,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21141369": {
@@ -11716,7 +11744,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21135522": {
@@ -11843,7 +11871,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21134057": {
@@ -11886,7 +11914,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21129897": {
@@ -11905,7 +11933,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21129194": {
@@ -12086,7 +12114,7 @@
         }
       ],
       "matchedCount": 28,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21121243": {
@@ -12098,7 +12126,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21118618": {
@@ -12135,7 +12163,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21118379": {
@@ -12154,11 +12182,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21117672": {
-      "available": 4360,
+      "available": 3250,
       "poAmount": 8800,
       "status": "Open",
       "site": "SYR1",
@@ -12188,10 +12216,16 @@
           "date": "Aug 3, 2026",
           "amount": 1110,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025718",
+          "date": "Sep 9, 2026",
+          "amount": 1110,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 5,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21118380": {
@@ -12378,7 +12412,7 @@
         }
       ],
       "matchedCount": 29,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21117585": {
@@ -12397,7 +12431,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21118049": {
@@ -12458,7 +12492,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115996": {
@@ -12615,7 +12649,7 @@
         }
       ],
       "matchedCount": 24,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115995": {
@@ -12736,7 +12770,7 @@
         }
       ],
       "matchedCount": 18,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115993": {
@@ -12767,7 +12801,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115130": {
@@ -12828,7 +12862,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115060": {
@@ -12853,7 +12887,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115055": {
@@ -12902,7 +12936,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115054": {
@@ -12927,7 +12961,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21114800": {
@@ -12946,7 +12980,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21115056": {
@@ -13007,7 +13041,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21110187": {
@@ -13026,7 +13060,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21104030": {
@@ -13045,7 +13079,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21100848": {
@@ -13100,7 +13134,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21098201": {
@@ -13119,7 +13153,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21097675": {
@@ -13150,7 +13184,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21097674": {
@@ -13169,7 +13203,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21096884": {
@@ -13181,7 +13215,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21100636": {
@@ -13362,7 +13396,7 @@
         }
       ],
       "matchedCount": 28,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21096703": {
@@ -13374,7 +13408,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21096701": {
@@ -13386,7 +13420,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21083070": {
@@ -13405,11 +13439,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21079245": {
-      "available": 34174.81,
+      "available": 22783.21,
       "poAmount": 91132.81,
       "status": "Open",
       "site": "BOS7",
@@ -13445,10 +13479,16 @@
           "date": "Aug 3, 2026",
           "amount": 11391.6,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025568",
+          "date": "Sep 9, 2026",
+          "amount": 11391.6,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21077747": {
@@ -13467,7 +13507,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21071077": {
@@ -13486,11 +13526,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21065385": {
-      "available": 3603.96,
+      "available": 2702.97,
       "poAmount": 7207.92,
       "status": "Open",
       "site": "RDU1",
@@ -13520,10 +13560,16 @@
           "date": "Aug 3, 2026",
           "amount": 900.99,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025717",
+          "date": "Sep 9, 2026",
+          "amount": 900.99,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 5,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21035827": {
@@ -13554,7 +13600,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21007078": {
@@ -13573,7 +13619,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-21000026": {
@@ -13592,7 +13638,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20992584": {
@@ -13659,7 +13705,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20992339": {
@@ -13678,7 +13724,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20988748": {
@@ -13757,7 +13803,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20988747": {
@@ -13854,7 +13900,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20985969": {
@@ -13885,7 +13931,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20985964": {
@@ -13952,7 +13998,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20985435": {
@@ -13971,7 +14017,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20983946": {
@@ -14002,7 +14048,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20982560": {
@@ -14021,7 +14067,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20979459": {
@@ -14082,7 +14128,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20976513": {
@@ -14094,7 +14140,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20976191": {
@@ -14113,7 +14159,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20960601": {
@@ -14132,7 +14178,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20974634": {
@@ -14151,7 +14197,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20952661": {
@@ -14170,11 +14216,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20952588": {
-      "available": 5663.6,
+      "available": 3775.92,
       "poAmount": 15102,
       "status": "Open",
       "site": "WMI1",
@@ -14210,10 +14256,16 @@
           "date": "Aug 3, 2026",
           "amount": 1887.68,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025616",
+          "date": "Sep 9, 2026",
+          "amount": 1887.68,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20942931": {
@@ -14232,7 +14284,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20946803": {
@@ -14251,7 +14303,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20935006": {
@@ -14270,11 +14322,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932016": {
-      "available": 10216,
+      "available": 7662,
       "poAmount": 30648,
       "status": "Open",
       "site": "SJA1",
@@ -14328,10 +14380,16 @@
           "date": "Aug 3, 2026",
           "amount": 2554,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025601",
+          "date": "Sep 9, 2026",
+          "amount": 2554,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932015": {
@@ -14374,11 +14432,11 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932009": {
-      "available": 7267.8,
+      "available": 4821.55,
       "poAmount": 19570,
       "status": "Open",
       "site": "SSP2",
@@ -14414,10 +14472,16 @@
           "date": "Aug 6, 2026",
           "amount": 2446.25,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025574",
+          "date": "Sep 9, 2026",
+          "amount": 2446.25,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932002": {
@@ -14429,11 +14493,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932000": {
-      "available": 11202.56,
+      "available": 8401.88,
       "poAmount": 33608,
       "status": "Open",
       "site": "SAH1",
@@ -14487,10 +14551,16 @@
           "date": "Aug 3, 2026",
           "amount": 2800.68,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025581",
+          "date": "Sep 9, 2026",
+          "amount": 2800.68,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20923936": {
@@ -14509,11 +14579,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20932001": {
-      "available": 21850.88,
+      "available": 16388.36,
       "poAmount": 54626,
       "status": "Open",
       "site": "SYS3",
@@ -14555,10 +14625,16 @@
           "date": "Aug 3, 2026",
           "amount": 5462.52,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025606",
+          "date": "Sep 9, 2026",
+          "amount": 5462.52,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20917190": {
@@ -14577,11 +14653,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20885591": {
-      "available": 6565.05,
+      "available": 4376.7,
       "poAmount": 17506.8,
       "status": "Open",
       "site": "SEA94",
@@ -14617,10 +14693,16 @@
           "date": "Aug 3, 2026",
           "amount": 2188.35,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025608",
+          "date": "Sep 9, 2026",
+          "amount": 2188.35,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20884437": {
@@ -14639,7 +14721,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20903450": {
@@ -14658,11 +14740,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20882689": {
-      "available": 31754.18,
+      "available": 21169.45,
       "poAmount": 84677.83,
       "status": "Open",
       "site": "ORH3",
@@ -14698,14 +14780,20 @@
           "date": "Aug 3, 2026",
           "amount": 10584.73,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025588",
+          "date": "Sep 9, 2026",
+          "amount": 10584.73,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20882684": {
-      "available": 18745.23,
+      "available": 12496.82,
       "poAmount": 49987.28,
       "status": "Open",
       "site": "XLX7",
@@ -14741,14 +14829,20 @@
           "date": "Aug 3, 2026",
           "amount": 6248.41,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025567",
+          "date": "Sep 9, 2026",
+          "amount": 6248.41,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20882651": {
-      "available": 11807.5,
+      "available": 7871.67,
       "poAmount": 31486.65,
       "status": "Open",
       "site": "HGR5",
@@ -14784,10 +14878,16 @@
           "date": "Aug 3, 2026",
           "amount": 3935.83,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025605",
+          "date": "Sep 9, 2026",
+          "amount": 3935.83,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20882577": {
@@ -14830,11 +14930,11 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20882576": {
-      "available": 40284.21,
+      "available": 26799.95,
       "poAmount": 107874.06,
       "status": "Open",
       "site": "CMH4",
@@ -14870,14 +14970,20 @@
           "date": "Aug 3, 2026",
           "amount": 13484.26,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025566",
+          "date": "Sep 9, 2026",
+          "amount": 13484.26,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20879345": {
-      "available": 29317.44,
+      "available": 19544.97,
       "poAmount": 78179.79,
       "status": "Open",
       "site": "ICT2",
@@ -14913,10 +15019,16 @@
           "date": "Aug 3, 2026",
           "amount": 9772.47,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025592",
+          "date": "Sep 9, 2026",
+          "amount": 9772.47,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20872292": {
@@ -14935,7 +15047,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20869704": {
@@ -14954,7 +15066,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20863073": {
@@ -14973,7 +15085,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20840113": {
@@ -14992,7 +15104,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20822118": {
@@ -15029,7 +15141,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20818438": {
@@ -15048,7 +15160,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20818334": {
@@ -15217,7 +15329,7 @@
         }
       ],
       "matchedCount": 26,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20818333": {
@@ -15272,7 +15384,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20815774": {
@@ -15297,7 +15409,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20815495": {
@@ -15316,7 +15428,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20798064": {
@@ -15335,7 +15447,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20792549": {
@@ -15354,11 +15466,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20792222": {
-      "available": 14284.15,
+      "available": 9522.98,
       "poAmount": 38090,
       "status": "Open",
       "site": "SIL4",
@@ -15394,10 +15506,16 @@
           "date": "Aug 3, 2026",
           "amount": 4761.17,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025561",
+          "date": "Sep 9, 2026",
+          "amount": 4761.17,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20787545": {
@@ -15416,7 +15534,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20786654": {
@@ -15435,7 +15553,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20786641": {
@@ -15454,7 +15572,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20782894": {
@@ -15473,7 +15591,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20742690": {
@@ -15485,7 +15603,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20773484": {
@@ -15504,7 +15622,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20710026": {
@@ -15529,7 +15647,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20758282": {
@@ -15548,7 +15666,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20709404": {
@@ -15567,7 +15685,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20704814": {
@@ -15586,11 +15704,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20696813": {
-      "available": 57998.3,
+      "available": 38665.54,
       "poAmount": 154662.1,
       "status": "Open",
       "site": "SBN1",
@@ -15626,10 +15744,16 @@
           "date": "Aug 3, 2026",
           "amount": 19332.76,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025609",
+          "date": "Sep 9, 2026",
+          "amount": 19332.76,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20696812": {
@@ -15672,7 +15796,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20696571": {
@@ -15684,11 +15808,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20676608": {
-      "available": 22370.8,
+      "available": 16778.1,
       "poAmount": 55927,
       "status": "Open",
       "site": "SSC4",
@@ -15730,10 +15854,16 @@
           "date": "Aug 3, 2026",
           "amount": 5592.7,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025611",
+          "date": "Sep 9, 2026",
+          "amount": 5592.7,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20669136": {
@@ -15776,7 +15906,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20664168": {
@@ -15801,7 +15931,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20664023": {
@@ -15820,11 +15950,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20659787": {
-      "available": 27990.44,
+      "available": 18629.09,
       "poAmount": 74890.8,
       "status": "Open",
       "site": "AKC1",
@@ -15860,14 +15990,20 @@
           "date": "Aug 3, 2026",
           "amount": 9361.35,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025615",
+          "date": "Sep 9, 2026",
+          "amount": 9361.35,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20659772": {
-      "available": 39130.95,
+      "available": 26054.61,
       "poAmount": 104610.72,
       "status": "Open",
       "site": "AKR1",
@@ -15903,10 +16039,16 @@
           "date": "Aug 3, 2026",
           "amount": 13076.34,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025578",
+          "date": "Sep 9, 2026",
+          "amount": 13076.34,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20639472": {
@@ -15937,7 +16079,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20636560": {
@@ -15974,11 +16116,11 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20635263": {
-      "available": 16409.37,
+      "available": 10939.58,
       "poAmount": 49228.11,
       "status": "Open",
       "site": "RMN3",
@@ -16020,10 +16162,16 @@
           "date": "Aug 3, 2026",
           "amount": 5469.79,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025641",
+          "date": "Sep 9, 2026",
+          "amount": 5469.79,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20620291": {
@@ -16120,7 +16268,7 @@
         }
       ],
       "matchedCount": 14,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20620286": {
@@ -16679,7 +16827,7 @@
         }
       ],
       "matchedCount": 91,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20599848": {
@@ -16812,7 +16960,7 @@
         }
       ],
       "matchedCount": 20,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20595454": {
@@ -16915,7 +17063,7 @@
         }
       ],
       "matchedCount": 15,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20595452": {
@@ -16952,7 +17100,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20586646": {
@@ -16989,7 +17137,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20583322": {
@@ -17080,7 +17228,7 @@
         }
       ],
       "matchedCount": 13,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20573544": {
@@ -17195,7 +17343,7 @@
         }
       ],
       "matchedCount": 17,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20573454": {
@@ -17262,7 +17410,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20572571": {
@@ -17371,7 +17519,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20572415": {
@@ -17414,7 +17562,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20570765": {
@@ -17426,7 +17574,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20564222": {
@@ -17535,7 +17683,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20560525": {
@@ -17547,7 +17695,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20559131": {
@@ -17572,7 +17720,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20559107": {
@@ -17627,7 +17775,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20553054": {
@@ -17706,7 +17854,7 @@
         }
       ],
       "matchedCount": 11,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20551743": {
@@ -17743,7 +17891,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20551740": {
@@ -17870,7 +18018,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20551624": {
@@ -18015,7 +18163,7 @@
         }
       ],
       "matchedCount": 22,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20550186": {
@@ -18027,7 +18175,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20545984": {
@@ -18039,7 +18187,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20545928": {
@@ -18106,7 +18254,7 @@
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20534573": {
@@ -18118,7 +18266,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20534141": {
@@ -18137,7 +18285,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20530928": {
@@ -18149,7 +18297,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20530921": {
@@ -18174,7 +18322,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20524815": {
@@ -18325,7 +18473,7 @@
         }
       ],
       "matchedCount": 23,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20523032": {
@@ -18337,7 +18485,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20521186": {
@@ -18386,7 +18534,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20519000": {
@@ -18398,7 +18546,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20518290": {
@@ -18410,11 +18558,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20517331": {
-      "available": 21380.67,
+      "available": 14199.93,
       "poAmount": 57445.94,
       "status": "Open",
       "site": "CLE3",
@@ -18450,10 +18598,16 @@
           "date": "Aug 3, 2026",
           "amount": 7180.74,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025604",
+          "date": "Sep 9, 2026",
+          "amount": 7180.74,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20514023": {
@@ -18465,7 +18619,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20512224": {
@@ -18484,7 +18638,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20509218": {
@@ -18545,7 +18699,7 @@
         }
       ],
       "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20503949": {
@@ -18600,7 +18754,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20503795": {
@@ -18619,7 +18773,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20503405": {
@@ -18662,11 +18816,11 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20501460": {
-      "available": 10835.25,
+      "available": 7223.5,
       "poAmount": 28894,
       "status": "Open",
       "site": "SIL4",
@@ -18702,10 +18856,16 @@
           "date": "Aug 3, 2026",
           "amount": 3611.75,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025563",
+          "date": "Sep 9, 2026",
+          "amount": 3611.75,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20507144": {
@@ -18880,7 +19040,7 @@
         }
       ],
       "matchedCount": 27,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20501385": {
@@ -18899,7 +19059,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20501327": {
@@ -18911,11 +19071,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20501248": {
-      "available": 15340.97,
+      "available": 10227.3,
       "poAmount": 40909.32,
       "status": "Open",
       "site": "BOS3",
@@ -18953,6 +19113,12 @@
           "status": "Scheduled for payment"
         },
         {
+          "inv": "ECI025642",
+          "date": "Sep 9, 2026",
+          "amount": 5113.67,
+          "status": "In Progress"
+        },
+        {
           "inv": "S7303",
           "date": "Mar 5, 2026",
           "amount": 0,
@@ -18965,8 +19131,8 @@
           "status": "Paid"
         }
       ],
-      "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 8,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20495481": {
@@ -19015,7 +19181,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20492307": {
@@ -19027,11 +19193,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20492271": {
-      "available": 27304.29,
+      "available": 18202.85,
       "poAmount": 72811.49,
       "status": "Open",
       "site": "ORF2",
@@ -19067,14 +19233,20 @@
           "date": "Aug 3, 2026",
           "amount": 9101.44,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025597",
+          "date": "Sep 9, 2026",
+          "amount": 9101.44,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20492269": {
-      "available": 24361.07,
+      "available": 16240.73,
       "poAmount": 64962.77,
       "status": "Open",
       "site": "ORF3",
@@ -19110,10 +19282,16 @@
           "date": "Aug 3, 2026",
           "amount": 8120.34,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025600",
+          "date": "Sep 9, 2026",
+          "amount": 8120.34,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20490678": {
@@ -19132,7 +19310,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20495247": {
@@ -19481,7 +19659,7 @@
         }
       ],
       "matchedCount": 56,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20488208": {
@@ -19506,7 +19684,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20474457": {
@@ -19549,7 +19727,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20487816": {
@@ -19604,7 +19782,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20430765": {
@@ -19623,7 +19801,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20399904": {
@@ -19642,7 +19820,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20367776": {
@@ -19661,7 +19839,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20450506": {
@@ -19854,7 +20032,7 @@
         }
       ],
       "matchedCount": 30,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20362010": {
@@ -19897,7 +20075,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20352324": {
@@ -19916,7 +20094,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20379239": {
@@ -19965,7 +20143,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20351112": {
@@ -20008,7 +20186,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20350816": {
@@ -20033,7 +20211,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20345027": {
@@ -20052,7 +20230,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20345025": {
@@ -20071,7 +20249,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20334182": {
@@ -20090,7 +20268,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20304984": {
@@ -20133,7 +20311,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20300544": {
@@ -20170,7 +20348,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20298795": {
@@ -20195,7 +20373,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20298789": {
@@ -20220,7 +20398,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20287714": {
@@ -20232,7 +20410,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20283455": {
@@ -20257,7 +20435,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20283441": {
@@ -20282,7 +20460,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20254082": {
@@ -20294,7 +20472,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20246629": {
@@ -20306,19 +20484,19 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20245625": {
-      "available": 0.01,
-      "poAmount": 0.01,
+      "available": 105715.75,
+      "poAmount": 105715.75,
       "status": "Open",
       "site": "WWV9",
       "desc": null,
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20242474": {
@@ -20367,7 +20545,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20242469": {
@@ -20404,7 +20582,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20227161": {
@@ -20416,7 +20594,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20227160": {
@@ -20428,7 +20606,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20227156": {
@@ -20447,7 +20625,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20227155": {
@@ -20459,7 +20637,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226825": {
@@ -20471,7 +20649,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226824": {
@@ -20483,7 +20661,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226823": {
@@ -20495,7 +20673,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226822": {
@@ -20514,7 +20692,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226821": {
@@ -20526,7 +20704,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226820": {
@@ -20545,7 +20723,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226818": {
@@ -20557,7 +20735,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226817": {
@@ -20569,7 +20747,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226815": {
@@ -20588,7 +20766,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226816": {
@@ -20607,7 +20785,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226813": {
@@ -20619,7 +20797,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226812": {
@@ -20638,7 +20816,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226810": {
@@ -20650,7 +20828,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226809": {
@@ -20669,7 +20847,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226808": {
@@ -20681,7 +20859,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226806": {
@@ -20700,7 +20878,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226805": {
@@ -20712,7 +20890,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226804": {
@@ -20724,7 +20902,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226803": {
@@ -20743,7 +20921,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226801": {
@@ -20762,7 +20940,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20226802": {
@@ -20781,7 +20959,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20224892": {
@@ -20800,7 +20978,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20189278": {
@@ -20812,7 +20990,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20219878": {
@@ -20824,7 +21002,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20187658": {
@@ -20836,7 +21014,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20200769": {
@@ -20855,7 +21033,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20187552": {
@@ -20867,7 +21045,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20186954": {
@@ -20879,7 +21057,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20183124": {
@@ -20891,7 +21069,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20183122": {
@@ -20903,7 +21081,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20174961": {
@@ -20922,7 +21100,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20159722": {
@@ -20934,7 +21112,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20160971": {
@@ -20946,7 +21124,7 @@
       "masked": true,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20155665": {
@@ -21001,7 +21179,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20149820": {
@@ -21020,7 +21198,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20151109": {
@@ -21177,7 +21355,7 @@
         }
       ],
       "matchedCount": 24,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20111747": {
@@ -21226,7 +21404,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20105616": {
@@ -21275,7 +21453,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20105615": {
@@ -21612,11 +21790,11 @@
         }
       ],
       "matchedCount": 54,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084843": {
-      "available": 19325.8,
+      "available": 15299.6,
       "poAmount": 43483,
       "status": "Open",
       "site": "WNC4",
@@ -21658,14 +21836,20 @@
           "date": "Aug 3, 2026",
           "amount": 4026.2,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025583",
+          "date": "Sep 9, 2026",
+          "amount": 4026.2,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084846": {
-      "available": 12856.4,
+      "available": 9642.45,
       "poAmount": 38568,
       "status": "Open",
       "site": "WTY1",
@@ -21719,14 +21903,20 @@
           "date": "Aug 3, 2026",
           "amount": 3213.95,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025582",
+          "date": "Sep 9, 2026",
+          "amount": 3213.95,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084847": {
-      "available": 16975.9,
+      "available": 11317.48,
       "poAmount": 45268,
       "status": "Open",
       "site": "WNB3",
@@ -21762,14 +21952,20 @@
           "date": "Aug 3, 2026",
           "amount": 5658.42,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025602",
+          "date": "Sep 9, 2026",
+          "amount": 5658.42,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084834": {
-      "available": 23792.52,
+      "available": 17234.02,
       "poAmount": 56667,
       "status": "Open",
       "site": "WOH2",
@@ -21805,14 +22001,20 @@
           "date": "Aug 3, 2026",
           "amount": 6558.5,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025580",
+          "date": "Sep 9, 2026",
+          "amount": 6558.5,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084835": {
-      "available": 9208,
+      "available": 6139,
       "poAmount": 24553,
       "status": "Open",
       "site": "WSM9",
@@ -21848,14 +22050,20 @@
           "date": "Aug 3, 2026",
           "amount": 3069,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025596",
+          "date": "Sep 9, 2026",
+          "amount": 3069,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084832": {
-      "available": 12890.4,
+      "available": 9667.8,
       "poAmount": 32226,
       "status": "Open",
       "site": null,
@@ -21897,14 +22105,20 @@
           "date": "Aug 3, 2026",
           "amount": 3222.6,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025589",
+          "date": "Sep 9, 2026",
+          "amount": 3222.6,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084830": {
-      "available": 14325.8,
+      "available": 9550.76,
       "poAmount": 38201,
       "status": "Open",
       "site": "WMO7",
@@ -21940,14 +22154,20 @@
           "date": "Aug 3, 2026",
           "amount": 4775.04,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025571",
+          "date": "Sep 9, 2026",
+          "amount": 4775.04,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084831": {
-      "available": 9360.9,
+      "available": 6430.54,
       "poAmount": 24042,
       "status": "Open",
       "site": "WIO2",
@@ -21983,14 +22203,20 @@
           "date": "Aug 6, 2026",
           "amount": 2930.36,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025598",
+          "date": "Sep 9, 2026",
+          "amount": 2930.36,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084828": {
-      "available": 5399.34,
+      "available": 338.23,
       "poAmount": 35766,
       "status": "Open",
       "site": "WGR3",
@@ -22032,14 +22258,20 @@
           "date": "Aug 3, 2026",
           "amount": 5061.11,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025612",
+          "date": "Sep 9, 2026",
+          "amount": 5061.11,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 7,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084826": {
-      "available": 13046,
+      "available": 9784,
       "poAmount": 39142,
       "status": "Open",
       "site": "WTN4",
@@ -22093,14 +22325,20 @@
           "date": "Aug 3, 2026",
           "amount": 3262,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025590",
+          "date": "Sep 9, 2026",
+          "amount": 3262,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084824": {
-      "available": 28063,
+      "available": 21048,
       "poAmount": 84183,
       "status": "Open",
       "site": "WRK1",
@@ -22154,14 +22392,20 @@
           "date": "Aug 3, 2026",
           "amount": 7015,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025577",
+          "date": "Sep 9, 2026",
+          "amount": 7015,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084819": {
-      "available": 36359.75,
+      "available": 24239.9,
       "poAmount": 96959,
       "status": "Open",
       "site": "WPY1",
@@ -22197,14 +22441,20 @@
           "date": "Aug 3, 2026",
           "amount": 12119.85,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025607",
+          "date": "Sep 9, 2026",
+          "amount": 12119.85,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084815": {
-      "available": 23171,
+      "available": 17321,
       "poAmount": 70205,
       "status": "Open",
       "site": "WGR1",
@@ -22258,14 +22508,20 @@
           "date": "Aug 3, 2026",
           "amount": 5850,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025576",
+          "date": "Sep 9, 2026",
+          "amount": 5850,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084816": {
-      "available": 10248,
+      "available": 6832,
       "poAmount": 27328,
       "status": "Open",
       "site": "WMO4",
@@ -22301,14 +22557,20 @@
           "date": "Aug 3, 2026",
           "amount": 3416,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025572",
+          "date": "Sep 9, 2026",
+          "amount": 3416,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084813": {
-      "available": 12033,
+      "available": 8022,
       "poAmount": 32088,
       "status": "Open",
       "site": "WIL6",
@@ -22344,14 +22606,20 @@
           "date": "Aug 3, 2026",
           "amount": 4011,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025565",
+          "date": "Sep 9, 2026",
+          "amount": 4011,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084811": {
-      "available": 35466.65,
+      "available": 31996.78,
       "poAmount": 52816,
       "status": "Open",
       "site": "WCO8",
@@ -22387,10 +22655,16 @@
           "date": "Aug 3, 2026",
           "amount": 3469.87,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025619",
+          "date": "Sep 9, 2026",
+          "amount": 3469.87,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20084809": {
@@ -22421,7 +22695,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20035037": {
@@ -22440,7 +22714,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-20031485": {
@@ -22459,7 +22733,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-19953569": {
@@ -50896,7 +51170,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22078285": {
@@ -51005,7 +51279,7 @@
         }
       ],
       "matchedCount": 16,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22077582": {
@@ -51042,7 +51316,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22079003": {
@@ -51271,7 +51545,7 @@
         }
       ],
       "matchedCount": 36,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22077581": {
@@ -51326,7 +51600,7 @@
         }
       ],
       "matchedCount": 7,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22075792": {
@@ -51336,784 +51610,9 @@
       "site": "DBL1",
       "desc": "DBL1 - 2026 - Snow Removal EPO Season Closure",
       "masked": false,
-      "matched": [
-        {
-          "inv": "AST001649",
-          "date": "Jul 23, 2026",
-          "amount": 1004,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001651",
-          "date": "Jul 23, 2026",
-          "amount": 1404,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001979",
-          "date": "Jul 23, 2026",
-          "amount": 8394,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001980",
-          "date": "Jul 23, 2026",
-          "amount": 4592.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001988",
-          "date": "Jul 23, 2026",
-          "amount": 936,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001989",
-          "date": "Jul 23, 2026",
-          "amount": 589.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001995",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST001996",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002000",
-          "date": "Jul 23, 2026",
-          "amount": 531.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002001",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002010",
-          "date": "Jul 23, 2026",
-          "amount": 589.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002011",
-          "date": "Jul 23, 2026",
-          "amount": 622.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002021",
-          "date": "Jul 23, 2026",
-          "amount": 364.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002022",
-          "date": "Jul 23, 2026",
-          "amount": 303.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002034",
-          "date": "Jul 23, 2026",
-          "amount": 364.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002035",
-          "date": "Jul 23, 2026",
-          "amount": 303.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002078",
-          "date": "Jul 23, 2026",
-          "amount": 364.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002079",
-          "date": "Jul 23, 2026",
-          "amount": 364.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002094",
-          "date": "Jul 23, 2026",
-          "amount": 262.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002095",
-          "date": "Jul 23, 2026",
-          "amount": 262.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002104",
-          "date": "Jul 23, 2026",
-          "amount": 1243.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002105",
-          "date": "Jul 23, 2026",
-          "amount": 1011,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002186",
-          "date": "Jul 23, 2026",
-          "amount": 1558,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002187",
-          "date": "Jul 23, 2026",
-          "amount": 1111,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002216",
-          "date": "Jul 23, 2026",
-          "amount": 5114,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002217",
-          "date": "Jul 23, 2026",
-          "amount": 4353,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002225",
-          "date": "Jul 23, 2026",
-          "amount": 18630,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002226",
-          "date": "Jul 23, 2026",
-          "amount": 6638,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002239",
-          "date": "Jul 23, 2026",
-          "amount": 761,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002240",
-          "date": "Jul 23, 2026",
-          "amount": 718.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002245",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002246",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002265",
-          "date": "Jul 23, 2026",
-          "amount": 931.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002266",
-          "date": "Jul 23, 2026",
-          "amount": 887.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002280",
-          "date": "Jul 23, 2026",
-          "amount": 2320.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002281",
-          "date": "Jul 23, 2026",
-          "amount": 1800,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002293",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002294",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002331",
-          "date": "Jul 23, 2026",
-          "amount": 2584.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002387",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002388",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002400",
-          "date": "Jul 23, 2026",
-          "amount": 416.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002439",
-          "date": "Jul 23, 2026",
-          "amount": 893.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002440",
-          "date": "Jul 23, 2026",
-          "amount": 668.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002452",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002453",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002468",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002469",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002493",
-          "date": "Jul 23, 2026",
-          "amount": 3905,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002494",
-          "date": "Jul 23, 2026",
-          "amount": 3120,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002512",
-          "date": "Jul 23, 2026",
-          "amount": 589.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002513",
-          "date": "Jul 23, 2026",
-          "amount": 814.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002524",
-          "date": "Jul 23, 2026",
-          "amount": 589.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002525",
-          "date": "Jul 23, 2026",
-          "amount": 528.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002555",
-          "date": "Jul 23, 2026",
-          "amount": 589.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002556",
-          "date": "Jul 31, 2026",
-          "amount": 528.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002748",
-          "date": "Jul 23, 2026",
-          "amount": 443.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002759",
-          "date": "Jul 23, 2026",
-          "amount": 443.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "AST002760",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "ECI023181",
-          "date": "Jul 23, 2026",
-          "amount": 5411.81,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "ECI023215",
-          "date": "Jul 23, 2026",
-          "amount": 1510,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "ECI023590",
-          "date": "Jul 23, 2026",
-          "amount": 2298,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7085",
-          "date": "Jul 23, 2026",
-          "amount": 936,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7086",
-          "date": "Jul 23, 2026",
-          "amount": 837.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7087",
-          "date": "Jul 23, 2026",
-          "amount": 936,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7102",
-          "date": "Jul 23, 2026",
-          "amount": 243,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7103",
-          "date": "Jul 23, 2026",
-          "amount": 250,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7104",
-          "date": "Jul 23, 2026",
-          "amount": 243,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7116",
-          "date": "Jul 23, 2026",
-          "amount": 468,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7117",
-          "date": "Jul 23, 2026",
-          "amount": 475,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7118",
-          "date": "Jul 23, 2026",
-          "amount": 798.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7171",
-          "date": "Jul 23, 2026",
-          "amount": 1200,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7173",
-          "date": "Jul 23, 2026",
-          "amount": 1200,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7459",
-          "date": "Jul 23, 2026",
-          "amount": 486,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7460",
-          "date": "Jul 23, 2026",
-          "amount": 486,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7461",
-          "date": "Jul 23, 2026",
-          "amount": 500,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7489",
-          "date": "Jul 23, 2026",
-          "amount": 814.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7490",
-          "date": "Jul 23, 2026",
-          "amount": 825,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7491",
-          "date": "Jul 23, 2026",
-          "amount": 814.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7765",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7766",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7767",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7784",
-          "date": "Jul 23, 2026",
-          "amount": 1072,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7785",
-          "date": "Jul 23, 2026",
-          "amount": 1387.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7786",
-          "date": "Jul 23, 2026",
-          "amount": 1658,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7802",
-          "date": "Jul 23, 2026",
-          "amount": 298.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7803",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7804",
-          "date": "Jul 23, 2026",
-          "amount": 298.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7818",
-          "date": "Jul 23, 2026",
-          "amount": 3121,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7819",
-          "date": "Jul 23, 2026",
-          "amount": 6318,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7820",
-          "date": "Jul 23, 2026",
-          "amount": 3962.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7837",
-          "date": "Jul 23, 2026",
-          "amount": 825,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7838",
-          "date": "Jul 23, 2026",
-          "amount": 756.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7839",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7863",
-          "date": "Jul 23, 2026",
-          "amount": 575,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7864",
-          "date": "Jul 23, 2026",
-          "amount": 800,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7865",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7878",
-          "date": "Jul 23, 2026",
-          "amount": 600,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7879",
-          "date": "Jul 23, 2026",
-          "amount": 625,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7880",
-          "date": "Jul 23, 2026",
-          "amount": 2717.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7890",
-          "date": "Jul 23, 2026",
-          "amount": 575,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7891",
-          "date": "Jul 23, 2026",
-          "amount": 800,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7892",
-          "date": "Jul 23, 2026",
-          "amount": 1888,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7921",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7922",
-          "date": "Jul 23, 2026",
-          "amount": 487.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7923",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7939",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7940",
-          "date": "Jul 23, 2026",
-          "amount": 531.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7941",
-          "date": "Jul 23, 2026",
-          "amount": 712.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7957",
-          "date": "Jul 23, 2026",
-          "amount": 443.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7958",
-          "date": "Jul 23, 2026",
-          "amount": 443.75,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7959",
-          "date": "Jul 23, 2026",
-          "amount": 475,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7974",
-          "date": "Jul 23, 2026",
-          "amount": 437.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7975",
-          "date": "Jul 23, 2026",
-          "amount": 437.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S7976",
-          "date": "Jul 23, 2026",
-          "amount": 912.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8861",
-          "date": "Jul 23, 2026",
-          "amount": 7052,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8867",
-          "date": "Jul 23, 2026",
-          "amount": 299.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8872",
-          "date": "Jul 23, 2026",
-          "amount": 2831,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8876",
-          "date": "Jul 23, 2026",
-          "amount": 5430,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8891",
-          "date": "Jul 23, 2026",
-          "amount": 4058,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8893",
-          "date": "Jul 23, 2026",
-          "amount": 5375,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8921",
-          "date": "Jul 23, 2026",
-          "amount": 1179,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8923",
-          "date": "Jul 27, 2026",
-          "amount": 1336,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8952",
-          "date": "Jul 23, 2026",
-          "amount": 2994.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8954",
-          "date": "Jul 23, 2026",
-          "amount": 4595,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8967",
-          "date": "Jul 23, 2026",
-          "amount": 1118.25,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8969",
-          "date": "Jul 23, 2026",
-          "amount": 1282.5,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8997",
-          "date": "Jul 23, 2026",
-          "amount": 745,
-          "status": "Scheduled for payment"
-        },
-        {
-          "inv": "S8998",
-          "date": "Jul 23, 2026",
-          "amount": 987,
-          "status": "Scheduled for payment"
-        }
-      ],
-      "matchedCount": 129,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22084923": {
@@ -52125,7 +51624,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22092292": {
@@ -52137,7 +51636,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22090626": {
@@ -52156,7 +51655,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22096946": {
@@ -52168,7 +51667,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22094430": {
@@ -52211,7 +51710,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22093946": {
@@ -52223,7 +51722,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22093893": {
@@ -52238,41 +51737,41 @@
           "inv": "AST001790A",
           "date": "Jul 24, 2026",
           "amount": 204100,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "AST002711",
           "date": "Aug 6, 2026",
           "amount": 67530,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "AST002716",
           "date": "Aug 6, 2026",
           "amount": 110657.5,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "AST003259",
           "date": "Aug 6, 2026",
           "amount": 2700,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "AST003284",
           "date": "Aug 6, 2026",
           "amount": 7775,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "AST003298",
           "date": "Aug 6, 2026",
           "amount": 2970,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22099842": {
@@ -52297,7 +51796,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22105584": {
@@ -52322,7 +51821,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22106866": {
@@ -52334,7 +51833,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22106865": {
@@ -52346,7 +51845,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22115197": {
@@ -52365,7 +51864,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22115882": {
@@ -52377,7 +51876,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22116191": {
@@ -52414,7 +51913,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22126709": {
@@ -52433,19 +51932,26 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22126373": {
-      "available": 105412,
+      "available": 94870.8,
       "poAmount": 105412,
       "status": "Open",
       "site": null,
       "desc": "DCD8 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "matched": [],
-      "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matched": [
+        {
+          "inv": "ECI025426",
+          "date": "Sep 9, 2026",
+          "amount": 10541.2,
+          "status": "In Progress"
+        }
+      ],
+      "matchedCount": 1,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22124038": {
@@ -52464,7 +51970,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22127619": {
@@ -52513,7 +52019,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22132110": {
@@ -52550,7 +52056,7 @@
         }
       ],
       "matchedCount": 4,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22135510": {
@@ -52569,7 +52075,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22150404": {
@@ -52581,7 +52087,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22148916": {
@@ -52738,7 +52244,7 @@
         }
       ],
       "matchedCount": 24,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22153155": {
@@ -52757,7 +52263,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22158890": {
@@ -52776,7 +52282,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22160020": {
@@ -52807,7 +52313,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22161233": {
@@ -53000,7 +52506,7 @@
         }
       ],
       "matchedCount": 30,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22166238": {
@@ -53019,19 +52525,32 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22176390": {
-      "available": 16427.75,
+      "available": 9856.65,
       "poAmount": 16427.75,
       "status": "Open",
       "site": "FSD1",
       "desc": null,
       "masked": false,
-      "matched": [],
-      "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matched": [
+        {
+          "inv": "ECI025472",
+          "date": "Sep 9, 2026",
+          "amount": 3285.55,
+          "status": "In Progress"
+        },
+        {
+          "inv": "ECI025832",
+          "date": "Sep 9, 2026",
+          "amount": 3285.55,
+          "status": "In Progress"
+        }
+      ],
+      "matchedCount": 2,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22176771": {
@@ -53062,7 +52581,7 @@
         }
       ],
       "matchedCount": 3,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22182190": {
@@ -53074,7 +52593,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22180657": {
@@ -53321,7 +52840,7 @@
         }
       ],
       "matchedCount": 39,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "B997-22182169": {
@@ -53333,7 +52852,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22192542": {
@@ -53345,7 +52864,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22198223": {
@@ -53364,7 +52883,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22202766": {
@@ -53389,7 +52908,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22207930": {
@@ -53408,7 +52927,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22237806": {
@@ -53643,7 +53162,7 @@
         }
       ],
       "matchedCount": 37,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22237935": {
@@ -53655,7 +53174,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22238008": {
@@ -53824,7 +53343,7 @@
         }
       ],
       "matchedCount": 26,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22236546": {
@@ -53843,7 +53362,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22242858": {
@@ -53855,7 +53374,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22255341": {
@@ -53898,7 +53417,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22257257": {
@@ -53917,7 +53436,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22257258": {
@@ -53936,11 +53455,11 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22231286": {
-      "available": 2057.36,
+      "available": 1543.02,
       "poAmount": 6172.08,
       "status": "Open",
       "site": "SEA94",
@@ -53994,14 +53513,20 @@
           "date": "Aug 11, 2026",
           "amount": 514.34,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025741",
+          "date": "Sep 9, 2026",
+          "amount": 514.34,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 8,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 9,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22266872": {
-      "available": 3466.58,
+      "available": 2599.93,
       "poAmount": 4333.23,
       "status": "Open",
       "site": "RIC4",
@@ -54013,10 +53538,16 @@
           "date": "Aug 31, 2026",
           "amount": 866.65,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025814",
+          "date": "Sep 9, 2026",
+          "amount": 866.65,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 2,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22269487": {
@@ -54035,7 +53566,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22275779": {
@@ -54047,7 +53578,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22281634": {
@@ -54059,7 +53590,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22295951": {
@@ -54071,7 +53602,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22294984": {
@@ -54090,7 +53621,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22299668": {
@@ -54102,7 +53633,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22308452": {
@@ -54114,7 +53645,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22319165": {
@@ -54126,7 +53657,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22342765": {
@@ -54138,7 +53669,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22343916": {
@@ -54157,19 +53688,26 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22343968": {
-      "available": 69748.3,
+      "available": 52311.22,
       "poAmount": 69748.3,
       "status": "Open",
       "site": "DGS3",
       "desc": "DGS3 - 2026 - Landscaping Standard Services",
       "masked": false,
-      "matched": [],
-      "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matched": [
+        {
+          "inv": "ECI025833",
+          "date": "Sep 9, 2026",
+          "amount": 17437.08,
+          "status": "In Progress"
+        }
+      ],
+      "matchedCount": 1,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22339917": {
@@ -54188,7 +53726,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22339152": {
@@ -54203,11 +53741,11 @@
           "inv": "ECI025539",
           "date": "Aug 31, 2026",
           "amount": 1087.5,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22339085": {
@@ -54219,7 +53757,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22346846": {
@@ -54231,7 +53769,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22360647": {
@@ -54243,7 +53781,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22374429": {
@@ -54255,7 +53793,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22374596": {
@@ -54274,7 +53812,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22399480": {
@@ -54286,7 +53824,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22400938": {
@@ -54298,7 +53836,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22400228": {
@@ -54317,7 +53855,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22386569": {
@@ -54444,7 +53982,7 @@
         }
       ],
       "matchedCount": 19,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22379432": {
@@ -54456,7 +53994,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22378423": {
@@ -54468,7 +54006,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22418711": {
@@ -54480,11 +54018,11 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22421568": {
-      "available": 7678.8,
+      "available": 5119.2,
       "poAmount": 20476.8,
       "status": "Open",
       "site": "SPA1",
@@ -54520,10 +54058,16 @@
           "date": "Aug 31, 2026",
           "amount": 2559.6,
           "status": "Scheduled for payment"
+        },
+        {
+          "inv": "ECI025745",
+          "date": "Sep 9, 2026",
+          "amount": 2559.6,
+          "status": "In Progress"
         }
       ],
-      "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matchedCount": 6,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22440103": {
@@ -54535,7 +54079,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22437869": {
@@ -54547,7 +54091,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22443233": {
@@ -54559,7 +54103,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22442817": {
@@ -54571,7 +54115,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22455677": {
@@ -54583,19 +54127,26 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22457871": {
-      "available": 4215,
+      "available": 2810,
       "poAmount": 4215,
       "status": "Open",
       "site": "DFH3",
       "desc": null,
       "masked": false,
-      "matched": [],
-      "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "matched": [
+        {
+          "inv": "ECI025834",
+          "date": "Sep 9, 2026",
+          "amount": 1405,
+          "status": "In Progress"
+        }
+      ],
+      "matchedCount": 1,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22471763": {
@@ -54638,7 +54189,7 @@
         }
       ],
       "matchedCount": 5,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22477086": {
@@ -54650,7 +54201,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22477177": {
@@ -54662,7 +54213,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22477087": {
@@ -54674,7 +54225,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22477082": {
@@ -54686,7 +54237,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22476207": {
@@ -54698,7 +54249,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22480237": {
@@ -54710,7 +54261,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22480926": {
@@ -54722,7 +54273,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22494651": {
@@ -54734,7 +54285,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22495759": {
@@ -54746,7 +54297,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22502658": {
@@ -54758,7 +54309,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22502657": {
@@ -54770,7 +54321,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22506050": {
@@ -54782,7 +54333,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22513577": {
@@ -54794,7 +54345,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22520079": {
@@ -54806,7 +54357,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22537614": {
@@ -54818,7 +54369,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22547223": {
@@ -54830,7 +54381,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22553867": {
@@ -54842,7 +54393,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22554716": {
@@ -54854,7 +54405,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22569045": {
@@ -54866,7 +54417,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-08T16:15:02.519Z",
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     },
     "2D-22579629": {
@@ -54951,6 +54502,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-09T06:20:39.129Z",
+      "stale": false
+    },
+    "2D-22588136": {
+      "available": 387.66,
+      "poAmount": 387.66,
+      "status": "Open",
+      "site": "DRC6",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-09T12:51:36.575Z",
       "stale": false
     }
   }
