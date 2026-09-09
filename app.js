@@ -1468,8 +1468,9 @@ function poAssignError(assignedPo, invoiceId) {
   return null;
 }
 
-app.post('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), (req, res) => {
+app.post('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
     const user = req.session.user;
     const { invoiceId, originalPo, assignedPo, note } = req.body || {};
     const vErr = poAssignError(assignedPo, invoiceId);
@@ -1480,8 +1481,9 @@ app.post('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), (req
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), (req, res) => {
+app.delete('/api/po/reassign/:recordNo', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
     const user = req.session.user;
     db.clearInvoicePoAssignment(req.params.recordNo);
     db.auditLog(user.email, 'po_reassign_clear', req.params.recordNo, '');
@@ -1617,6 +1619,7 @@ app.post('/api/stop-service/customer/:customerId', requireAuth, requirePerm('cus
 
 app.post('/api/stop-service/invoice/:recordNo', requireAuth, requirePerm('status.set'), async (req, res) => {
   try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
     const user = req.session.user;
     const { invoiceId, stop, effectiveDate, note } = req.body || {};
     if (!stop) {
@@ -1959,8 +1962,9 @@ app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.edit'), (req, re
 // Pin an INVOICE's true service site. Needed for multi-site blanket POs whose
 // header ship-to is a corporate code (BNA12 = Amazon Nashville HQ), where the
 // PO-site fallback would mislabel the invoice. Empty siteCode clears.
-app.post('/api/invoice/:recordNo/site', requireAuth, requirePerm('po.edit'), (req, res) => {
+app.post('/api/invoice/:recordNo/site', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
     const user = req.session.user;
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
     if (raw && !/^[A-Z]{2,4}\d{1,2}$/.test(raw)) return res.status(400).json({ error: 'Site code must look like DYY8 / DTW1' });
@@ -3562,8 +3566,9 @@ app.get('/api/collection-status', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/invoice/:recordNo/collection-status', requireAuth, requirePerm('status.set'), (req, res) => {
+app.post('/api/invoice/:recordNo/collection-status', requireAuth, requirePerm('status.set'), async (req, res) => {
   try {
+    if (await denyIfOutOfScope(req, res, { recordNo: req.params.recordNo })) return;
     const { status, note } = req.body || {};
     if (!COLLECTION_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const inv = sage.getCachedInvoices().find(i => i.recordNo === req.params.recordNo);
