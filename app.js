@@ -697,7 +697,27 @@ app.get('/api/invoices/:recordno', requireAuth, async (req, res) => {
     if (is) stopService = { level: 'invoice', effectiveDate: is.effective_date, issuedBy: is.issued_by, note: is.note };
     else if (acct && acct.stop_service) stopService = { level: 'customer', effectiveDate: acct.stop_service_effective_date, issuedBy: acct.stop_service_issued_by, note: acct.notes };
 
-    res.json({ invoice: inv, notes: enrichedNotes, promises: ptps, audit, payeeStatus, watched, collector, stopService });
+    // Which Amazon site the work was actually at, plus how we know. The drawer
+    // showed the ECF branch that billed it but never the site, which is the
+    // thing you need to answer "where was this done" — and for the 260-odd
+    // invoices whose ship-to is not a site code, it is not derivable by eye.
+    let amazonSite = null;
+    try {
+      if (siteLedger.AMAZON_CUSTOMERS.includes(inv.customerId)) {
+        const led = siteLedger.getLedgerMap()[String(inv.recordNo)];
+        if (led) {
+          const loc = led.siteCode ? (db.getAmazonLocationMap()[led.siteCode] || null) : null;
+          amazonSite = {
+            site: led.siteCode || '', source: led.source, confidence: led.confidence,
+            evidence: led.evidence, candidates: led.candidates || [],
+            businessUnit: loc ? loc.businessUnit : '', siteType: loc ? loc.siteType : '',
+            city: loc ? loc.city : '', state: loc ? loc.state : '', inMaster: !!loc,
+          };
+        }
+      }
+    } catch (e) { /* ledger not built yet: the drawer still renders */ }
+
+    res.json({ invoice: inv, notes: enrichedNotes, promises: ptps, audit, payeeStatus, watched, collector, stopService, amazonSite });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

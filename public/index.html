@@ -1769,6 +1769,43 @@ async function openDrawer(recordNo, scrollToNotes = false) {
   }
 }
 
+// The Amazon site an invoice belongs to, with its provenance. The drawer used
+// to show only the ECF branch that billed it, which answers "who invoiced this"
+// and not "where was the work". For the ~260 invoices whose ship-to is not a
+// site code the answer is not derivable by eye at all, so the source is shown
+// too: a site read straight off the invoice is a different kind of fact from
+// one inferred through a purchase order or pinned by a person.
+const DRAWER_SITE_SOURCE = {
+  'manual-invoice': 'pinned by a person',
+  'ship-to': 'from the invoice ship-to',
+  'po-manual': 'from the PO site pin',
+  'po-amazon': "from Amazon's ship-to on the PO",
+  'po-doc': 'from the PO document',
+  'exempt': 'separate process',
+  'header-only-po': 'PO header is not a service site',
+  'suggested': 'suggested, not confirmed',
+  'unresolved': 'no source identifies a site',
+};
+
+function drawerSiteHtml(s) {
+  if (!s) return '';
+  if (!s.site) {
+    const why = DRAWER_SITE_SOURCE[s.source] || 'not resolved';
+    const cand = (s.candidates || []).length ? ` Possible: ${escHtml(s.candidates.join(', '))}.` : '';
+    return `<div class="detail-item"><label>Amazon Site</label><span style="color:#b45309">
+      Not set <span style="font-size:11px;color:var(--gray-500)">— ${escHtml(why)}.${cand}</span></span></div>`;
+  }
+  const where = [s.city, s.state].filter(Boolean).join(', ');
+  const bits = [s.businessUnit, s.siteType, where].filter(Boolean).join(' · ');
+  const soft = s.confidence && s.confidence !== 'certain';
+  return `<div class="detail-item"><label>Amazon Site</label><span>
+    <strong>${escHtml(s.site)}</strong>${soft ? ' <span title="not read directly from the invoice" style="color:#d97706">•</span>' : ''}
+    ${bits ? `<span style="font-size:11px;color:var(--gray-500);display:block">${escHtml(bits)}</span>` : ''}
+    ${!s.inMaster ? `<span style="font-size:11px;color:#b45309;display:block">not in the Amazon location master — no business unit</span>` : ''}
+    <span style="font-size:11px;color:var(--gray-500);display:block" title="${escHtml(s.evidence || '')}">${escHtml(DRAWER_SITE_SOURCE[s.source] || s.source || '')}</span>
+  </span></div>`;
+}
+
 function renderDrawer(data) {
   const { invoice: inv, notes, promises, payeeStatus, collector, stopService } = data;
   window._drawerData = data;
@@ -1845,6 +1882,7 @@ function renderDrawer(data) {
         <div class="detail-item"><label>Amount</label><span>${fmt$(inv.totalEntered)}</span></div>
         <div class="detail-item"><label>Balance Due</label><span style="font-weight:700">${fmt$(inv.totalDue)}</span></div>
         ${inv.poNumber ? `<div class="detail-item"><label>PO Number</label><span>${escHtml(inv.poNumber)}</span></div>` : ''}
+        ${drawerSiteHtml(data.amazonSite)}
         ${inv.currency !== 'USD' ? `<div class="detail-item"><label>Currency</label><span>${escHtml(inv.currency)}</span></div>` : ''}
       </div>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -5984,6 +6022,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260909d"></script>
-<script src="/amazon.js?v=20260909f"></script>
+<script src="/amazon.js?v=20260909g"></script>
 </body>
 </html>
