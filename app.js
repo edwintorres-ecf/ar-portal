@@ -1944,6 +1944,154 @@ app.post('/api/amazon/site-ledger/rebuild', requireAuth, requireRole('admin', 'm
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Amazon Drill-Down: reporting + export ──────────────────────────────────
+// The export must reproduce exactly what the user is looking at, so it takes
+// the SAME filters the screen uses and applies them to the same row builder.
+// An export that quietly differs from the screen is worse than no export.
+function amazonFilterRows(rows, q) {
+  const eq = (v, f) => !f || String(v || '') === String(f);
+  const text = (q.q || '').trim().toUpperCase();
+  return rows.filter(r => {
+    if (!eq(r.deptGroup, q.deptGroup)) return false;
+    if (!eq(r.deptId, q.department)) return false;
+    if (!eq(r.businessUnit, q.businessUnit)) return false;
+    if (!eq(r.siteType, q.siteType)) return false;
+    if (!eq(r.region, q.region)) return false;
+    if (!eq(r.site, q.site)) return false;
+    if (!eq(r.po, q.po)) return false;
+    if (!eq(r.serviceCenter, q.serviceCenter)) return false;
+    if (!eq(r.bucket, q.bucket)) return false;
+    if (q.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== q.payeeStatus) return false;
+    if (q.poStatus && (r.poStatus || '') !== q.poStatus) return false;
+    if (q.needsCashApplication === '1' && !r.needsCashApplication) return false;
+    if (q.unattributed === '1' && r.site && r.businessUnit) return false;
+    if (text && !`${r.invoiceId} ${r.po} ${r.site} ${r.deptName} ${r.businessUnit}`.toUpperCase().includes(text)) return false;
+    return true;
+  });
+}
+
+function amazonScopedRows(req) {
+  const all = sage.getCachedInvoices();
+  let rows = siteLedger.buildAmazonRows(all, { payee });
+  try {
+    const lf = req.session.user && req.session.user.location_filter;
+    if (lf) {
+      const scope = siteLedger.siteScopeForLocations(all, JSON.parse(lf));
+      if (scope) rows = rows.filter(r => r.site && scope.has(r.site));
+    }
+  } catch (e) { /* malformed filter */ }
+  return amazonFilterRows(rows, req.query || {});
+}
+
+// Grouped totals for any dimension — the "reporting" half. Same numbers the
+// drill-down shows, available without clicking through the hierarchy.
+app.get('/api/amazon/report', requireAuth, (req, res) => {
+  try {
+    const rows = amazonScopedRows(req);
+    const by = (key) => {
+      const g = {};
+      for (const r of rows) {
+        const k = r[key] || '(none)';
+        if (!g[k]) g[k] = { key: k, invoices: 0, amount: 0, sites: new Set(), pos: new Set() };
+        g[k].invoices++; g[k].amount += r.amount;
+        if (r.site) g[k].sites.add(r.site);
+        if (r.po) g[k].pos.add(r.po);
+      }
+      return Object.values(g)
+        .map(x => ({ key: x.key, invoices: x.invoices, amount: Math.round(x.amount * 100) / 100, sites: x.sites.size, pos: x.pos.size }))
+        .sort((a, b) => b.amount - a.amount);
+    };
+    res.json({
+      generatedAt: new Date().toISOString(),
+      totals: { invoices: rows.length, amount: Math.round(rows.reduce((t, r) => t + r.amount, 0) * 100) / 100 },
+      byDepartment: by('deptGroup'), byBusinessUnit: by('businessUnit'), bySite: by('site'),
+      byPo: by('po'), bySiteType: by('siteType'), byRegion: by('region'),
+      byPayeeStatus: by('payeeStatus'), byAging: by('bucket'), byServiceCenter: by('serviceCenter'),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/amazon/export.xlsx', requireAuth, async (req, res) => {
+  try {
+    const ExcelJS = require('exceljs');
+    const rows = amazonScopedRows(req);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'ECF AR Portal';
+    const money = '"$"#,##0.00';
+    const HEAD = 'FF1E3A5F', GRAY = 'FFF1F5F9';
+
+    const styleHeader = (ws, n) => {
+      const r = ws.getRow(n);
+      r.eachCell(c => {
+        c.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEAD } };
+        c.alignment = { vertical: 'middle' };
+      });
+      r.height = 18;
+    };
+
+    // Summary sheets first: a reader opening this wants the shape before the
+    // 2,800 detail rows.
+    const summaries = [
+      ['By Department', 'deptGroup'], ['By Business Unit', 'businessUnit'],
+      ['By Site', 'site'], ['By PO', 'po'], ['By Payee Status', 'payeeStatus'],
+    ];
+    for (const [title, key] of summaries) {
+      const g = {};
+      for (const r of rows) {
+        const k = r[key] || '(none)';
+        if (!g[k]) g[k] = { k, n: 0, amt: 0, sites: new Set(), pos: new Set() };
+        g[k].n++; g[k].amt += r.amount;
+        if (r.site) g[k].sites.add(r.site);
+        if (r.po) g[k].pos.add(r.po);
+      }
+      const list = Object.values(g).sort((a, b) => b.amt - a.amt);
+      const ws = wb.addWorksheet(title);
+      ws.addRow([title.replace('By ', ''), 'Invoices', 'Open AR', 'Sites', 'POs']);
+      styleHeader(ws, 1);
+      list.forEach(x => {
+        const row = ws.addRow([x.k, x.n, Math.round(x.amt * 100) / 100, x.sites.size, x.pos.size]);
+        row.getCell(3).numFmt = money;
+      });
+      const t = ws.addRow(['Total', rows.length, Math.round(rows.reduce((a, r) => a + r.amount, 0) * 100) / 100,
+        new Set(rows.map(r => r.site).filter(Boolean)).size, new Set(rows.map(r => r.po).filter(Boolean)).size]);
+      t.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+      t.getCell(3).numFmt = money;
+      ws.columns = [{ width: 34 }, { width: 10 }, { width: 16 }, { width: 8 }, { width: 8 }];
+    }
+
+    // Detail last, every dimension on the row so the reader can re-pivot it.
+    const ws = wb.addWorksheet('Invoices');
+    ws.addRow(['Invoice', 'Invoice Date', 'Due Date', 'Days Overdue', 'Aging', 'Open AR',
+      'Department', 'Intacct Code', 'Business Unit', 'Site', 'Site Type', 'Region', 'City', 'State',
+      'Site Source', 'PO', 'PO Status', 'Amazon Status', 'Needs Applying', 'ECF Branch']);
+    styleHeader(ws, 1);
+    for (const r of rows) {
+      const row = ws.addRow([r.invoiceId, r.invoiceDate, r.dueDate, r.daysOverdue, r.bucket, r.amount,
+        r.deptGroup, r.deptId, r.businessUnit, r.site, r.siteType, r.region, r.city, r.state,
+        r.siteSource, r.po, r.poStatus, r.payeeStatus, r.needsCashApplication ? 'YES' : '', r.serviceCenter]);
+      row.getCell(6).numFmt = money;
+    }
+    ws.columns = [{ width: 15 }, { width: 12 }, { width: 12 }, { width: 8 }, { width: 9 }, { width: 14 },
+      { width: 20 }, { width: 12 }, { width: 15 }, { width: 8 }, { width: 18 }, { width: 13 }, { width: 16 },
+      { width: 7 }, { width: 15 }, { width: 15 }, { width: 10 }, { width: 26 }, { width: 14 }, { width: 22 }];
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.autoFilter = { from: 'A1', to: 'T1' };
+
+    db.auditLog(req.session.user.email, 'export_amazon_drilldown', null, `${rows.length} invoices`);
+    // Cloudflare edge-caches .xlsx by default — see the pending-by-site note.
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-drilldown-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[api] amazon export error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/po/exceptions', requireAuth, async (req, res) => {
   try {
     const out = poLedger.getTransmissionExceptions();
@@ -4279,6 +4427,21 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // scrapes against that fresh open set.
   setTimeout(doPoDetailRefresh, 3 * 60 * 1000);
   setInterval(doPoDetailRefresh, 4 * 60 * 60 * 1000);
+
+  // The site ledger is derived from the invoice cache, so it goes stale the
+  // moment new invoices land: 10 invoices were sitting with no site simply
+  // because nothing had rebuilt it since they arrived. Cheap (~2,800 rows, one
+  // transaction) so an hourly pass is fine, plus one shortly after boot.
+  const doSiteLedgerRebuild = () => {
+    try {
+      const st = siteLedger.rebuild(sage.getCachedInvoices());
+      if (st.needsReview || st.pruned) {
+        console.log(`[site-ledger] ${st.resolved}/${st.total} resolved, ${st.needsReview} need review, ${st.pruned} pruned`);
+      }
+    } catch (e) { console.warn(`[site-ledger] rebuild failed: ${e.message}`); }
+  };
+  setTimeout(doSiteLedgerRebuild, 4 * 60 * 1000);
+  setInterval(doSiteLedgerRebuild, 60 * 60 * 1000);
 
   // Keep the local AI models hot so interactive calls stay ~fast (no ~20s cold
   // load). Warm on boot, then re-ping every 100 min (inside the 2h keep_alive).
