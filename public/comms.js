@@ -1805,12 +1805,30 @@ async function commsUpdateFooter() {
       orig(name, el);
       try {
         if (name !== 'customer-page') history.replaceState(null, '', '#' + name);
+        // Also remember it outside the URL. A fragment is never sent to the
+        // server and is dropped whenever an expired session bounces through
+        // /auth/login and Azure, which is why the hash alone still lost your
+        // place on refresh (Edwin reported it again 2026-09-09). localStorage
+        // survives that round trip.
+        if (name !== 'customer-page') localStorage.setItem('ar-last-view', name);
       } catch (e) {}
     };
   }
   const restore = () => {
-    const h = (location.hash || '').slice(1);
-    if (!h) { commsLoadOverview(); return; }
+    let h = (location.hash || '').slice(1);
+    if (!h) {
+      // No fragment: either a genuine fresh visit or a login round trip that
+      // ate it. Fall back to the remembered view; the dashboard is only the
+      // default for someone who has never navigated anywhere.
+      let last = null;
+      try { last = localStorage.getItem('ar-last-view'); } catch (e) {}
+      if (last && last !== 'overview' && document.getElementById('view-' + last)) {
+        navGo(last);
+        return;
+      }
+      commsLoadOverview();
+      return;
+    }
     const [view, param] = h.split('/');
     if (view === 'customer-page' && param) { commsOpenCustomerPage(decodeURIComponent(param)); return; }
     if (document.getElementById('view-' + view)) { navGo(view); return; }
