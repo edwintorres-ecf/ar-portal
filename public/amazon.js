@@ -25,6 +25,7 @@ let _amzRows = null;
 let _amzVocab = null;
 let _amzUnresolved = [];
 let _amzFresh = {};
+let _amzAccruals = null;
 let _amzPath = [];                 // [{key,value}] one per level descended
 let _amzFilters = {};              // {businessUnit, siteType, region, bucket, q, ...}
 let _amzSort = { key: 'amount', dir: -1 };
@@ -45,6 +46,7 @@ async function amazonLoad() {
     _amzVocab = data.vocab || {};
     _amzUnresolved = data.unresolved || [];
     _amzFresh = data.freshness || {};
+    _amzAccruals = data.accruals || null;
     amazonRender();
   } catch (e) {
     el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
@@ -128,6 +130,7 @@ function amzHeaderHtml(rows, total) {
       ${amzTile('Invoices', rows.length.toLocaleString())}
       ${amzTile('Sites', new Set(rows.map(r => r.site).filter(Boolean)).size)}
       ${amzTile('POs', new Set(rows.map(r => r.po).filter(Boolean)).size)}
+      ${amzAccrualTileHtml()}
     </div>
     ${warn.length ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#92400e;">
       ⚠ ${escHtml(warn.join(' · '))}. These are visible here rather than dropped from the totals.
@@ -209,6 +212,7 @@ function amzGroupTableHtml(rows, level) {
   }
   const list = Object.values(groups).sort((a, b) => b.amount - a.amount);
   const total = list.reduce((s, g) => s + g.amount, 0) || 1;
+  const showAccrued = amzAccrualHasAny(level.key);
   if (!list.length) return `<div style="padding:24px;text-align:center;color:var(--gray-500);">No invoices match these filters.</div>`;
 
   return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;">
@@ -218,6 +222,7 @@ function amzGroupTableHtml(rows, level) {
         <th style="text-align:left;padding:9px 12px;">Detail</th>
         <th style="text-align:right;padding:9px 12px;">Invoices</th>
         <th style="text-align:right;padding:9px 12px;">Open AR</th>
+        ${showAccrued ? '<th style="text-align:right;padding:9px 12px;color:#92400e;" title="Earned but not yet invoiced — not part of Open AR">Accrued</th>' : ''}
         <th style="text-align:left;padding:9px 12px;width:150px;">Share</th>
       </tr></thead>
       <tbody>
@@ -229,6 +234,7 @@ function amzGroupTableHtml(rows, level) {
             <td style="padding:9px 12px;color:var(--gray-600);font-size:12px;">${escHtml(amzGroupDetail(level.key, g))}</td>
             <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;">${g.n.toLocaleString()}</td>
             <td style="padding:9px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(g.amount)}</td>
+            ${showAccrued ? `<td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${amzAccrualFor(level.key, g.key) ? '#92400e' : 'var(--gray-400)'};">${amzAccrualFor(level.key, g.key) ? amzMoney(amzAccrualFor(level.key, g.key)) : '—'}</td>` : ''}
             <td style="padding:9px 12px;"><div style="background:var(--gray-200);border-radius:3px;height:7px;"><div style="width:${pct}%;background:var(--navy);height:7px;border-radius:3px;"></div></div></td>
           </tr>`;
         }).join('')}
@@ -572,7 +578,18 @@ function amzReportHtml(rows) {
       ${Object.keys(g).length > 12 ? `<div style="font-size:11px;color:var(--gray-500);margin-top:4px;">+${Object.keys(g).length - 12} more — see the Excel report</div>` : ''}
     </div>`;
   };
-  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">${dims.map(block).join('')}</div>`;
+  const a = _amzAccruals;
+  const accBlock = (a && a.openCount) ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 14px;min-width:280px;flex:1;">
+      <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Accrued, not invoiced</div>
+      <div style="font-size:11px;color:#b45309;margin-bottom:8px;">Earned work with no invoice — excluded from every Open AR figure above.</div>
+      ${Object.entries(a.byDeptGroup).sort((x, y) => y[1].amount - x[1].amount).map(([k, v]) => `<div style="display:flex;gap:8px;margin-bottom:5px;font-size:12px;">
+        <span style="flex:1;color:var(--gray-700);">${escHtml(k)}</span>
+        <span style="color:var(--gray-500);">${v.count}</span>
+        <span style="width:92px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${amzMoney(v.amount)}</span></div>`).join('')}
+      <div style="border-top:1px solid #fcd34d;margin-top:6px;padding-top:6px;display:flex;font-size:12px;font-weight:700;color:#92400e;">
+        <span style="flex:1;">Total accrued</span><span>${amzMoney(a.openAmount)}</span></div>
+    </div>` : '';
+  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">${dims.map(block).join('')}${accBlock}</div>`;
 }
 
 
@@ -790,3 +807,36 @@ function accrualExportCsv() {
   d.innerHTML = html;
   document.body.appendChild(d.firstElementChild);
 })();
+
+
+// ─── Accruals inside the reporting surface ───────────────────────────────────
+// Accrued work is earned but uninvoiced, so it must never be added into Open AR
+// — that would overstate receivables. It sits ALONGSIDE, in its own amber tile
+// and its own column, and the wording says so wherever it appears.
+function amzAccrualTileHtml() {
+  const a = _amzAccruals;
+  if (!a || !a.openCount) return '';
+  return `<div onclick="navGo('amazon-accruals')" title="Work performed with no PO yet — not part of Open AR"
+    style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;min-width:150px;cursor:pointer;border-left:3px solid #d97706;">
+    <div style="font-size:11px;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Accrued, not invoiced</div>
+    <div style="font-size:19px;font-weight:700;color:#92400e;font-variant-numeric:tabular-nums;">${amzMoney(a.openAmount)}</div>
+    <div style="font-size:11px;color:#b45309;">${a.openCount} entr${a.openCount === 1 ? 'y' : 'ies'} · not in Open AR</div>
+  </div>`;
+}
+
+// Accrued value for whichever grouping the drill is currently showing.
+function amzAccrualFor(levelKey, groupKey) {
+  const a = _amzAccruals;
+  if (!a) return 0;
+  const bag = levelKey === 'site' ? a.bySite
+    : levelKey === 'deptGroup' ? a.byDeptGroup
+    : levelKey === 'businessUnit' ? a.byBusinessUnit : null;
+  if (!bag) return 0;
+  return (bag[groupKey || '(none)'] || {}).amount || 0;
+}
+
+function amzAccrualHasAny(levelKey) {
+  const a = _amzAccruals;
+  if (!a || !a.openCount) return false;
+  return ['site', 'deptGroup', 'businessUnit'].includes(levelKey);
+}
