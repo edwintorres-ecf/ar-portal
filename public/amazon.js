@@ -610,6 +610,7 @@ function amzReportHtml(rows) {
 // up nowhere in AR — this register is the only place it exists. Tracking is the
 // point; pushing to Intacct is a bonus and is currently blocked upstream.
 let _accruals = null, _accrualMeta = null, _accrualShowCancelled = false;
+let _accrualEditingId = null;   // set while the form is editing an existing row
 
 async function accrualsLoad() {
   const el = document.getElementById('accruals-content');
@@ -715,9 +716,13 @@ function accrualActionsHtml(r) {
   // is. It opens a PREFILLED FORM rather than saving straight away, so the
   // amount and date get looked at instead of inherited by accident.
   const copy = btn('Copy', `accrualCopy(${r.id})`, '#6b7280');
-  if (r.status === 'awaiting_po') return btn('PO received', `accrualMarkPo(${r.id})`, '#0284c7') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + copy;
-  if (r.status === 'po_received') return btn('Invoiced', `accrualMarkInvoiced(${r.id})`, '#16a34a') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + copy;
-  return copy;
+  // Editable after posting: an accrual is an estimate of work already done, so
+  // the amount and description get corrected as better information arrives.
+  // Cancelled rows stay frozen — they are a record of a decision.
+  const edit = r.status === 'cancelled' ? '' : btn('Edit', `accrualEdit(${r.id})`, '#334155');
+  if (r.status === 'awaiting_po') return btn('PO received', `accrualMarkPo(${r.id})`, '#0284c7') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + edit + copy;
+  if (r.status === 'po_received') return btn('Invoiced', `accrualMarkInvoiced(${r.id})`, '#16a34a') + btn('Cancel', `accrualCancel(${r.id})`, '#dc2626') + edit + copy;
+  return edit + copy;
 }
 
 // Prefill the form from an existing accrual. Everything about WHERE and WHAT
@@ -726,7 +731,7 @@ function accrualActionsHtml(r) {
 function accrualCopy(id) {
   const src = (_accruals || []).find(a => a.id === id);
   if (!src) return;
-  accrualOpenForm();
+  accrualOpenForm();   // clears any edit in progress: a copy is a NEW record
   const set = (elId, v) => { const e = document.getElementById(elId); if (e) e.value = v == null ? '' : v; };
   set('ac-site', src.site_code || '');
   set('ac-dept', src.dept_id || '');
@@ -764,12 +769,43 @@ function accrualCancel(id) {
 function accrualOpenForm() {
   const m = document.getElementById('accrual-modal');
   if (!m) return;
+  _accrualEditingId = null;
   ['ac-site', 'ac-desc', 'ac-amount', 'ac-date', 'ac-notes'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
   document.getElementById('ac-msg').innerHTML = '';
+  const title = document.getElementById('ac-title');
+  if (title) title.textContent = 'Record an accrual';
+  const save = document.getElementById('ac-save');
+  if (save) save.textContent = 'Save accrual';
   m.style.display = 'flex';
   setTimeout(() => { const e = document.getElementById('ac-site'); if (e) e.focus(); }, 30);
 }
-function accrualCloseForm() { const m = document.getElementById('accrual-modal'); if (m) m.style.display = 'none'; }
+function accrualCloseForm() {
+  const m = document.getElementById('accrual-modal');
+  if (m) m.style.display = 'none';
+  _accrualEditingId = null;
+}
+
+function accrualEdit(id) {
+  const src = (_accruals || []).find(a => a.id === id);
+  if (!src) return;
+  accrualOpenForm();
+  _accrualEditingId = id;
+  const set = (elId, v) => { const e = document.getElementById(elId); if (e) e.value = v == null ? '' : v; };
+  set('ac-site', src.site_code || '');
+  set('ac-dept', src.dept_id || '');
+  set('ac-desc', src.description || '');
+  set('ac-amount', src.amount || '');
+  set('ac-date', src.work_date || '');
+  set('ac-notes', src.notes || '');
+  const title = document.getElementById('ac-title');
+  if (title) title.textContent = 'Edit accrual #' + id;
+  const save = document.getElementById('ac-save');
+  if (save) save.textContent = 'Save changes';
+  const msg = document.getElementById('ac-msg');
+  if (msg && src.status !== 'awaiting_po') {
+    msg.innerHTML = `<span style="color:#92400e">This accrual is already marked ${escHtml(src.status.replace('_', ' '))}. Editing it will not change that.</span>`;
+  }
+}
 
 async function accrualSave() {
   const msg = document.getElementById('ac-msg');
@@ -784,7 +820,11 @@ async function accrualSave() {
   if (!body.description) { msg.innerHTML = '<span style="color:var(--red)">Describe the work — this is what tells someone later what the money is for.</span>'; return; }
   if (!(parseFloat(body.amount) > 0)) { msg.innerHTML = '<span style="color:var(--red)">Enter the amount accrued.</span>'; return; }
   try {
-    await apiFetch('/api/amazon/accruals', { method: 'POST', body: JSON.stringify(body) });
+    if (_accrualEditingId) {
+      await apiFetch('/api/amazon/accruals/' + _accrualEditingId, { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await apiFetch('/api/amazon/accruals', { method: 'POST', body: JSON.stringify(body) });
+    }
     accrualCloseForm();
     accrualsLoad();
   } catch (e) { msg.innerHTML = `<span style="color:var(--red)">${escHtml(e.message)}</span>`; }
@@ -810,7 +850,7 @@ function accrualExportCsv() {
   const html = `
 <div id="accrual-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)accrualCloseForm()">
   <div class="modal-box" style="width:540px;max-width:95vw">
-    <h3 style="margin-bottom:2px">Record an accrual</h3>
+    <h3 id="ac-title" style="margin-bottom:2px">Record an accrual</h3>
     <div style="font-size:12px;color:var(--gray-500);margin-bottom:12px">Work performed for Amazon with no PO yet. It stays here until a PO arrives and it can be invoiced.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Site code</label>
@@ -834,7 +874,7 @@ function accrualExportCsv() {
     <div id="ac-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button onclick="accrualCloseForm()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
-      <button onclick="accrualSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save accrual</button>
+      <button id="ac-save" onclick="accrualSave()" style="padding:7px 16px;border:none;background:var(--navy);color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Save accrual</button>
     </div>
   </div>
 </div>`;
