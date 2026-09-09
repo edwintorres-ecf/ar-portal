@@ -27,6 +27,7 @@ const graph = require('./graph');
 const comms = require('./comms-service');
 
 const POLL_LOOKBACK_HOURS = parseInt(process.env.COMMS_INBOUND_LOOKBACK_HOURS || '24', 10);
+const RESYNC_MAX_DAYS = parseInt(process.env.COMMS_INBOUND_RESYNC_MAX_DAYS || '30', 10);
 const SELECT = 'id,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,body,categories';
 
 let _pollActive = false;
@@ -36,17 +37,52 @@ function internalDomain(email) {
 }
 
 // ─── Delta plumbing ──────────────────────────────────────────────────────────
+
+// Exchange garbage-collects delta sync state, so a stored deltaLink can go dead
+// (410 SyncStateNotFound / resyncRequired). It reliably does so after a long
+// outage: the 2026-08-31 crash killed the poller mid-cycle and every poll for
+// the next nine days retried the same dead token and failed, silently, because
+// nothing here could rebuild it.
+function isDeadDelta(e) {
+  return e && (e.status === 410 || /SyncStateNotFound|resyncRequired/i.test(e.message || ''));
+}
+
+// Baseline delta URL used for a first run or after a dead token. The window
+// stretches back to the last successful poll so mail that arrived during an
+// outage is still ingested, with a floor of POLL_LOOKBACK_HOURS and a ceiling
+// so a first run (or very stale state) cannot drag in the whole mailbox.
+function baselineDeltaUrl(folder, mb) {
+  const lastPoll = Date.parse(db.getCommState('inbound_last_poll') || '');
+  const gapMs = isNaN(lastPoll) ? 0 : Date.now() - lastPoll;
+  const backMs = Math.min(
+    Math.max(gapMs, POLL_LOOKBACK_HOURS * 3600 * 1000),
+    RESYNC_MAX_DAYS * 86400 * 1000,
+  );
+  const since = new Date(Date.now() - backMs).toISOString();
+  return `/users/${mb}/mailFolders/${folder}/messages/delta?$select=${SELECT}&$filter=receivedDateTime ge ${since}`;
+}
+
 async function deltaPage(folder, stateKey) {
   const mb = graph.mailbox();
-  let url = db.getCommState(stateKey);
-  if (!url) {
-    const since = new Date(Date.now() - POLL_LOOKBACK_HOURS * 3600 * 1000).toISOString();
-    url = `/users/${mb}/mailFolders/${folder}/messages/delta?$select=${SELECT}&$filter=receivedDateTime ge ${since}`;
-  }
+  let url = db.getCommState(stateKey) || baselineDeltaUrl(folder, mb);
+  let rebuilt = false;
   const out = [];
   // Walk nextLinks in one poll; persist the deltaLink for the next poll.
-  for (let hop = 0; hop < 20; hop++) {
-    const page = await graph.gGet(url, { Prefer: 'odata.maxpagesize=50' });
+  for (let hop = 0; hop < 25; hop++) {
+    let page;
+    try {
+      page = await graph.gGet(url, { Prefer: 'odata.maxpagesize=50' });
+    } catch (e) {
+      // Rebuild once per poll. Anything else, or a second failure, propagates:
+      // re-requesting a baseline forever would be the same silent loop.
+      if (rebuilt || !isDeadDelta(e)) throw e;
+      rebuilt = true;
+      db.setCommState(stateKey, '');
+      url = baselineDeltaUrl(folder, mb);
+      out.length = 0;   // a partial walk under the dead token is not a delta
+      console.warn(`[comms-inbound] ${folder} delta expired — rebuilding from baseline`);
+      continue;
+    }
     out.push(...(page.value || []));
     if (page['@odata.nextLink']) { url = page['@odata.nextLink']; continue; }
     if (page['@odata.deltaLink']) { db.setCommState(stateKey, page['@odata.deltaLink']); }

@@ -4111,9 +4111,25 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // Inbound mailbox poller — delta on invoices@ inbox + sent items every 2 min.
   // Never moves or marks-read; categories only (humans share the mailbox in
   // Outlook). Reply notifications go to the thread's assigned user.
+  // A wedged poller is invisible from the app itself — customer replies simply
+  // stop arriving — so failures go to the health board on the same raise/clear
+  // pattern as the Payee refresh. 15 consecutive misses is ~30 min of silence.
   const { runInboundPoll } = require('./comms-inbound');
+  let _inboundFailStreak = 0;
   const doInboundPoll = () => runInboundPoll({ notify: notifyUser })
-    .catch(e => console.warn(`[comms-inbound] poll error: ${e.message}`));
+    .then(() => {
+      if (_inboundFailStreak) console.log(`[comms-inbound] recovered after ${_inboundFailStreak} failed poll(s)`);
+      _inboundFailStreak = 0;
+      ops.ok('comms-inbound-poll', 'mailbox poll ok');
+    })
+    .catch(e => {
+      _inboundFailStreak++;
+      console.warn(`[comms-inbound] poll error (streak ${_inboundFailStreak}): ${e.message}`);
+      if (_inboundFailStreak >= 15) {
+        ops.raise('comms-inbound-poll', `invoices@ inbound poll failing (${_inboundFailStreak}x)`,
+          `Customer replies are not being ingested.\n\nLast error: ${e.message}`, { minIntervalHours: 12 });
+      }
+    });
   setTimeout(doInboundPoll, 60 * 1000);
   setInterval(doInboundPoll, 2 * 60 * 1000);
 

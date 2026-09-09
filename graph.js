@@ -91,7 +91,13 @@ async function gFetch(method, pathOrUrl, body, extraHeaders) {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`graph ${method} ${pathOrUrl} -> ${res.status} ${text.slice(0, 300)}`);
+    const err = new Error(`graph ${method} ${pathOrUrl} -> ${res.status} ${text.slice(0, 300)}`);
+    // Callers that can recover from one specific failure — an expired delta
+    // token, say — need the status and Graph error code without having to
+    // re-parse the message string.
+    err.status = res.status;
+    try { err.graphCode = JSON.parse(text).error.code || null; } catch (e) { err.graphCode = null; }
+    throw err;
   }
   if (res.status === 204 || res.status === 202) return null;
   const ct = res.headers.get('content-type') || '';

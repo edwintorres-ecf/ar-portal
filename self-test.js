@@ -57,10 +57,16 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     return `${feed.items.length} items, generated ${genAge.toFixed(1)}h ago, newest entry ${entryAge.toFixed(1)}h`;
   });
   // 4. Invariant health rows: anything red?
+  // The board's own 'self-test' row is excluded. It is written by the previous
+  // run of this file, so counting it makes any single failure permanently
+  // self-sustaining: the run fails, writes a fail row, and the next run fails
+  // on that row alone. This deadlock was cleared by hand on 2026-08-20 and came
+  // straight back. The row is a summary of these checks, never new evidence.
   check('ops-health-board', () => {
-    const bad = db.getHealth().filter(h => h.status === 'fail');
+    const rows = db.getHealth().filter(h => h.check_key !== 'self-test');
+    const bad = rows.filter(h => h.status === 'fail');
     if (bad.length) throw new Error(bad.map(b => `${b.check_key}: ${b.detail || ''}`).join(' | ').slice(0, 200));
-    return `${db.getHealth().length} checks green/amber`;
+    return `${rows.length} checks green/amber`;
   });
   // 5. Transmission reconciliation
   check('edi-reconciliation', () => {
