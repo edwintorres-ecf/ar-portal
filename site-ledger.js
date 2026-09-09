@@ -296,7 +296,7 @@ function resolveAll(allInvoices) {
 /** Resolve and persist. Idempotent: safe to run on every refresh. */
 function rebuild(allInvoices) {
   const rows = resolveAll(allInvoices);
-  let buCount = 0;
+  let buCount = 0, pruned = 0;
   const d = db.getDb();
   const stmt = d.prepare(`
     INSERT INTO invoice_site_ledger (record_no, invoice_id, site_code, source, confidence, evidence, candidates, amount, resolved_at)
@@ -313,9 +313,24 @@ function rebuild(allInvoices) {
                r.candidates.length ? r.candidates.join('|') : null, r.amount);
       buCount += r.businessUnit ? 1 : 0;
     }
+    // Drop rows for invoices that have left the open set. The ledger is a
+    // derived view of what is OPEN, so without this an invoice that gets paid
+    // keeps its row forever: the review queue hands people work that no longer
+    // exists (AST-003195 and AST-003208 were both settled and still sitting in
+    // it), and the row count drifts up with every rebuild. Manual pins are safe
+    // because they live in invoice_site_overrides, not here, so a reopened
+    // invoice gets its pin back on the next rebuild.
+    const keep = new Set(rows.map(r => r.recordNo));
+    for (const r of d.prepare('SELECT record_no FROM invoice_site_ledger').all()) {
+      if (!keep.has(String(r.record_no))) {
+        d.prepare('DELETE FROM invoice_site_ledger WHERE record_no=?').run(r.record_no);
+        pruned++;
+      }
+    }
     d.exec('COMMIT');
   } catch (e) { d.exec('ROLLBACK'); throw e; }
   const sum = summarize(rows);
+  sum.pruned = pruned;
   sum.withBusinessUnit = buCount;
   return sum;
 }
