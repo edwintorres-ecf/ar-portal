@@ -156,7 +156,7 @@ async function runAmazonStatements(job) {
 
     if (st.actions.fundsNeeded.length) {
       ws.addRow(['PURCHASE ORDERS NEEDING ADDITIONAL FUNDS']).getCell(1).font = { bold: true, color: { argb: 'FF991B1B' } };
-      const h = ws.addRow(['PO', 'PO value', 'Remaining', 'Invoices against it', 'Value of those', 'Shortfall']);
+      const h = ws.addRow(['PO', 'PO value', 'Available', 'Invoices against it', 'Value of those', 'Shortfall']);
       h.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
       for (const a of st.actions.fundsNeeded) {
         const r = ws.addRow([a.po, a.poAmount, a.available, a.invoices, a.amount, a.shortfall]);

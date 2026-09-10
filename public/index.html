@@ -5608,9 +5608,9 @@ function renderPendingBySite() {
     { f: 'ceiling', label: 'PO Value', align: 'right' },
     { f: 'consumed', label: 'Charges', align: 'right' },
     { f: 'pending', label: 'Pending', align: 'right' },
-    { f: null, label: 'Remaining', align: 'right' },
+    { f: null, label: 'Available', align: 'right' },
     { f: 'pending', label: 'Site Pending', align: 'right', k: 'sp' },
-    { f: 'available', label: 'Site Remaining', align: 'right' },
+    { f: 'available', label: 'Site Available', align: 'right' },
   ];
   const header = COLS.map(c => {
     const arrow = c.f && _pbsSort.field === c.f && !c.k ? (_pbsSort.asc ? ' ↑' : ' ↓') : '';
@@ -5699,7 +5699,7 @@ function renderPendingBySite() {
         style="cursor:pointer;border:1px solid ${_poFilterBu.includes(b.bu) ? '#5b21b6' : 'var(--gray-200)'};background:${_poFilterBu.includes(b.bu) ? '#faf5ff' : 'var(--white)'};border-radius:9px;padding:7px 12px;min-width:140px">
         <div style="font-size:10.5px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.3px">${escHtml(b.bu === '(none)' ? 'Not in master' : b.bu)}</div>
         <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px" class="amount">${c$(b.pending)}<span style="font-size:10px;font-weight:500;color:var(--gray-500)"> pending</span></div>
-        <div style="font-size:10.5px;color:var(--gray-500)">${b.sites} site${b.sites === 1 ? '' : 's'} · ${b.count} inv · ${c$(b.available)} remaining</div>
+        <div style="font-size:10.5px;color:var(--gray-500)">${b.sites} site${b.sites === 1 ? '' : 's'} · ${b.count} inv · ${c$(b.available)} available</div>
       </div>`).join('')}
     </div>` : '';
 
@@ -6371,9 +6371,9 @@ function reassignRecompute() {
   const closed = target.poStatus && target.poStatus !== 'OPEN_FOR_INVOICING';
   if (closed) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⛔ ${escHtml(po)} is ${escHtml(target.poStatus)} on Amazon — submissions to it vanish.</span>`; return; }
   if (avail == null) { box.innerHTML = `<span style="color:var(--gray-500)">${escHtml(po)} · site ${escHtml(target.siteCode || '?')} · remaining unknown.</span>`; return; }
-  if (avail <= 0) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⛔ ${escHtml(po)} has ${fmt$(avail)} remaining (${srcTag}) — fully consumed.</span>`; return; }
-  if (amt != null && amt > avail) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⚠️ Invoice ${fmt$(amt)} vs ${fmt$(avail)} remaining (${srcTag}) — short by ${fmt$(amt - avail)}.</span>`; return; }
-  box.innerHTML = `<span style="color:#16a34a">✓ ${escHtml(po)} · site ${escHtml(target.siteCode || '?')} · ${fmt$(avail)} remaining (${srcTag})${amt != null ? ` · fits ${fmt$(amt)}` : ''}.</span>`;
+  if (avail <= 0) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⛔ ${escHtml(po)} has ${fmt$(avail)} available (${srcTag}) — fully consumed.</span>`; return; }
+  if (amt != null && amt > avail) { box.innerHTML = `<span style="color:#dc2626;font-weight:600">⚠️ Invoice ${fmt$(amt)} vs ${fmt$(avail)} available (${srcTag}) — short by ${fmt$(amt - avail)}.</span>`; return; }
+  box.innerHTML = `<span style="color:#16a34a">✓ ${escHtml(po)} · site ${escHtml(target.siteCode || '?')} · ${fmt$(avail)} available (${srcTag})${amt != null ? ` · fits ${fmt$(amt)}` : ''}.</span>`;
 }
 
 function closeReassignModal() {
@@ -6405,9 +6405,9 @@ async function saveReassignModal() {
     if (target.poStatus && target.poStatus !== 'OPEN_FOR_INVOICING') {
       if (!confirm(`${assignedPo} is ${target.poStatus} on Amazon — submissions to it vanish without an error. Assign anyway?`)) return;
     } else if (target.available != null && target.available <= 0) {
-      if (!confirm(`${assignedPo} has ${fmt$(target.available)} remaining — fully consumed. Assign anyway?`)) return;
+      if (!confirm(`${assignedPo} has ${fmt$(target.available)} available — fully consumed. Assign anyway?`)) return;
     } else if (amt != null && target.available != null && amt > target.available) {
-      if (!confirm(`Invoice ${fmt$(amt)} vs ${fmt$(target.available)} remaining on ${assignedPo} (short ${fmt$(amt - target.available)}). Assign anyway?`)) return;
+      if (!confirm(`Invoice ${fmt$(amt)} vs ${fmt$(target.available)} available on ${assignedPo} (short ${fmt$(amt - target.available)}). Assign anyway?`)) return;
     }
   }
   try {

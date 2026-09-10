@@ -3306,7 +3306,7 @@ app.post('/api/po/:poNumber/service', requireAuth, requirePerm('po.edit'), (req,
 
 // ─── Pending-by-Site Excel export ────────────────────────────────────────
 // Styled .xlsx mirroring the on-screen report: per-PO rows, merged site cells
-// for Site / Site Pending / Site Remaining, red/green/amber color coding.
+// for Site / Site Pending / Site Available, red/green/amber color coding.
 app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
   try {
     const ExcelJS = require('exceljs');
@@ -3359,7 +3359,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     title.font = { bold: true, size: 12, color: { argb: NAVY } };
     ws.getRow(1).height = 20;
 
-    const HEAD = ['Site', 'PO #', 'PO Date', 'Doc/Rev Date', '# Inv', 'PO Value', 'Charges', 'Pending', 'Value Remaining', 'Remaining %', 'Site Pending', 'Site Remaining'];
+    const HEAD = ['Site', 'PO #', 'PO Date', 'Doc/Rev Date', '# Inv', 'PO Value', 'Charges', 'Pending', 'Available', 'Available %', 'Site Pending', 'Site Available'];
     const hrow = ws.addRow(HEAD);
     hrow.eachCell(c => {
       c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -5899,7 +5899,7 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   doPayeeRefresh();
   setInterval(doPayeeRefresh, 30 * 60 * 1000);
 
-  // Per-PO Amazon "Available amount" scrape — the authoritative Value Remaining.
+  // Per-PO Amazon "Available amount" scrape — the authoritative available figure.
   // ~1,100 detail pages, so it runs every 4 hours (not on the 30-min payee loop).
   // Delay the first pass 3 min so the open-PO list is refreshed first; each pass
   // scrapes against that fresh open set.

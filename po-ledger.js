@@ -35,7 +35,7 @@ function getPoDocsMap() {
 // Cached reader for the per-PO detail scrape (payee-po-detail-scraper.js output):
 // Amazon's own "Available amount" per open PO — the authoritative, quantity-
 // enforced remaining balance, keyed by upper-cased PO number. This replaces the
-// computed (ceiling - consumed - pending) figure as "Value Remaining" wherever
+// computed (ceiling - consumed - pending) figure as "Available" wherever
 // Amazon has spoken; the computed number is kept alongside for transparency and
 // discrepancy detection. Reliability: a {stale:true} entry means the last scrape
 // of that PO failed — we still show its last-known Amazon number but mark it so
@@ -556,7 +556,7 @@ function getPoLedger(invoices) {
     // number Amazon checks an invoice against at submission. Our computed figure
     // drifts (ceiling-capture lag, double-counted pending) and can even go
     // negative, which Amazon never shows — Amazon floors at $0. So when we have
-    // a scraped balance, THAT is "Value Remaining"; computed is kept for
+    // a scraped balance, THAT is "Available"; computed is kept for
     // transparency. `pendingUpload` still reflects what's queued to draw against
     // it, so pending-vs-remaining decisions stay sound.
     const detail = poDetailsMap[poNumber.toUpperCase()] || null;
