@@ -85,6 +85,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const bySite = {};
   const touchSite = (code) => (bySite[code] = bySite[code] || {
     site: code, stalled: 0, invoices: 0, available: 0, poCount: 0, pos: [],
+    nextSeason: 0, nextSeasonPos: 0,
   });
   for (const r of stalledRows) {
     const s = touchSite(r.site || '(no site)');
@@ -98,8 +99,21 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     s.poCount++;
     s.pos.push(p);
   }
+  // Funds on NEXT season's POs, tracked separately and shown, never counted.
+  // The portal's Pending by Site screen counts every PO, so ORH3 reads $909,369
+  // there and $642,205 here — one $288,333 PO raised in July 2026. Showing the
+  // excluded figure is what makes the two views reconcilable (Edwin 2026-09-10).
+  if (win) {
+    for (const p of ledger) {
+      if (poInSeason(p, win)) continue;
+      const s = touchSite(p.siteCode || '(no site)');
+      s.nextSeason += (p.available || 0);
+      s.nextSeasonPos++;
+    }
+  }
   for (const s of Object.values(bySite)) {
     s.available = Math.round(s.available * 100) / 100;
+    s.nextSeason = Math.round(s.nextSeason * 100) / 100;
     s.stalled = Math.round(s.stalled * 100) / 100;
     s.spare = Math.max(0, s.available - s.stalled);
     s.short = Math.max(0, s.stalled - Math.max(0, s.available));
@@ -110,6 +124,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   // Excess for the BU is the sum of what its SITES have spare, once each site's
   // own stalled billing is met from its own POs.
   const excess = Math.round(siteList.reduce((t, s) => t + s.spare, 0) * 100) / 100;
+  const nextSeasonTotal = Math.round(siteList.reduce((t, s) => t + s.nextSeason, 0) * 100) / 100;
   const excessSites = siteList.filter(s => s.spare > 0).sort((x, y) => y.spare - x.spare);
   const shortSites = siteList.filter(s => s.short > 0).sort((x, y) => y.short - x.short);
   const totalShort = Math.round(shortSites.reduce((t, s) => t + s.short, 0) * 100) / 100;
@@ -122,7 +137,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     bu, seasonKey, snowOnly,
     rows, buckets, stalled, stalledRows,
     bySite, siteList, excessSites, shortSites,
-    excess, totalShort, coverable, variance,
+    excess, totalShort, coverable, variance, nextSeasonTotal,
     ledger, seasonPos,
     generatedAt: new Date().toISOString(),
   };
@@ -146,7 +161,9 @@ async function buildBuWorkbook(invoices, opts) {
   s1.getColumn(2).width = 46;
   s1.getColumn(3).width = 18;
   s1.getColumn(4).width = 12;
-  s1.getColumn(5).width = 78;
+  s1.getColumn(5).width = 26;
+  s1.getColumn(6).width = 30;
+  s1.getColumn(7).width = 78;
 
   const title = s1.addRow(['', a.bu]);
   title.getCell(2).font = { bold: true, size: 20, color: { argb: NAVY } };
@@ -164,7 +181,7 @@ async function buildBuWorkbook(invoices, opts) {
   };
 
   section('STALLED BILLING VALUES');
-  const hdr = s1.addRow(['', 'Reason', 'Value', 'Invoices', 'What it means']);
+  const hdr = s1.addRow(['', 'Reason', 'Value', 'Invoices', '', '', 'What it means']);
   hdr.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -172,14 +189,14 @@ async function buildBuWorkbook(invoices, opts) {
   });
 
   const line = (label, b, fill) => {
-    const r = s1.addRow(['', label, b.amount, b.count, b.explain]);
+    const r = s1.addRow(['', label, b.amount, b.count, '', '', b.explain]);
     r.getCell(2).font = { bold: true, size: 11 };
     r.getCell(3).numFmt = money;
     r.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF991B1B' } };
     r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
     r.getCell(4).alignment = { horizontal: 'center' };
-    r.getCell(5).font = { size: 9.5, color: { argb: 'FF475569' } };
-    r.getCell(5).alignment = { wrapText: true, vertical: 'top' };
+    r.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+    r.getCell(7).alignment = { wrapText: true, vertical: 'top' };
     r.height = 34;
     return r;
   };
@@ -187,7 +204,7 @@ async function buildBuWorkbook(invoices, opts) {
   line('Insufficient PO Funds Hold', a.stalled.funds, RED);
   line('Invoice cannot be delivered', a.stalled.undeliverable, RED);
 
-  const tot = s1.addRow(['', `Total stalled billing for ${a.bu}`, a.stalled.total.amount, a.stalled.total.count, '']);
+  const tot = s1.addRow(['', `Total stalled billing for ${a.bu}`, a.stalled.total.amount, a.stalled.total.count, '', '', '']);
   tot.getCell(2).font = { bold: true, size: 12, color: { argb: NAVY } };
   tot.getCell(3).numFmt = money;
   tot.getCell(3).font = { bold: true, size: 13, color: { argb: 'FF991B1B' } };
@@ -197,19 +214,19 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
 
   section('FUNDING');
-  const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessSites.length,
+  const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessSites.length, '', '',
     'Every PO at each site added together first, then measured against what is stalled there. This is what is left over at the sites that can already cover themselves.']);
   ex.getCell(2).font = { bold: true, size: 11 };
   ex.getCell(3).numFmt = money;
   ex.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF166534' } };
   ex.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
   ex.getCell(4).alignment = { horizontal: 'center' };
-  ex.getCell(5).font = { size: 9.5, color: { argb: 'FF475569' } };
-  ex.getCell(5).alignment = { wrapText: true, vertical: 'top' };
+  ex.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+  ex.getCell(7).alignment = { wrapText: true, vertical: 'top' };
   ex.height = 30;
 
   const shortfall = a.variance > 0 ? a.variance : 0;
-  const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length,
+  const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length, '', '',
     a.variance > 0
       ? `New funding still required after moving every spare dollar from the ${a.excessSites.length} site(s) that have some, into the ${a.shortSites.length} that are short.`
       : 'None — the sites with spare funds hold enough to cover every site that is short.']);
@@ -217,8 +234,8 @@ async function buildBuWorkbook(invoices, opts) {
   va.getCell(3).numFmt = money;
   va.getCell(3).font = { bold: true, size: 12, color: { argb: a.variance > 0 ? 'FF991B1B' : 'FF166534' } };
   va.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: a.variance > 0 ? RED : GREEN } };
-  va.getCell(5).font = { size: 9.5, color: { argb: 'FF475569' } };
-  va.getCell(5).alignment = { wrapText: true, vertical: 'top' };
+  va.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+  va.getCell(7).alignment = { wrapText: true, vertical: 'top' };
   va.height = 30;
   s1.addRow([]);
   s1.addRow([]);
@@ -233,7 +250,7 @@ async function buildBuWorkbook(invoices, opts) {
     : `${a.bu} needs no new funding. The ${a.excessSites.length} sites holding ${M(a.excess)} spare more than cover the `
       + `${M(a.totalShort)} that the ${a.shortSites.length} short sites are missing — it only needs moving.`;
   const an = s1.addRow(['', analysis]);
-  s1.mergeCells(`B${an.number}:E${an.number}`);
+  s1.mergeCells(`B${an.number}:G${an.number}`);
   an.getCell(2).font = { size: 12, color: { argb: NAVY } };
   an.getCell(2).alignment = { wrapText: true, vertical: 'top' };
   an.height = 46;
@@ -244,7 +261,11 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
   s1.addRow([]);
   section('FUNDS BY SITE — ALL POs CONSOLIDATED');
-  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available across all its POs   ·   Position']);
+  s1.addRow(['', a.seasonKey
+    ? `Available counts this business unit's ${a.seasonKey.replace('-', '–')} POs only. Funds on POs raised for the following season are listed separately and NOT counted — the portal's Pending by Site screen counts every PO, which is why a site can read higher there.`
+    : 'Available counts every PO at the site.']).getCell(2).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+  s1.addRow([]);
+  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available (this season)', 'On next season\u2019s POs (not counted)']);
   sh.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -253,11 +274,14 @@ async function buildBuWorkbook(invoices, opts) {
   // Worst position first — the sites that cannot pay their own way.
   for (const st of a.siteList) {
     if (st.stalled === 0 && st.available === 0) continue;
-    const r = s1.addRow(['', st.site, st.stalled, st.poCount, st.available]);
+    const r = s1.addRow(['', st.site, st.stalled, st.poCount, st.available,
+      st.nextSeason ? st.nextSeason : null]);
     r.getCell(2).font = { bold: true, size: 10.5 };
     r.getCell(3).numFmt = money;
     r.getCell(4).alignment = { horizontal: 'center' };
     r.getCell(5).numFmt = money;
+    r.getCell(6).numFmt = money;
+    r.getCell(6).font = { size: 10, color: { argb: 'FF94A3B8' } };
     if (st.short > 0) {
       r.getCell(3).font = { bold: true, color: { argb: 'FF991B1B' } };
       r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
@@ -267,7 +291,8 @@ async function buildBuWorkbook(invoices, opts) {
     }
   }
   const sf = s1.addRow(['', `${a.bu} total`, a.stalled.total.amount, a.seasonPos.length,
-    Math.round(a.seasonPos.reduce((t, p) => t + (p.available || 0), 0) * 100) / 100]);
+    Math.round(a.seasonPos.reduce((t, p) => t + (p.available || 0), 0) * 100) / 100,
+    a.nextSeasonTotal || null]);
   sf.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 11 };
@@ -277,6 +302,7 @@ async function buildBuWorkbook(invoices, opts) {
   sf.getCell(3).numFmt = money;
   sf.getCell(4).alignment = { horizontal: 'center' };
   sf.getCell(5).numFmt = money;
+  sf.getCell(6).numFmt = money;
 
   // ── Sheet 2: Detail by PO ──
   const s2 = wb.addWorksheet('Detail by PO', { views: [{ state: 'frozen', ySplit: 2 }] });
