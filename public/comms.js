@@ -2125,16 +2125,27 @@ async function commsOpenThread(id) {
         </div>
         ${commsCanEdit() ? `
         <div style="display:flex;gap:6px;align-items:center">
+          <label style="font-size:11.5px;color:var(--gray-500)">Owner
+            <select onchange="commsAssignThread(${c.id}, this.value)" title="Who this thread belongs to — the customer's replies come back to them" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;margin-left:3px">
+              <option value="">— nobody —</option>
+              ${(_portalUsers || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}"${(c.assigned_email || '').toLowerCase() === u.email.toLowerCase() ? ' selected' : ''}>${escHtml(u.name || u.email)}</option>`).join('')}
+            </select></label>
           <select onchange="commsSetThreadStatus(${c.id}, this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
             ${statuses.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
           ${c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600" onclick="commsReplyToConversation(${c.id})">↩ Reply</button>` : ''}
         </div>` : ''}
       </div>
+      <div style="font-size:11.5px;color:var(--gray-500);margin:-4px 0 10px 2px">
+        ${c.assigned_email
+          ? `Replies from the customer route to <b>${escHtml(commsPersonName(c.assigned_email))}</b>.`
+          : '<span style="color:#b45309">Nobody owns this thread — a reply would reach no one. Set an owner.</span>'}
+      </div>
       ${messages.map(m => `
       <div style="border:1px solid var(--gray-200);border-radius:10px;margin-bottom:8px;background:${m.direction === 'in' ? '#fff' : '#f8fafc'}">
         <div style="padding:8px 12px;font-size:12px;color:var(--gray-600);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
-          <span>${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(m.direction === 'in' ? m.from_email : (m.corresponding_email || m.actor_email || m.from_email))}</strong>
+          <span>${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(m.direction === 'in' ? m.from_email : commsPersonName(m.corresponding_email || m.actor_email) || m.from_email)}</strong>
+            ${m.direction === 'out' && (m.actor_email || m.corresponding_email) ? `<span style="color:var(--gray-500)">· sent by ${escHtml(commsPersonName(m.actor_email || m.corresponding_email))}</span>` : ''}
             ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">AUTO</span>' : ''}
             ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">FAILED</span>' : ''}</span>
           <span>${escHtml(((m.sent_at || m.received_at || m.created_at) || '').slice(0, 16).replace('T', ' '))}</span>
@@ -2144,6 +2155,22 @@ async function commsOpenThread(id) {
   } catch (e) {
     threadEl.innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
+}
+
+// A name reads better than an address, and makes "who sent this" answerable at
+// a glance. Falls back to the address when the person is not a portal user.
+function commsPersonName(email) {
+  if (!email) return '';
+  const u = (_portalUsers || []).find(x => x.email && x.email.toLowerCase() === String(email).toLowerCase());
+  return u ? (u.name || u.email) : email;
+}
+
+async function commsAssignThread(id, email) {
+  try {
+    await apiFetch(`/api/comms/conversations/${id}/assign`, { method: 'POST', body: JSON.stringify({ email }) });
+    showToast(email ? `Assigned to ${commsPersonName(email)}` : 'Owner cleared', 'success');
+    commsOpenThread(id);
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); commsOpenThread(id); }
 }
 
 // Reply to a conversation from anywhere: works out who the counterparty is

@@ -5313,6 +5313,32 @@ app.post('/api/dunning/runs/:id/execute', requireAuth, requirePerm('dunning.run'
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Hand a thread to someone else. Without this, a thread auto-assigned by its
+// customer's collector could never be moved, and whoever it landed on was stuck
+// with it (Edwin 2026-09-10).
+app.post('/api/comms/conversations/:id/assign', requireAuth, requirePerm('triage.manage'), (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const conv = db.getConversation(id);
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase() || null;
+    if (email && !email.endsWith('@eastcoastfacilities.com')) {
+      return res.status(400).json({ error: 'Must be an @eastcoastfacilities.com address' });
+    }
+    db.touchConversation(id, { assignedEmail: email });
+    db.auditLog(req.session.user.email, 'comm_assign', null, `conv=${id} ${conv.assigned_email || '(nobody)'} -> ${email || '(nobody)'}`);
+    // Tell them, unless they did it to themselves.
+    if (email && email !== String(req.session.user.email).toLowerCase()) {
+      notifyUser(email, 'replies', `[AR Portal] A conversation was assigned to you`,
+        `${req.session.user.name || req.session.user.email} assigned you a thread`
+        + (conv.customer_id ? ` for ${conv.customer_id}` : '')
+        + `.\n\nSubject: ${(conv.subject || '(no subject)').slice(0, 120)}\n\nIt is in the AR Mailbox: ${portalBaseUrl()}`)
+        .catch(e => console.error('[comms] assign notify:', e.message));
+    }
+    res.json({ ok: true, assigned: email });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/comms/conversations/:id/status', requireAuth, requirePerm('triage.manage'), (req, res) => {
   try {
     const { status, assignEmail } = req.body;

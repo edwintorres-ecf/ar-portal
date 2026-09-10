@@ -164,6 +164,37 @@ function senderCompatible(conv, senderEmail) {
 }
 
 // 5. Unmatched: unique-contact auto-file, else triage.
+// Who at ECF should own a thread that arrived cold. Ownership has to land on a
+// PERSON or the reply routes to nobody and the thread sits unanswered — which
+// is exactly what happened to every auto-filed and triaged conversation before
+// this (Edwin 2026-09-10). Most specific first.
+function ownerForCustomer(customerId) {
+  if (!customerId) return null;
+  try {
+    const acct = db.getCustomerAccount(customerId);
+    if (acct && acct.collector_email) return acct.collector_email;
+  } catch (e) { /* fall through */ }
+  try {
+    // Whoever holds the most of this customer's invoices.
+    const sage = require('./sage');
+    const invColl = db.getAllInvoiceCollectors();
+    const tally = {};
+    for (const inv of sage.getCachedInvoices()) {
+      if (inv.customerId !== customerId) continue;
+      const c = invColl[inv.recordNo];
+      if (c && c.collector_email) tally[c.collector_email] = (tally[c.collector_email] || 0) + 1;
+    }
+    const best = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    if (best) return best[0];
+  } catch (e) { /* fall through */ }
+  try {
+    // Last resort so nothing is ownerless: the AR manager.
+    const mgrs = db.getSettingList ? db.getSettingList('ar_manager_emails') : [];
+    if (mgrs.length) return mgrs[0];
+  } catch (e) { /* none configured */ }
+  return null;
+}
+
 function customerForSender(senderEmail) {
   const rows = db.all('SELECT DISTINCT customer_id FROM customer_contacts WHERE email=? AND is_active=1', [senderEmail]);
   return rows.length === 1 ? rows[0].customer_id : null;
@@ -222,8 +253,18 @@ async function runInboundPoll({ notify } = {}) {
         db.auditLog('comms-inbound', 'comm_receive', null, `conv=${conv.id} from=${sender} "${(m.subject || '').slice(0, 80)}"`);
         await applyCategory(m.id, m.categories, 'AR/Filed');
         stats.filed++;
-        if (notify && conv.assigned_email && conv.assigned_email !== sender) {
-          notify(conv.assigned_email, 'replies',
+        // An existing thread with no owner (auto-filed before this, or started
+        // in Outlook) gets one now, so the reply reaches somebody.
+        let routeTo = conv.assigned_email;
+        if (!routeTo) {
+          routeTo = ownerForCustomer(conv.customer_id);
+          if (routeTo) {
+            db.touchConversation(conv.id, { assignedEmail: routeTo });
+            db.auditLog('comms-inbound', 'comm_auto_assign', null, `conv=${conv.id} -> ${routeTo} (was unassigned)`);
+          }
+        }
+        if (notify && routeTo && routeTo !== sender) {
+          notify(routeTo, 'replies',
             `[AR Portal] Reply from ${m.from?.emailAddress?.name || sender}`,
             `${m.from?.emailAddress?.name || sender} replied on "${(m.subject || '').slice(0, 100)}".\n\nOpen the AR Mailbox in the portal to view and respond.\n\n(This thread is assigned to you.)`);
         }
@@ -232,18 +273,29 @@ async function runInboundPoll({ notify } = {}) {
 
       // No safe match → auto-file on unique contact, else triage. Never guess.
       const custId = customerForSender(sender);
+      const owner = ownerForCustomer(custId);
       const newConv = db.createConversation({
         customerId: custId,
         mailbox: mb,
+        assignedEmail: owner || null,
         subject: m.subject || '(no subject)',
         status: custId ? 'open' : 'triage',
       });
       insertInbound(newConv, m, { direction: 'in', actorType: internalDomain(sender) ? 'mailbox_user' : 'external', actorEmail: internalDomain(sender) ? sender : null });
       db.touchConversation(newConv.id, { lastDirection: 'in', graphConversationId: m.conversationId || null });
       if (custId) {
-        db.auditLog('comms-inbound', 'comm_auto_filed', null, `conv=${newConv.id} from=${sender} -> ${custId}`);
+        db.auditLog('comms-inbound', 'comm_auto_filed', null, `conv=${newConv.id} from=${sender} -> ${custId}${owner ? ' assigned ' + owner : ' UNASSIGNED'}`);
         await applyCategory(m.id, m.categories, 'AR/Filed');
         stats.autoFiled++;
+        // A new thread nobody knows about is worse than a reply on an existing
+        // one, so tell its owner it arrived.
+        if (notify && owner && owner !== sender) {
+          notify(owner, 'replies',
+            `[AR Portal] New email from ${m.from?.emailAddress?.name || sender}`,
+            `${m.from?.emailAddress?.name || sender} has emailed the AR mailbox about ${custId}.\n\n`
+            + `Subject: ${(m.subject || '(no subject)').slice(0, 120)}\n\n`
+            + `It has been filed to you in the AR Mailbox.`);
+        }
       } else {
         db.auditLog('comms-inbound', 'comm_triage', null, `conv=${newConv.id} from=${sender} "${(m.subject || '').slice(0, 80)}"`);
         await applyCategory(m.id, m.categories, 'AR/Triage');

@@ -417,6 +417,15 @@ async function sendMessage(opts) {
       db.setConversationSubject(conv.id, conv.subject, signToken(conv.id));
       conv = db.getConversation(conv.id);
     }
+    // Replying to an unowned thread claims it. Whoever answered the customer is
+    // who the customer's next reply should come back to — otherwise a thread
+    // that arrived cold stays ownerless however many times we write on it
+    // (Edwin 2026-09-10).
+    if (!conv.assigned_email && actorType === 'human' && actorEmail) {
+      db.touchConversation(conv.id, { assignedEmail: graph.normEmail(actorEmail) });
+      db.auditLog(actorEmail, 'comm_claim_thread', null, `conv=${conv.id} claimed by replying`);
+      conv = db.getConversation(conv.id);
+    }
   } else {
     conv = db.createConversation({
       customerId, contactId: contact ? contact.id : null,
