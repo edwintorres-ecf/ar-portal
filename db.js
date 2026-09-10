@@ -24,6 +24,12 @@ function openDatabase() {
   const d = new DatabaseSync(DB_PATH);
   try {
     d.exec('PRAGMA journal_mode = WAL');   // better concurrency
+    // WAL lets readers and one writer coexist, but a SECOND writer still gets
+    // SQLITE_BUSY immediately with no wait. The portal is not the only process
+    // that writes — scrapers and maintenance scripts do too — and a rejection
+    // reason was lost to "database is locked" during the first scrape pass
+    // (2026-09-10). Wait for the other writer instead of failing instantly.
+    d.exec('PRAGMA busy_timeout = 10000');
   } catch (e) {
     // Close the failed handle; a half-open connection keeps the bad WAL state
     // in-process and poisons any retry made inside this same process.

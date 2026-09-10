@@ -925,6 +925,97 @@ function sweepRejections({ notify = false } = {}) {
   return stats;
 }
 
+// ─── Site statement ─────────────────────────────────────────────────────────
+// What Amazon owes for one site, with each invoice's live Payee Central status
+// and — the point of it — what is actually needed to move it: a PO issued,
+// funds added, a goods receipt, or nothing but time (Edwin 2026-09-10).
+function buildSiteStatement(rows, siteCode) {
+  const mine = rows.filter(r => (r.site || '') === siteCode);
+  const master = db.getAmazonLocationMap()[siteCode] || null;
+  const contact = db.getSiteContact(siteCode) || {};
+  const collectors = db.getAllSiteCollectors();
+
+  const byNeed = {};
+  for (const r of mine) {
+    const b = byNeed[r.need] = byNeed[r.need] || { need: r.need, label: r.needLabel, count: 0, amount: 0, invoices: [] };
+    b.count++; b.amount += r.amount || 0; b.invoices.push(r);
+  }
+  // POs that need more money, aggregated — one ask per PO rather than one per
+  // invoice, which is how it has to be put to Amazon anyway.
+  const poAsks = {};
+  for (const r of mine) {
+    if (r.need !== 'funds-needed' || !r.po) continue;
+    const a = poAsks[r.po] = poAsks[r.po] || { po: r.po, available: r.poAvailable, poAmount: r.poAmount, invoices: 0, amount: 0 };
+    a.invoices++; a.amount += r.amount || 0;
+  }
+  for (const a of Object.values(poAsks)) {
+    a.shortfall = Math.round(((a.amount - (a.available || 0)) + Number.EPSILON) * 100) / 100;
+    if (a.shortfall < 0) a.shortfall = 0;
+  }
+
+  const needsPo = mine.filter(r => r.need === 'po-needed');
+  const rejections = db.listRejections().filter(r => r.site_code === siteCode);
+  const rejByInvoice = {};
+  for (const r of rejections) rejByInvoice[r.payee_id] = r;
+
+  const order = ['rejected', 'funds-needed', 'po-needed', 'goods-receipt', 'submit', 'in-progress', 'scheduled', 'apply-cash', 'settled'];
+  return {
+    siteCode,
+    businessUnit: master ? (master.businessUnit || '') : '',
+    siteType: master ? (master.siteType || '') : '',
+    city: master ? (master.city || '') : '',
+    state: master ? (master.state || '') : '',
+    address: master ? (master.address || '') : '',
+    amazonContact: contact.amazon_email || null,
+    amazonContactName: contact.amazon_name || null,
+    internalOwner: contact.internal_email || (collectors[siteCode] || {}).email || null,
+    generatedAt: new Date().toISOString(),
+    totals: {
+      invoices: mine.length,
+      amount: Math.round(mine.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100,
+      // Money we cannot collect until somebody at Amazon acts.
+      blocked: Math.round(mine.filter(r => ['rejected', 'funds-needed', 'po-needed', 'goods-receipt'].includes(r.need))
+        .reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100,
+    },
+    actions: {
+      poNeeded: { count: needsPo.length, amount: Math.round(needsPo.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100 },
+      fundsNeeded: Object.values(poAsks).sort((a, b) => b.shortfall - a.shortfall),
+      rejected: rejections.filter(r => !r.resolved_at).map(r => ({
+        invoiceId: r.invoice_id, payeeId: r.payee_id, amount: r.amount,
+        reason: r.reason, rejectedBy: r.rejected_by, po: r.po_number,
+      })),
+    },
+    groups: order.filter(k => byNeed[k]).map(k => ({
+      ...byNeed[k],
+      amount: Math.round(byNeed[k].amount * 100) / 100,
+      invoices: byNeed[k].invoices
+        .sort((a, b) => (b.daysInPayee ?? -1) - (a.daysInPayee ?? -1))
+        .map(r => ({
+          invoiceId: r.invoiceId, recordNo: r.recordNo, amount: r.amount,
+          invoiceDate: r.invoiceDate, dueDate: r.dueDate, po: r.po,
+          payeeStatus: r.payeeStatus || '(not submitted)',
+          payeeId: r.payeeId,
+          // The Amazon clock, which is what outreach is timed off.
+          payeeEntryDate: r.payeeEntryDate, payeeEntryDay: r.payeeEntryDay, daysInPayee: r.daysInPayee,
+          needDetail: r.needDetail,
+          rejectionReason: rejByInvoice[r.payeeId] ? rejByInvoice[r.payeeId].reason : null,
+        })),
+    })),
+  };
+}
+
+app.get('/api/amazon/statement', requireAuth, (req, res) => {
+  try {
+    const rows = amazonScopedRows(req);
+    const wanted = (req.query.site == null ? [] : [].concat(req.query.site)).map(String).filter(Boolean);
+    const sites = wanted.length
+      ? wanted
+      : [...new Set(rows.map(r => r.site).filter(Boolean))].sort();
+    if (!sites.length) return res.json({ statements: [] });
+    res.json({ statements: sites.map(code => buildSiteStatement(rows, code)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
   try {
     const contacts = db.getSiteContactMap();

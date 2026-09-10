@@ -550,6 +550,12 @@ function buildAmazonRows(allInvoices, opts = {}) {
       payeeAttempts: pay ? (pay.attemptCount || 1) : 0,
       payeeDuplicateLive: pay ? !!pay.duplicateLive : false,
       payeeEntryDate: pay ? (pay.entryDate || '') : '',
+      // The clock that matters for Amazon. Sage's due date describes OUR terms;
+      // Amazon's own processing runs from the day the invoice landed in Payee
+      // Central, so outreach has to be driven by this, not by days-overdue
+      // (Edwin 2026-09-10).
+      payeeEntryDay: payeeDay(pay ? pay.entryDate : null),
+      daysInPayee: daysSince(payeeDay(pay ? pay.entryDate : null)),
       // Amazon says settled but our books still show a balance: this invoice
       // needs the cash APPLIED in Intacct. It is not overdue and chasing it
       // would be wrong, so it must not read as collectable AR.
@@ -557,10 +563,84 @@ function buildAmazonRows(allInvoices, opts = {}) {
       needsCashApplication: !!(pay && AMAZON_SETTLED.has(pay.status) && (parseFloat(inv.totalDue || 0) || 0) > 0.005),
       serviceCenter: inv.locationName || '',
     };
-  });
+  }).map(r => ({ ...r, ...classifyNeed(r) }));
+}
+
+// Amazon prints entry dates as "Sep 9, 2026". Normalise to YYYY-MM-DD so it can
+// be compared and sorted like every other date in the portal.
+function payeeDay(s) {
+  if (!s) return '';
+  const t = Date.parse(String(s));
+  if (isNaN(t)) return '';
+  const d = new Date(t);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+function daysSince(ymd) {
+  if (!ymd) return null;
+  const [y, m, d] = ymd.split('-').map(Number);
+  const then = Date.UTC(y, m - 1, d);
+  const n = new Date();
+  const today = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+  return Math.round((today - then) / 86400000);
+}
+
+// ─── What does this invoice actually need from somebody? ────────────────────
+// One classification shared by the site statement, the outreach rules and the
+// drill-down, so all three agree about what is blocking an invoice.
+const NEED_LABELS = {
+  'po-needed':     'A PO needs to be issued',
+  'submit':        'Not submitted to Payee Central yet',
+  'rejected':      'Rejected by Amazon',
+  'funds-needed':  'PO needs additional funds',
+  'goods-receipt': 'Awaiting goods receipt',
+  'approver':      'Waiting on an approver',
+  'in-progress':   'With Amazon, moving normally',
+  'scheduled':     'Scheduled for payment',
+  'apply-cash':    'Paid by Amazon — needs applying in Intacct',
+  'settled':       'Settled',
+};
+
+function classifyNeed(r) {
+  const amt = r.amount || 0;
+  let need, detail = '';
+  const st = r.payeeStatus || '';
+  if (!st) {
+    need = r.po ? 'submit' : 'po-needed';
+    if (!r.po) detail = 'No purchase order on the invoice';
+  } else if (st === 'Rejected') {
+    need = 'rejected';
+  } else if (st === 'Insufficient PO Funds Hold' || st === 'Insufficient Amazon PO Manager Hold') {
+    need = 'funds-needed';
+  } else if (st === 'Pending Goods Receipt Hold') {
+    need = 'goods-receipt';
+  } else if (r.amazonSettled) {
+    need = r.needsCashApplication ? 'apply-cash' : 'settled';
+  } else if (st === 'Scheduled for payment') {
+    need = 'scheduled';
+  } else {
+    need = 'in-progress';
+  }
+
+  // A funds shortfall is worth naming even when Amazon has not yet flagged it:
+  // this is the number to ask for, and asking early avoids the hold entirely.
+  let shortfall = null;
+  if (r.poAvailable !== null && r.poAvailable !== undefined && amt > 0 && r.poAvailable < amt) {
+    shortfall = Math.round((amt - r.poAvailable) * 100) / 100;
+    if (need === 'submit' || need === 'in-progress') need = 'funds-needed';
+  }
+  if (need === 'funds-needed') {
+    detail = shortfall !== null
+      ? `PO ${r.po || '(none)'} is short ${shortfall.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`
+      : `PO ${r.po || '(none)'} has insufficient funds`;
+  }
+  return { need, needLabel: NEED_LABELS[need] || need, needDetail: detail, poShortfall: shortfall };
 }
 
 module.exports = {
+  classifyNeed,
+  NEED_LABELS,
+  payeeDay,
+  daysSince,
   rebuild, resolveAll, getNeedsReview, getLedgerMap, summarize,
   normalizeSite, isCanonical, deriveCandidates, buildSiteUniverse,
   buildAmazonRows, departmentGroups, siteScopeForLocations, DEPT_GROUPS,
