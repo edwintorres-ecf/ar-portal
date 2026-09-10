@@ -207,7 +207,7 @@ function buildDeck(analysis) {
   };
   const bullet = (y, text, color) => {
     doc.circle(62, y + 6, 3).fill(color || NAVY);
-    doc.fillColor('#1f2937').fontSize(12.5).font('Helvetica').text(text, 76, y, { width: W - 150 });
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica').text(text, 78, y, { width: W - 150, lineGap: 4 });
   };
 
   const svc = a.snowOnly ? 'snow removal' : 'all services';
@@ -217,14 +217,14 @@ function buildDeck(analysis) {
   doc.fillColor(GREY).fontSize(12).font('Helvetica')
     .text(`Across ${a.totals.sites} Amazon sites where East Coast Facilities performs ${svc}, work has been completed and`
       + ` accepted but cannot be submitted, because the purchase order at that site has no funds left on it.`, 56, 118, { width: W - 112 });
-  stat(56, 190, money(a.totals.pending), 'completed work waiting to be invoiced', RED);
-  stat(300, 190, money(a.totals.available), 'available across all Amazon POs', GREEN);
-  stat(544, 190, String(a.totals.shortSites), 'sites where the work exceeds the funds', AMBER);
-  doc.roundedRect(56, 300, W - 112, 96, 8).fill('#f8fafc');
-  doc.fillColor(NAVY).fontSize(14).font('Helvetica-Bold').text('There is no shortage of money.', 76, 320);
-  doc.fillColor('#1f2937').fontSize(12).font('Helvetica')
+  stat(56, 210, money(a.totals.pending), 'completed work waiting to be invoiced', RED);
+  stat(300, 210, money(a.totals.available), 'available across all Amazon POs', GREEN);
+  stat(544, 210, String(a.totals.shortSites), 'sites where the work exceeds the funds', AMBER);
+  doc.roundedRect(56, 340, W - 112, 150, 8).fill('#f8fafc');
+  doc.fillColor(NAVY).fontSize(17).font('Helvetica-Bold').text('There is no shortage of money.', 80, 368);
+  doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
     .text(`Amazon has committed ${money(a.totals.available)} across these POs — more than the ${money(a.totals.pending)} of work waiting.`
-      + ` The funds are simply on the wrong purchase orders.`, 76, 342, { width: W - 152 });
+      + ` The funds are simply on the wrong purchase orders.`, 80, 398, { width: W - 160, lineGap: 4 });
 
   // 2 — the mechanism, using the clearest real example
   const worstBu = a.buList.filter(b => b.coverable > 0).sort((x, y) => y.coverable - x.coverable)[0];
@@ -233,31 +233,31 @@ function buildDeck(analysis) {
     const st = worstBu.starved[0], su = worstBu.surplus.slice(0, 2);
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
       .text(`${worstBu.bu} is the clearest case. Within this one business unit:`, 56, 118, { width: W - 112 });
-    doc.roundedRect(56, 150, 330, 150, 8).fill('#fef2f2');
-    doc.fillColor(RED).fontSize(11).font('Helvetica-Bold').text('WORK DONE, NO FUNDS', 76, 168);
-    doc.fillColor(NAVY).fontSize(22).font('Helvetica-Bold').text(st.site, 76, 188);
-    doc.fillColor('#1f2937').fontSize(12).font('Helvetica')
-      .text(`${money(st.pending)} of completed work`, 76, 218)
-      .text(`${money(st.available)} left on its PO`, 76, 236)
-      .text(`${st.count} invoices held back`, 76, 254);
-    doc.roundedRect(406, 150, 330, 150, 8).fill('#f0fdf4');
-    doc.fillColor(GREEN).fontSize(11).font('Helvetica-Bold').text('FUNDS SITTING UNUSED', 426, 168);
-    let yy = 188;
+    doc.roundedRect(56, 156, 330, 210, 8).fill('#fef2f2');
+    doc.fillColor(RED).fontSize(11).font('Helvetica-Bold').text('WORK DONE, NO FUNDS', 80, 180);
+    doc.fillColor(NAVY).fontSize(28).font('Helvetica-Bold').text(st.site, 80, 204);
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
+      .text(`${money(st.pending)} of completed work`, 80, 250)
+      .text(`${money(st.available)} left on its PO`, 80, 276)
+      .text(`${st.count} invoices held back`, 80, 302);
+    doc.roundedRect(406, 156, 330, 210, 8).fill('#f0fdf4');
+    doc.fillColor(GREEN).fontSize(11).font('Helvetica-Bold').text('FUNDS SITTING UNUSED', 430, 180);
+    let yy = 206;
     for (const s of su) {
-      doc.fillColor(NAVY).fontSize(18).font('Helvetica-Bold').text(s.site, 426, yy);
-      doc.fillColor('#1f2937').fontSize(12).font('Helvetica').text(`${money(s.available)} available, no work waiting`, 426, yy + 22);
-      yy += 52;
+      doc.fillColor(NAVY).fontSize(24).font('Helvetica-Bold').text(s.site, 430, yy);
+      doc.fillColor('#1f2937').fontSize(13).font('Helvetica').text(`${money(s.available)} available, no work waiting`, 430, yy + 30);
+      yy += 74;
     }
-    doc.fillColor('#1f2937').fontSize(13).font('Helvetica')
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
       .text(`Both sites sit in ${worstBu.bu}. The funding exists and is already approved — it is committed at a site that has`
-        + ` no work waiting, while the site with the work cannot be billed.`, 56, 320, { width: W - 112 });
-    doc.fillColor(AMBER).fontSize(13).font('Helvetica-Bold')
-      .text(`Across all business units, ${money(a.totals.coverable)} of the shortfall sits as surplus inside the SAME business unit.`, 56, 372, { width: W - 112 });
+        + ` no work waiting, while the site with the work cannot be billed.`, 56, 396, { width: W - 112, lineGap: 4 });
+    doc.fillColor(AMBER).fontSize(14).font('Helvetica-Bold')
+      .text(`Across all business units, ${money(a.totals.coverable)} of the shortfall sits as surplus inside the SAME business unit.`, 56, 456, { width: W - 112, lineGap: 4 });
   }
 
   // 3 — scale, by business unit
   slide(3, 'Scale', 'Every business unit shows the same pattern');
-  let y = 130;
+  let y = 150;
   doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
   doc.text('BUSINESS UNIT', 56, y); doc.text('SITES', 240, y); doc.text('WORK WAITING', 320, y, { width: 120, align: 'right' });
   doc.text('AVAILABLE ON POs', 470, y, { width: 130, align: 'right' }); doc.text('COVERABLE WITHIN BU', 620, y, { width: 130, align: 'right' });
@@ -271,13 +271,13 @@ function buildDeck(analysis) {
     doc.fillColor(GREEN).text(money(b.available), 470, y, { width: 130, align: 'right' });
     doc.fillColor(b.coverable > 0 ? AMBER : '#94a3b8').font(b.coverable > 0 ? 'Helvetica-Bold' : 'Helvetica')
       .text(b.coverable > 0 ? money(b.coverable) : '—', 620, y, { width: 130, align: 'right' });
-    y += 26;
+    y += 34;
   }
-  doc.moveTo(56, y + 2).lineTo(W - 56, y + 2).lineWidth(0.8).stroke('#cbd5e1');
-  doc.fillColor(NAVY).fontSize(13).font('Helvetica-Bold').text('Total', 56, y + 12);
-  doc.fillColor(RED).text(money(a.totals.pending), 320, y + 12, { width: 120, align: 'right' });
-  doc.fillColor(GREEN).text(money(a.totals.available), 470, y + 12, { width: 130, align: 'right' });
-  doc.fillColor(AMBER).text(money(a.totals.coverable), 620, y + 12, { width: 130, align: 'right' });
+  doc.moveTo(56, y + 4).lineTo(W - 56, y + 4).lineWidth(0.8).stroke('#cbd5e1');
+  doc.fillColor(NAVY).fontSize(14).font('Helvetica-Bold').text('Total', 56, y + 18);
+  doc.fillColor(RED).text(money(a.totals.pending), 320, y + 18, { width: 120, align: 'right' });
+  doc.fillColor(GREEN).text(money(a.totals.available), 470, y + 18, { width: 130, align: 'right' });
+  doc.fillColor(AMBER).text(money(a.totals.coverable), 620, y + 18, { width: 130, align: 'right' });
 
   // 4 — closed POs
   slide(4, 'A second, smaller leak', 'Purchase orders are being closed with funds still on them');
@@ -285,7 +285,7 @@ function buildDeck(analysis) {
     .text(`Nothing can be invoiced against a closed purchase order. ${a.totals.closedCount} POs have been closed while still`
       + ` carrying ${money(a.totals.closedFunds)}`
       + (a.totals.neverUsedCount ? `, and ${a.totals.neverUsedCount} of them were never invoiced against at all.` : '.'), 56, 118, { width: W - 112 });
-  y = 176;
+  y = 196;
   doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
   doc.text('PURCHASE ORDER', 56, y); doc.text('SITE', 220, y); doc.text('PO VALUE', 300, y, { width: 110, align: 'right' });
   doc.text('CHARGED', 430, y, { width: 110, align: 'right' }); doc.text('STILL ON IT', 560, y, { width: 120, align: 'right' });
@@ -298,23 +298,23 @@ function buildDeck(analysis) {
     doc.text(money(r.ceilingAmount), 300, y, { width: 110, align: 'right' });
     doc.fillColor((r.consumed || 0) === 0 ? RED : '#1f2937').text((r.consumed || 0) === 0 ? 'never invoiced' : money(r.consumed), 430, y, { width: 110, align: 'right' });
     doc.fillColor(RED).font('Helvetica-Bold').text(money(r.available), 560, y, { width: 120, align: 'right' });
-    y += 24;
+    y += 32;
   }
 
   // 5 — the ask
   slide(5, 'What we are asking for', 'Three changes that release the work already completed');
-  bullet(140, `Move or top up funding where the work actually is. ${money(a.totals.coverable)} of the shortfall already exists as surplus`
+  bullet(155, `Move or top up funding where the work actually is. ${money(a.totals.coverable)} of the shortfall already exists as surplus`
     + ` inside the same business unit — no new commitment is needed, only reallocation.`, RED);
-  bullet(212, `Fund the sites that carry no PO headroom at all. These are the sites where invoices are held back the longest,`
+  bullet(245, `Fund the sites that carry no PO headroom at all. These are the sites where invoices are held back the longest,`
     + ` and where the ageing is worst.`, AMBER);
-  bullet(284, `Review purchase orders before they are closed. ${money(a.totals.closedFunds)} sits on POs that can no longer be`
+  bullet(325, `Review purchase orders before they are closed. ${money(a.totals.closedFunds)} sits on POs that can no longer be`
     + ` invoiced against`
     + (a.totals.neverUsedCount ? `, including ${a.totals.neverUsedCount} that were never used at all.` : '.'), NAVY);
-  doc.roundedRect(56, 372, W - 112, 96, 8).fill('#f8fafc');
-  doc.fillColor(NAVY).fontSize(14).font('Helvetica-Bold').text('What this unlocks', 76, 392);
-  doc.fillColor('#1f2937').fontSize(12).font('Helvetica')
+  doc.roundedRect(56, 410, W - 112, 130, 8).fill('#f8fafc');
+  doc.fillColor(NAVY).fontSize(17).font('Helvetica-Bold').text('What this unlocks', 80, 438);
+  doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
     .text(`${a.totals.invoices} invoices covering ${money(a.totals.pending)} of completed and accepted ${svc} work,`
-      + ` submitted and paid on normal terms.`, 76, 414, { width: W - 152 });
+      + ` submitted and paid on normal terms.`, 80, 468, { width: W - 160, lineGap: 4 });
 
   doc.end();
   return doc;
