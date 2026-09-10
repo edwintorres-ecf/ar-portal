@@ -187,7 +187,10 @@ async function buildWorkbook(invoices, opts = {}) {
 function buildDeck(analysis) {
   const PDFDocument = require('pdfkit');
   const a = analysis;
-  const doc = new PDFDocument({ size: [792, 612], margin: 0, layout: 'landscape' });
+  // An explicit size array is ALREADY landscape — passing layout:'landscape'
+  // on top of it makes pdfkit swap the axes back to portrait and clip
+  // everything past 612pt (2026-09-10).
+  const doc = new PDFDocument({ size: [792, 612], margin: 0 });
   const NAVY = '#1e3a5f', RED = '#b91c1c', GREEN = '#166534', GREY = '#64748b', AMBER = '#b45309';
   const W = 792, H = 612;
 
