@@ -49,7 +49,13 @@ function analyse(invoices, { snowOnly = true } = {}) {
     b.shortfall = 0; b.surplus = 0; b.overdrawn = 0; b.overdrawnSites = [];
     for (const s of b.sites) {
       const p = s.pending || 0, av = s.available || 0;
-      b.shortfall += Math.max(0, p - av);
+      // Floor available at zero for the shortfall. A site already invoiced PAST
+      // its PO has negative available, and counting that as extra "funding
+      // needed for waiting work" pushed NACF's coverable figure ABOVE its work
+      // waiting — which reads as an arithmetic error, because it is one. The
+      // over-invoiced amount is a real problem but a different one, so it is
+      // reported on its own line instead.
+      b.shortfall += Math.max(0, p - Math.max(0, av));
       b.surplus += Math.max(0, av - p);
       // Negative available = already invoiced past the PO's value. Worth
       // naming separately; it is a different problem from an empty PO.
@@ -79,7 +85,7 @@ function analyse(invoices, { snowOnly = true } = {}) {
     available: sites.reduce((t, s) => t + (s.available || 0), 0),
     invoices: sites.reduce((t, s) => t + (s.count || 0), 0),
     shortSites: sites.filter(s => (s.pending || 0) > (s.available || 0)).length,
-    shortfall: sites.reduce((t, s) => t + Math.max(0, (s.pending || 0) - (s.available || 0)), 0),
+    shortfall: sites.reduce((t, s) => t + Math.max(0, (s.pending || 0) - Math.max(0, s.available || 0)), 0),
     coverable: Object.values(byBu).reduce((t, b) => t + b.coverable, 0),
     overdrawnSites: sites.filter(s => (s.available || 0) < 0).length,
     overdrawn: sites.reduce((t, s) => t + Math.min(0, s.available || 0), 0),
@@ -135,6 +141,9 @@ async function buildWorkbook(invoices, opts = {}) {
   s1.getColumn(1).width = 56; s1.getColumn(2).width = 20;
   s1.addRow([]);
 
+  s1.addRow(['Shortfall = funding the waiting work still needs.  Surplus = funds at sites with no work waiting.  Coverable = the lesser of the two, i.e. how much could be met by reallocating inside this business unit.']);
+  s1.lastRow.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+  s1.addRow([]);
   const h = s1.addRow(['Business unit', 'Sites', 'Invoices pending', 'Pending value', 'Available on POs', 'Shortfall', 'Surplus', 'Coverable within BU']);
   h.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
   [22, 8, 16, 16, 18, 14, 14, 20].forEach((w, i) => { s1.getColumn(i + 1).width = Math.max(s1.getColumn(i + 1).width || 0, w); });
@@ -176,6 +185,26 @@ async function buildWorkbook(invoices, opts = {}) {
     const tot = ws.addRow(['Total', '', '', b.invoices, b.pending, b.ceiling, b.consumed, b.available, '']);
     tot.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
     [5, 6, 7, 8].forEach(ci => { tot.getCell(ci).numFmt = money2; });
+  }
+
+  // ── Sites invoiced past their PO ──
+  const over = a.sites.filter(s => (s.available || 0) < 0).sort((x, y) => (x.available || 0) - (y.available || 0));
+  if (over.length) {
+    const os = wb.addWorksheet('Invoiced past the PO', { views: [{ state: 'frozen', ySplit: 3 }] });
+    os.mergeCells('A1:E1');
+    os.getCell('A1').value = 'Sites already invoiced beyond their purchase order value';
+    os.getCell('A1').font = { bold: true, size: 12, color: { argb: NAVY } };
+    os.mergeCells('A2:E2');
+    os.getCell('A2').value = 'These are a different problem from an empty PO: the work is already submitted and sits past the funded ceiling.';
+    os.getCell('A2').font = { size: 10, color: { argb: 'FF64748B' } };
+    const oh = os.addRow(['Site', 'Business unit', 'PO value', 'Charged', 'Over by']);
+    oh.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+    [10, 16, 16, 16, 16].forEach((w, i) => { os.getColumn(i + 1).width = w; });
+    for (const s of over) {
+      const r = os.addRow([s.site, s.businessUnit || '', s.ceiling || 0, s.consumed || 0, Math.abs(s.available || 0)]);
+      [3, 4, 5].forEach(ci => { r.getCell(ci).numFmt = money2; });
+      r.getCell(5).font = { bold: true, color: { argb: 'FF991B1B' } };
+    }
   }
 
   // ── Closed POs still holding funds ──
