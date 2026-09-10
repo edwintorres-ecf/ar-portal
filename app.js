@@ -1193,72 +1193,161 @@ app.post('/api/amazon/rejections/reasons', requireAuth, requirePerm('po.edit'), 
 // Sent to whoever owns the site, with the AR manager copied as a standing rule
 // so nothing sits unseen because one person is away. Explicitly triggered —
 // the hourly sweep only auto-notifies rejections it has never notified before.
-function rejectionNoticeBody(r, siteContact) {
+// A notice covers a SITE, not an invoice. Four near-identical emails about the
+// same site, same reason and same approver is the kind of thing that gets
+// filtered; one message listing them gets read (Edwin 2026-09-10).
+const REJ_TOKEN_RE = /ECFREJ#([a-z0-9]{1,10})-([0-9a-f]{10})/i;
+
+function rejNoticeSecret() {
+  // Same secret the customer-reply tokens use; these are internal-only and
+  // equally must not be forgeable.
+  const sec = process.env.COMMS_REPLY_SECRET;
+  if (!sec) throw new Error('COMMS_REPLY_SECRET is not set — reply-to-resubmit cannot be signed');
+  return sec;
+}
+function signRejToken(noticeId) {
+  const base = Number(noticeId).toString(36);
+  const mac = require('crypto').createHmac('sha256', rejNoticeSecret()).update('rej:' + base).digest('hex').slice(0, 10);
+  return `ECFREJ#${base}-${mac}`;
+}
+function verifyRejToken(text) {
+  const m = REJ_TOKEN_RE.exec(String(text || ''));
+  if (!m) return null;
+  const expected = require('crypto').createHmac('sha256', rejNoticeSecret()).update('rej:' + m[1].toLowerCase()).digest('hex').slice(0, 10);
+  const a = Buffer.from(expected), b = Buffer.from(m[2].toLowerCase());
+  if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) return null;
+  const id = parseInt(m[1], 36);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function siteNoticeContent(siteCode, list, siteContact, noticeId) {
   const money = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
-  const lines = [];
-  lines.push(`Amazon has REJECTED invoice ${r.invoice_id || r.payee_id}.`);
-  lines.push('');
-  lines.push(`  Amount:        ${money(r.amount)}`);
-  if (r.site_code) lines.push(`  Site:          ${r.site_code}${r.business_unit ? ' (' + r.business_unit + ')' : ''}`);
-  if (r.po_number) lines.push(`  PO:            ${r.po_number}`);
-  lines.push(`  Reason given:  ${r.reason || 'not stated on the Payee Central record'}`);
-  if (r.rejected_by) lines.push(`  Rejected by:   ${r.rejected_by}`);
-  if (r.entry_date) lines.push(`  Submitted:     ${r.entry_date}`);
-  const amazonContact = r.amazon_contact || (siteContact && siteContact.amazon_email) || null;
-  if (amazonContact) lines.push(`  Amazon contact for this site: ${amazonContact}`);
-  lines.push('');
-  // Say what to do about it. A notice that only reports a fact gets filed.
-  const REMEDY = {
-    'Wrong PO Invoiced': 'Reassign the invoice to the correct PO and resubmit under a new invoice number (Amazon rejects a reused one).',
-    'Incorrect Approver': 'The approver on the PO is not the person who can approve this. Confirm the right approver with the Amazon contact, then resubmit.',
-    'Incorrect billing by payee': 'Amazon disputes what was billed. Check the rate and quantity against the PO before resubmitting.',
-    'Work Order Number was not provided in invoice description field': 'Add the work order number to the invoice description and resubmit.',
-  };
-  const remedy = REMEDY[r.reason];
-  if (remedy) { lines.push(`What is needed: ${remedy}`); lines.push(''); }
-  lines.push(`It is on the Rejections tab of the Amazon PO Manager: ${portalBaseUrl()}`);
-  lines.push('');
-  lines.push('—ECF AR Portal');
-  return lines.join('\n');
+  const total = list.reduce((t, r) => t + (r.amount || 0), 0);
+  const amazonContact = (list.find(r => r.amazon_contact) || {}).amazon_contact
+    || (siteContact && siteContact.amazon_email) || null;
+  const rejectors = [...new Set(list.map(r => r.rejected_by).filter(Boolean))];
+  const reasons = [...new Set(list.map(r => r.reason).filter(Boolean))];
+
+  const subject = `[ECF] Amazon rejected ${list.length} invoice${list.length === 1 ? '' : 's'} at ${siteCode || 'an unknown site'}`
+    + ` — ${money(total)}${reasons.length === 1 ? ' — ' + reasons[0] : ''}`
+    + (noticeId ? ` (${signRejToken(noticeId)})` : '');
+
+  const L = [];
+  L.push(`Amazon has rejected ${list.length} invoice${list.length === 1 ? '' : 's'} at ${siteCode || 'a site we could not identify'}`
+    + `${siteContact && siteContact.amazon_name ? '' : ''}, totalling ${money(total)}.`);
+  L.push('');
+  for (const r of list) {
+    L.push(`  ${r.invoice_id || r.payee_id}   ${money(r.amount).padStart(12)}   PO ${r.po_number || '(none)'}`);
+    L.push(`      Reason: ${r.reason || 'not stated on the Payee Central record'}`
+      + (r.rejected_by ? `   ·   rejected by ${r.rejected_by}` : ''));
+    if (r.entry_date) L.push(`      Submitted ${r.entry_date}`);
+    L.push('');
+  }
+  if (amazonContact) {
+    L.push(`Amazon contact for ${siteCode}: ${amazonContact}`
+      + (rejectors.length === 1 && rejectors[0] !== amazonContact ? `   (rejected by ${rejectors[0]})` : ''));
+    L.push('');
+  }
+  L.push('WHAT WE NEED FROM YOU');
+  L.push('Please contact the site to work through any questions, and let accounting');
+  L.push('know when we can resubmit.');
+  L.push('');
+  L.push('You can simply REPLY TO THIS EMAIL asking for resubmission — that is');
+  L.push('recorded against these invoices automatically and goes straight to the AR');
+  L.push('team, so there is nothing else to fill in.');
+  L.push('');
+  L.push(`They are on the Rejections tab of the Amazon PO Manager: ${portalBaseUrl()}`);
+  L.push('');
+  L.push('—ECF AR Portal');
+  return { subject, body: L.join('\n') };
 }
 
 app.post('/api/amazon/rejections/notify', requireAuth, requirePerm('po.edit'), async (req, res) => {
   try {
-    const { payeeIds, extraTo, includeManager } = req.body || {};
+    const { payeeIds, extraTo, includeManager, preview } = req.body || {};
     if (!Array.isArray(payeeIds) || !payeeIds.length) return res.status(400).json({ error: 'payeeIds required' });
-    // The AR manager is copied by default; the caller can add anyone else.
     const managers = includeManager === false ? [] : db.getSettingList('ar_manager_emails');
     const extras = (Array.isArray(extraTo) ? extraTo : String(extraTo || '').split(','))
       .map(x => String(x).trim().toLowerCase()).filter(Boolean);
 
-    const sent = [], skipped = [];
-    for (const id of payeeIds) {
-      const r = db.listRejections({ includeResolved: true }).find(x => x.payee_id === id);
-      if (!r) { skipped.push({ id, why: 'not found' }); continue; }
-      const siteContact = r.site_code ? db.getSiteContact(r.site_code) : null;
-      const owner = r.routed_to || (siteContact && siteContact.internal_email) || null;
-      const to = [...new Set([owner, ...extras, ...managers].filter(Boolean))];
-      if (!to.length) { skipped.push({ id, why: 'nobody to send to — set an internal owner for the site' }); continue; }
+    const all = db.listRejections({ includeResolved: true });
+    const chosen = payeeIds.map(id => all.find(x => x.payee_id === id)).filter(Boolean);
+    if (!chosen.length) return res.status(404).json({ error: 'None of those rejections were found' });
 
-      const subject = `[ECF] Amazon rejected ${r.invoice_id || r.payee_id}`
-        + (r.site_code ? ` — ${r.site_code}` : '')
-        + (r.reason ? ` — ${r.reason}` : '');
-      const body = rejectionNoticeBody(r, siteContact);
-      // Sent one message per recipient: notifyUser honours each person's own
-      // notification preferences, which a single multi-recipient send cannot.
-      for (const addr of to) {
-        await sendGraphMail(addr, subject, body).catch(e => {
-          console.error('[rejections] notify', id, addr, e.message);
-        });
+    // Group by site — one notice per site, however many invoices it holds.
+    const bySite = {};
+    for (const r of chosen) (bySite[r.site_code || ''] = bySite[r.site_code || ''] || []).push(r);
+
+    const notices = [], skipped = [];
+    for (const [siteCode, list] of Object.entries(bySite)) {
+      const siteContact = siteCode ? db.getSiteContact(siteCode) : null;
+      const owner = list.map(r => r.routed_to).find(Boolean) || (siteContact && siteContact.internal_email) || null;
+      const to = [...new Set([owner, ...extras, ...managers].filter(Boolean))];
+      if (!to.length) {
+        skipped.push({ siteCode: siteCode || '(no site)', count: list.length, why: 'nobody to send to — set an internal owner for the site' });
+        continue;
       }
-      if (owner && !r.routed_to) db.setRejectionRoute(id, owner);
-      db.markRejectionNotified(id);
-      sent.push({ id, invoiceId: r.invoice_id, to });
+      list.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+
+      if (preview) {
+        const c = siteNoticeContent(siteCode, list, siteContact, 0);
+        notices.push({ siteCode, to, count: list.length, subject: c.subject, body: c.body,
+          invoices: list.map(r => r.invoice_id || r.payee_id) });
+        continue;
+      }
+
+      // The notice row must exist before the subject is built — the reply token
+      // signs its id, and that is what maps a reply back to these invoices.
+      const notice = db.createRejectionNotice({
+        siteCode, payeeIds: list.map(r => r.payee_id), sentTo: to,
+        subject: '(building)', sentBy: req.session.user.email,
+      });
+      const c = siteNoticeContent(siteCode, list, siteContact, notice.id);
+      db.getDb().prepare('UPDATE rejection_notices SET subject=? WHERE id=?').run(c.subject, notice.id);
+
+      for (const addr of to) await sendGraphMail(addr, c.subject, c.body);
+      for (const r of list) {
+        if (owner && !r.routed_to) db.setRejectionRoute(r.payee_id, owner);
+        db.markRejectionNotified(r.payee_id);
+      }
+      notices.push({ siteCode, to, count: list.length, subject: c.subject, noticeId: notice.id,
+        invoices: list.map(r => r.invoice_id || r.payee_id) });
     }
-    db.auditLog(req.session.user.email, 'rejection_notify', null,
-      `${sent.length} notice(s): ${sent.map(x => x.invoiceId + '->' + x.to.join('/')).join('; ')}${skipped.length ? ` · skipped ${skipped.length}` : ''}`);
-    res.json({ ok: true, sent, skipped, managers });
+
+    if (!preview) {
+      db.auditLog(req.session.user.email, 'rejection_notify', null,
+        `${notices.length} site notice(s), ${chosen.length} rejection(s): `
+        + notices.map(n => `${n.siteCode || 'no site'}x${n.count}->${n.to.join('/')}`).join('; ')
+        + (skipped.length ? ` · skipped ${skipped.length}` : ''));
+    }
+    res.json({ ok: true, preview: !!preview, notices, skipped, managers });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Wire the reply reader: it needs a Graph token and the token verifier, both of
+// which live here.
+const rejectionReplies = require('./rejection-replies');
+rejectionReplies.configure({
+  getToken: async () => (await msalApp.acquireTokenByClientCredential({ scopes: ['https://graph.microsoft.com/.default'] })).accessToken,
+  verifyRejToken,
+  // Tell the AR team a resubmission has been asked for, so the reply lands on
+  // someone rather than only in the database.
+  onRequest: async (notice, from, note) => {
+    const managers = db.getSettingList('ar_manager_emails');
+    for (const addr of managers) {
+      await sendGraphMail(addr,
+        `[ECF] Resubmission requested — ${notice.siteCode || 'no site'} (${notice.payeeIds.length} invoice${notice.payeeIds.length === 1 ? '' : 's'})`,
+        `${from} has replied to the rejection notice for ${notice.siteCode || 'an unidentified site'} asking that we resubmit.\n\n`
+        + `Invoices: ${notice.payeeIds.join(', ')}\n\n`
+        + (note ? `They said:\n  "${note}"\n\n` : '')
+        + `They are flagged as awaiting resubmission on the Rejections tab: ${portalBaseUrl()}\n\n—ECF AR Portal`);
+    }
+  },
+});
+
+app.post('/api/amazon/rejections/poll-replies', requireAuth, requirePerm('po.edit'), async (req, res) => {
+  try { res.json(await rejectionReplies.pollRejectionReplies()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/settings/ar-managers', requireAuth, (req, res) => {
@@ -5785,6 +5874,14 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   };
   setTimeout(() => doContactsAndRejections(false), 90 * 1000);
   setInterval(() => doContactsAndRejections(true), 60 * 60 * 1000);
+
+  // Replies to rejection notices. Checked often, because the whole promise of
+  // "just reply" is that it is acted on quickly.
+  const pollRejReplies = () => rejectionReplies.pollRejectionReplies()
+    .then(s => { if (s.requested || s.error) console.log('[rejection-replies]', JSON.stringify(s)); })
+    .catch(e => console.warn('[rejection-replies]', e.message));
+  setTimeout(pollRejReplies, 3 * 60 * 1000);
+  setInterval(pollRejReplies, 5 * 60 * 1000);
 
   // Keep the local AI models hot so interactive calls stay ~fast (no ~20s cold
   // load). Warm on boot, then re-ping every 100 min (inside the 2h keep_alive).

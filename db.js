@@ -577,6 +577,27 @@ function initSchema() {
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN amazon_contact TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN description TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN detail_at TEXT'); } catch (e) {}
+  // "Reply to this email to request resubmission" has to actually work, so a
+  // reply is recorded against the rejection rather than just read by a person.
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_requested_at TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_requested_by TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_note TEXT'); } catch (e) {}
+
+  // One row per notice sent, so the signed token in its subject maps back to
+  // exactly the rejections that notice covered.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rejection_notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_code TEXT,
+      payee_ids TEXT NOT NULL,        -- JSON array
+      sent_to TEXT,                   -- JSON array
+      subject TEXT,
+      sent_by TEXT,
+      sent_at TEXT DEFAULT (datetime('now')),
+      replied_at TEXT,
+      replied_by TEXT
+    );
+  `);
 
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
@@ -2467,6 +2488,31 @@ function updateRejectionDetail(payeeId, f) {
     .run(f.reason || null, f.rejected_by || null, f.amazon_contact || null, f.description || null, payeeId);
 }
 
+function createRejectionNotice({ siteCode, payeeIds, sentTo, subject, sentBy }) {
+  const d = getDb();
+  const r = d.prepare('INSERT INTO rejection_notices (site_code, payee_ids, sent_to, subject, sent_by) VALUES (?,?,?,?,?)')
+    .run(siteCode || null, JSON.stringify(payeeIds || []), JSON.stringify(sentTo || []), subject || null, sentBy || null);
+  return d.prepare('SELECT * FROM rejection_notices WHERE id=?').get(r.lastInsertRowid);
+}
+function getRejectionNotice(id) {
+  const r = getDb().prepare('SELECT * FROM rejection_notices WHERE id=?').get(id);
+  if (!r) return null;
+  let ids = [], to = [];
+  try { ids = JSON.parse(r.payee_ids || '[]'); } catch (e) {}
+  try { to = JSON.parse(r.sent_to || '[]'); } catch (e) {}
+  return { ...r, payeeIds: ids, sentTo: to };
+}
+function markNoticeReplied(id, by) {
+  getDb().prepare("UPDATE rejection_notices SET replied_at=datetime('now'), replied_by=? WHERE id=?").run(by || null, id);
+}
+function requestResubmission(payeeId, by, note) {
+  getDb().prepare(`UPDATE invoice_rejections
+      SET resubmit_requested_at=datetime('now'), resubmit_requested_by=?, resubmit_note=?
+      WHERE payee_id=? AND resubmit_requested_at IS NULL`)
+    .run(by || null, note ? String(note).slice(0, 400) : null, payeeId);
+  return getDb().prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(payeeId) || null;
+}
+
 function setRejectionRoute(payeeId, email) {
   getDb().prepare("UPDATE invoice_rejections SET routed_to=?, routed_at=datetime('now') WHERE payee_id=?").run(email || null, payeeId);
 }
@@ -3055,6 +3101,10 @@ module.exports = {
   getSettingList,
   upsertRejection,
   updateRejectionDetail,
+  createRejectionNotice,
+  getRejectionNotice,
+  markNoticeReplied,
+  requestResubmission,
   setRejectionRoute,
   markRejectionNotified,
   resolveRejection,
