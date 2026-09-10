@@ -592,6 +592,73 @@ async function amazonRequestStatements() {
   } catch (e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
+// ─── Email every invoice for one site, or one PO ────────────────────────────
+// Chasing Amazon happens per site or per PO, never per invoice — the contact is
+// the same person for all of them and they want one list, not nine emails
+// (Edwin 2026-09-10). Recipient defaults to the site's Amazon contact, which is
+// read off the POs.
+async function amazonEmailInView() {
+  const rows = amzFiltered();
+  if (!rows.length) { showToast('Nothing in view to send', 'error'); return; }
+  const sites = [...new Set(rows.map(r => r.site).filter(Boolean))];
+  const pos = [...new Set(rows.map(r => r.po).filter(Boolean))];
+  // What is this email ABOUT? One PO if we are drilled into one, else one site.
+  const poStep = _amzPath.find(st => st.key === 'po');
+  const subject = poStep ? { kind: 'po', key: poStep.value }
+    : sites.length === 1 ? { kind: 'site', key: sites[0] }
+    : pos.length === 1 ? { kind: 'po', key: pos[0] } : null;
+  if (!subject) {
+    showToast(`${sites.length} sites in view — narrow to one site or one PO first`, 'error');
+    return;
+  }
+
+  const site = subject.kind === 'site' ? subject.key : (rows.find(r => r.po === subject.key) || {}).site;
+  let contact = null;
+  try {
+    const d = await apiFetch('/api/amazon/site-contacts');
+    contact = (d.sites || []).find(x => x.siteCode === site) || null;
+  } catch (e) { /* fall through with no contact */ }
+
+  const total = rows.reduce((t, r) => t + (r.amount || 0), 0);
+  const blocked = rows.filter(r => ['rejected', 'funds-needed', 'po-needed', 'goods-receipt'].includes(r.need));
+  const lines = [];
+  lines.push(`Hello${contact && contact.amazonName ? ' ' + String(contact.amazonName).split(' ')[0] : ''},`);
+  lines.push('');
+  lines.push(subject.kind === 'site'
+    ? `Please find below the ${rows.length} open invoice${rows.length === 1 ? '' : 's'} for ${subject.key}, totalling ${fmt$(total)}.`
+    : `Please find below the ${rows.length} open invoice${rows.length === 1 ? '' : 's'} submitted against PO ${subject.key}, totalling ${fmt$(total)}.`);
+  lines.push('');
+  lines.push('{{invoice_table}}');
+  if (blocked.length) {
+    lines.push('');
+    // Say what is actually needed rather than "please advise".
+    const byNeed = {};
+    for (const r of blocked) (byNeed[r.needLabel] = byNeed[r.needLabel] || []).push(r);
+    lines.push('These are waiting on action at your end:');
+    for (const [label, list] of Object.entries(byNeed)) {
+      lines.push(`  • ${label} — ${list.length} invoice${list.length === 1 ? '' : 's'}, ${fmt$(list.reduce((t, r) => t + r.amount, 0))}`);
+      const shortfalls = [...new Set(list.filter(r => r.poShortfall).map(r => `${r.po}: ${fmt$(r.poShortfall)}`))];
+      for (const sf of shortfalls.slice(0, 6)) lines.push(`      ${sf} additional funds needed`);
+    }
+  }
+  lines.push('');
+  lines.push('Could you let us know what is needed to release these for payment?');
+  lines.push('');
+  lines.push('{{signature}}');
+
+  await commsOpenComposer({
+    customerId: rows[0].customerId || 'C-00403',
+    customerName: `Amazon — ${subject.key}`,
+    titleOverride: `✉️ Email about ${subject.kind === 'site' ? 'site ' : 'PO '}${subject.key}`,
+    recordNos: rows.map(r => r.recordNo),
+    extraTo: contact ? contact.amazonEmail : null,
+    presetSubject: subject.kind === 'site'
+      ? `${subject.key} — ${rows.length} open invoice${rows.length === 1 ? '' : 's'}, ${fmt$(total)}`
+      : `PO ${subject.key} — ${rows.length} open invoice${rows.length === 1 ? '' : 's'}, ${fmt$(total)}`,
+    presetBody: lines.join('\n'),
+  });
+}
+
 function amazonToggleReport() { _amzShowReport = !_amzShowReport; amazonRender(); }
 
 function amzToolbarHtml(rows) {
@@ -605,6 +672,7 @@ function amzToolbarHtml(rows) {
     <button onclick="amazonAssignVisibleSites()" title="Assign a collector to every site currently in view" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">👤 Assign collector</button>
     <button onclick="amazonRequestCopies()" title="Queue PDF copies of the invoices currently in view — collect them under Insights → Reports" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">📥 Request copies</button>
     <button onclick="amazonRequestStatements()" title="Site-level statements with each invoice's Payee Central status and what it needs" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">📄 Statements</button>
+    <button onclick="amazonEmailInView()" title="Email the invoices currently in view to the site's Amazon contact" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">✉️ Email</button>
     <span style="font-size:11px;color:var(--gray-500);">exports follow the filters and drill you have set — ${n.toLocaleString()} invoice${n === 1 ? '' : 's'}</span>
   </div>
   ${_amzShowReport ? amzReportHtml(rows) : ''}`;

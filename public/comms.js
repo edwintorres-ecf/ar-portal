@@ -273,7 +273,7 @@ let _composerCtx = null;   // { customerId, customerName, recordNos, contacts, t
   else document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('beforeend', html));
 })();
 
-async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach, conversationId, replyToEmail, replySubject }) {
+async function commsOpenComposer({ customerId, customerName, recordNos, invoiceId, defaultAttach, conversationId, replyToEmail, replySubject, extraTo, presetSubject, presetBody, titleOverride }) {
   if (!commsCanEdit()) { alert('Your role cannot send customer email.'); return; }
   const [contacts, templates, config] = await Promise.all([
     apiFetch(`/api/customers/${encodeURIComponent(customerId)}/contacts`),
@@ -286,7 +286,7 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
   const replyNorm = (replyToEmail || '').trim().toLowerCase();
   if (replyNorm) contacts.forEach(c => { c.is_primary = (c.email === replyNorm) ? 1 : 0; });
   document.getElementById('composer-modal').style.display = 'flex';
-  document.getElementById('composer-title').textContent = '✉️ Email ' + (customerName || customerId);
+  document.getElementById('composer-title').textContent = titleOverride || ('✉️ Email ' + (customerName || customerId));
   document.getElementById('composer-sub').textContent = invoiceId
     ? `Invoice ${invoiceId} · sends from ${config.mailbox || 'invoices@'}`
     : `Sends from ${config.mailbox || 'invoices@'}`;
@@ -322,6 +322,17 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
   }
   document.getElementById('composer-body').value = '';
   document.getElementById('composer-cc').value = '';
+  // Caller-supplied recipient and draft (site/PO chasers arrive pre-written).
+  // Set AFTER the reset above, or the reset would wipe them.
+  if (extraTo) {
+    const extra = document.getElementById('composer-to-extra');
+    if (extra && !extra.value) extra.value = extraTo;
+  }
+  if (presetSubject && !conversationId) subjEl.value = presetSubject;
+  if (presetBody) {
+    document.getElementById('composer-body').value = presetBody;
+    _composerCtx.dirty = true;      // a written draft is not a template
+  }
   document.getElementById('composer-attach-stmt').checked = !!defaultAttach;
   const invWrap = document.getElementById('composer-attach-inv-wrap');
   const invCount = (_composerCtx.recordNos || []).length;
