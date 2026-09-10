@@ -909,7 +909,7 @@ function sweepRejections({ notify = false } = {}) {
   // sent through the same builder the manual button uses, so an automatic
   // notice is identical to one a person sends and carries the same reply token.
   if (notify) {
-    const pending = db.listRejections().filter(r => !r.notified && r.routed_to);
+    const pending = db.listRejections().filter(r => !r.notified && !r.notify_hold && r.routed_to);
     const bySite = {};
     for (const r of pending) (bySite[r.site_code || ''] = bySite[r.site_code || ''] || []).push(r);
     const managers = db.getSettingList('ar_manager_emails');
@@ -1370,6 +1370,18 @@ app.post('/api/settings/ar-managers', requireAuth, requirePerm('users.admin'), (
     db.setSetting('ar_manager_emails', list.join(','), req.session.user.email);
     db.auditLog(req.session.user.email, 'settings_ar_managers', null, list.join(', '));
     res.json({ emails: list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Hold a rejection back from the automatic sweep without pretending a notice
+// was sent for it.
+app.post('/api/amazon/rejections/:payeeId/hold', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const on = req.body && req.body.hold !== false;
+    db.setRejectionHold(req.params.payeeId, on, (req.body && req.body.reason) || null, req.session.user.email);
+    db.auditLog(req.session.user.email, on ? 'rejection_notify_hold' : 'rejection_notify_unhold',
+      req.params.payeeId, (req.body && req.body.reason) || '');
+    res.json({ ok: true, hold: on });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

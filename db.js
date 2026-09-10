@@ -582,6 +582,11 @@ function initSchema() {
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_requested_at TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_requested_by TEXT'); } catch (e) {}
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN resubmit_note TEXT'); } catch (e) {}
+  // Held back from the automatic notice sweep on purpose. Distinct from
+  // `notified`, which means a notice actually went out — conflating the two
+  // would leave the record claiming an email was sent when it was not.
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN notify_hold INTEGER DEFAULT 0'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN notify_hold_reason TEXT'); } catch (e) {}
 
   // One row per notice sent, so the signed token in its subject maps back to
   // exactly the rejections that notice covered.
@@ -2513,6 +2518,12 @@ function requestResubmission(payeeId, by, note) {
   return getDb().prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(payeeId) || null;
 }
 
+function setRejectionHold(payeeId, on, reason, by) {
+  getDb().prepare('UPDATE invoice_rejections SET notify_hold=?, notify_hold_reason=? WHERE payee_id=?')
+    .run(on ? 1 : 0, on ? (reason || null) : null, payeeId);
+  return getDb().prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(payeeId) || null;
+}
+
 function setRejectionRoute(payeeId, email) {
   getDb().prepare("UPDATE invoice_rejections SET routed_to=?, routed_at=datetime('now') WHERE payee_id=?").run(email || null, payeeId);
 }
@@ -3101,6 +3112,7 @@ module.exports = {
   getSettingList,
   upsertRejection,
   updateRejectionDetail,
+  setRejectionHold,
   createRejectionNotice,
   getRejectionNotice,
   markNoticeReplied,
