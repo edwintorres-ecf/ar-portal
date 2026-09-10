@@ -576,6 +576,22 @@ function amazonRequestCopies() {
   requestInvoiceCopies(take.map(r => r.recordNo), `Amazon copies — ${where} (${take.length})`);
 }
 
+// Statements for whatever is in view. At a single site this is one statement;
+// higher up it is one per site with a summary sheet in front.
+async function amazonRequestStatements() {
+  const rows = amzFiltered();
+  const sites = [...new Set(rows.map(r => r.site).filter(Boolean))].sort();
+  if (!sites.length) { showToast('No sites in view', 'error'); return; }
+  const where = sites.length === 1 ? sites[0] : `${sites.length} sites`;
+  if (!confirm(`Build an Amazon statement for ${where}?\n\nEach one lists every open invoice with its Payee Central status, the POs that need more funds, anything rejected and why, and anywhere a PO still has to be issued.\n\nIt is built in the background — collect it under Insights → Reports.`)) return;
+  try {
+    const r = await apiFetch('/api/amazon/statements/request', { method: 'POST',
+      body: JSON.stringify({ sites, label: sites.length === 1 ? `Amazon statement — ${sites[0]}` : `Amazon statements — ${sites.length} sites` }) });
+    showToast(`Building ${r.sites} statement${r.sites === 1 ? '' : 's'} — collect under Insights → Reports`, 'success');
+    if (typeof dlRefreshBadge === 'function') dlRefreshBadge();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
 function amazonToggleReport() { _amzShowReport = !_amzShowReport; amazonRender(); }
 
 function amzToolbarHtml(rows) {
@@ -588,6 +604,7 @@ function amzToolbarHtml(rows) {
     <button onclick="amazonExportExcel()" title="Excel workbook with summary sheets plus the detail rows" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ Excel report</button>
     <button onclick="amazonAssignVisibleSites()" title="Assign a collector to every site currently in view" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">👤 Assign collector</button>
     <button onclick="amazonRequestCopies()" title="Queue PDF copies of the invoices currently in view — collect them under Insights → Reports" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">📥 Request copies</button>
+    <button onclick="amazonRequestStatements()" title="Site-level statements with each invoice's Payee Central status and what it needs" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">📄 Statements</button>
     <span style="font-size:11px;color:var(--gray-500);">exports follow the filters and drill you have set — ${n.toLocaleString()} invoice${n === 1 ? '' : 's'}</span>
   </div>
   ${_amzShowReport ? amzReportHtml(rows) : ''}`;

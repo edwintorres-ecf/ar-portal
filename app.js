@@ -1173,6 +1173,39 @@ reports.configure({
   },
 });
 
+// Statements are built from the SAME row builder the screen uses, re-scoped to
+// the person who asked, so a queued statement can never show them a site they
+// could not have seen when they asked for it.
+reports.configureStatements(async (sites, userEmail) => {
+  const all = sage.getCachedInvoices();
+  let rows = siteLedger.buildAmazonRows(all, { payee });
+  try {
+    const u = db.getUserRoleAnyCase(userEmail);
+    if (u && u.location_filter) {
+      const scope = siteLedger.siteScopeForLocations(all, JSON.parse(u.location_filter));
+      if (scope) rows = rows.filter(r => r.site && scope.has(r.site));
+    }
+  } catch (e) { /* unscoped */ }
+  const available = new Set(rows.map(r => r.site).filter(Boolean));
+  return sites.filter(c => available.has(c)).map(code => buildSiteStatement(rows, code));
+});
+
+app.post('/api/amazon/statements/request', requireAuth, (req, res) => {
+  try {
+    const { sites, label } = req.body || {};
+    let list = Array.isArray(sites) ? sites.filter(Boolean) : [];
+    if (!list.length) {
+      // No explicit list: every site the caller can currently see.
+      const rows = amazonScopedRows(req);
+      list = [...new Set(rows.map(r => r.site).filter(Boolean))].sort();
+    }
+    if (!list.length) return res.status(400).json({ error: 'No sites to build a statement for' });
+    const out = reports.requestAmazonStatements({ userEmail: req.session.user.email, sites: list, label });
+    db.auditLog(req.session.user.email, 'statement_request', String(out.job.id), `${list.length} site(s)`);
+    res.json({ ok: true, jobId: out.job.id, sites: list.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/downloads/invoice-copies', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;

@@ -110,7 +110,123 @@ async function runInvoiceCopies(job) {
   return { filename, filePath, size: body.length, contentType, missing, count: files.length };
 }
 
-const HANDLERS = { 'invoice-copies': runInvoiceCopies };
+// ─── Amazon site statements ─────────────────────────────────────────────────
+// Built here rather than inline in a request because a statement per site
+// across a filtered set can be dozens of sheets, and nobody should wait on it.
+let _buildStatements = null;      // injected by app.js (needs the row builder)
+function configureStatements(fn) { _buildStatements = fn; }
+
+async function runAmazonStatements(job) {
+  if (!_buildStatements) throw new Error('Statement builder not configured');
+  const params = JSON.parse(job.params || '{}');
+  const statements = await _buildStatements(params.sites || [], params.userEmail);
+  if (!statements.length) throw new Error('No sites matched that request');
+
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'ECF AR Portal';
+  const NAVY = 'FF1E3A5F', GRAY = 'FFF1F5F9', RED = 'FFFEE2E2', AMBER = 'FFFEF3C7';
+  const money = '$#,##0.00';
+
+  // Summary first: which sites are blocked and by how much.
+  const sum = wb.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 1 }] });
+  sum.addRow(['Site', 'Business Unit', 'Invoices', 'Open', 'Blocked', 'PO needed', 'Funds needed', 'Rejected', 'Amazon contact']);
+  sum.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FF334155' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+  [14, 16, 10, 15, 15, 12, 15, 10, 30].forEach((w, i) => { sum.getColumn(i + 1).width = w; });
+  for (const st of statements) {
+    const fundsAsk = st.actions.fundsNeeded.reduce((t, a) => t + (a.shortfall || 0), 0);
+    const row = sum.addRow([st.siteCode, st.businessUnit, st.totals.invoices, st.totals.amount, st.totals.blocked,
+      st.actions.poNeeded.amount || null, fundsAsk || null, st.actions.rejected.length || null, st.amazonContact || '']);
+    [4, 5, 6, 7].forEach(ci => { row.getCell(ci).numFmt = money; });
+    if (st.totals.blocked > 0) row.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
+  }
+  let job_done = 0;
+
+  for (const st of statements) {
+    // Excel sheet names cannot exceed 31 chars or contain []:*?/\
+    const ws = wb.addWorksheet(String(st.siteCode).replace(/[\[\]:*?\/\\]/g, '-').slice(0, 31));
+    ws.mergeCells('A1:H1');
+    const t = ws.getCell('A1');
+    t.value = `Amazon statement — ${st.siteCode}${st.businessUnit ? ' (' + st.businessUnit + ')' : ''}`
+      + `${st.city ? ' · ' + st.city + ', ' + st.state : ''} — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
+    t.font = { bold: true, size: 12, color: { argb: NAVY } };
+    ws.addRow([`Amazon contact: ${st.amazonContact || 'not known'}`, '', `ECF owner: ${st.internalOwner || 'unassigned'}`]);
+    ws.addRow([`${st.totals.invoices} open invoices · ${st.totals.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} · ${st.totals.blocked.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} blocked pending action`]);
+    ws.addRow([]);
+
+    if (st.actions.fundsNeeded.length) {
+      ws.addRow(['PURCHASE ORDERS NEEDING ADDITIONAL FUNDS']).getCell(1).font = { bold: true, color: { argb: 'FF991B1B' } };
+      const h = ws.addRow(['PO', 'PO value', 'Remaining', 'Invoices against it', 'Value of those', 'Shortfall']);
+      h.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+      for (const a of st.actions.fundsNeeded) {
+        const r = ws.addRow([a.po, a.poAmount, a.available, a.invoices, a.amount, a.shortfall]);
+        [2, 3, 5, 6].forEach(ci => { r.getCell(ci).numFmt = money; });
+        r.getCell(6).font = { bold: true, color: { argb: 'FF991B1B' } };
+      }
+      ws.addRow([]);
+    }
+    if (st.actions.rejected.length) {
+      ws.addRow(['REJECTED BY AMAZON — NEEDS CORRECTION']).getCell(1).font = { bold: true, color: { argb: 'FF991B1B' } };
+      const h = ws.addRow(['Invoice', 'PO', 'Amount', 'Reason given', 'Rejected by']);
+      h.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+      for (const r of st.actions.rejected) {
+        const row = ws.addRow([r.invoiceId, r.po || '', r.amount, r.reason || 'not stated', r.rejectedBy || '']);
+        row.getCell(3).numFmt = money;
+        row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+      }
+      ws.addRow([]);
+    }
+    if (st.actions.poNeeded.count) {
+      ws.addRow([`A PURCHASE ORDER NEEDS TO BE ISSUED — ${st.actions.poNeeded.count} invoice(s), ${st.actions.poNeeded.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`])
+        .getCell(1).font = { bold: true, color: { argb: 'FF92400E' } };
+      ws.addRow([]);
+    }
+
+    ws.addRow(['ALL OPEN INVOICES']).getCell(1).font = { bold: true, color: { argb: NAVY } };
+    const hh = ws.addRow(['Invoice', 'Invoice date', 'PO', 'Amount', 'Payee Central status', 'In Payee Central since', 'Days there', 'What it needs']);
+    hh.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
+    [16, 13, 16, 14, 26, 20, 11, 40].forEach((w, i) => { ws.getColumn(i + 1).width = Math.max(ws.getColumn(i + 1).width || 0, w); });
+    for (const g of st.groups) {
+      for (const inv of g.invoices) {
+        const r = ws.addRow([inv.invoiceId, inv.invoiceDate, inv.po || '', inv.amount, inv.payeeStatus,
+          inv.payeeEntryDate || '', inv.daysInPayee ?? '', inv.rejectionReason ? `${g.label} — ${inv.rejectionReason}` : (inv.needDetail || g.label)]);
+        r.getCell(4).numFmt = money;
+        if (['rejected', 'funds-needed', 'po-needed'].includes(g.need)) {
+          r.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+        } else if (g.need === 'goods-receipt') {
+          r.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
+        }
+      }
+    }
+    job_done++;
+    db.updateReportJob(job.id, { done_count: job_done });
+  }
+
+  ensureDir();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = statements.length === 1
+    ? `amazon-statement-${statements[0].siteCode}-${stamp}.xlsx`
+    : `amazon-statements-${statements.length}-sites-${stamp}.xlsx`;
+  const filePath = path.join(REPORTS_DIR, `job-${job.id}-${safeFilePart(filename)}`);
+  const buf = await wb.xlsx.writeBuffer();
+  fs.writeFileSync(filePath, Buffer.from(buf));
+  return { filename, filePath, size: buf.byteLength, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', missing: [], count: statements.length };
+}
+
+function requestAmazonStatements({ userEmail, sites, label }) {
+  const list = (sites || []).filter(Boolean);
+  if (!list.length) throw new Error('No sites to build a statement for');
+  const job = db.createReportJob({
+    userEmail, kind: 'amazon-statement',
+    label: label || (list.length === 1 ? `Amazon statement — ${list[0]}` : `Amazon statements — ${list.length} sites`),
+    params: { sites: list, userEmail },
+    totalCount: list.length, expiresDays: KEEP_DAYS,
+  });
+  kick();
+  return { job, queued: list.length };
+}
+
+const HANDLERS = { 'invoice-copies': runInvoiceCopies, 'amazon-statement': runAmazonStatements };
 
 async function tick() {
   if (_running) return;
@@ -180,6 +296,6 @@ function start() {
 }
 
 module.exports = {
-  configure, start, kick, tick, purgeExpired,
-  requestInvoiceCopies, REPORTS_DIR, MAX_INVOICES_PER_JOB, KEEP_DAYS,
+  configure, configureStatements, start, kick, tick, purgeExpired,
+  requestInvoiceCopies, requestAmazonStatements, REPORTS_DIR, MAX_INVOICES_PER_JOB, KEEP_DAYS,
 };
