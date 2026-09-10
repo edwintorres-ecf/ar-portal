@@ -90,6 +90,55 @@ function ymd(s) { return s ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}
 // Fetch a file's bytes through Graph (in memory — nothing is saved) and pull the
 // PO total, internal version, ship-to site code, and revised marker out of the
 // text. Amounts/site codes are a redundant cross-check against Payee Central.
+// ─── Who at Amazon raised this PO ───────────────────────────────────────────
+// Every PO prints a labelled contact: a header row then a values row —
+//   "ORDER DATE: <tab> PURCHASER CONTACT: <tab> TERMS: <tab> INCOTERMS:"
+//   "09/09/2025 <tab> Amber Steward (ambstew@amazon.com) <tab> 60 NET"
+// This is the person to send site correspondence to, and the person a rejection
+// ultimately has to be resolved with (Edwin 2026-09-10). Verified on a spread
+// sample of 24 POs: name and email present on all 24.
+const NAME_EMAIL_RE = /([A-Za-z][A-Za-z.'\- \t]{1,60}?)\s*\(\s*([\w.+-]+@[\w-]+\.[\w.-]+)\s*\)/;
+
+function extractPoContact(text) {
+  const out = { poContactName: null, poContactEmail: null, poContactSource: null, poAttnName: null, poRevisedByEmail: null };
+
+  const labelled = text.match(/PURCHASER CONTACT:[^\n]*\n([^\n]*)/i);
+  if (labelled) {
+    const hit = labelled[1].match(NAME_EMAIL_RE);
+    if (hit) {
+      out.poContactName = hit[1].replace(/\s+/g, ' ').trim();
+      out.poContactEmail = hit[2].toLowerCase();
+      out.poContactSource = 'purchaser-contact';
+    } else {
+      const justEmail = labelled[1].match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      if (justEmail) { out.poContactEmail = justEmail[0].toLowerCase(); out.poContactSource = 'purchaser-contact-email'; }
+    }
+  }
+
+  // "Attn:" is often a site descriptor rather than a person ("DKY4 Non
+  // Inventory", "SVA2-SSD", "Station Manager"), so it is kept only as a label
+  // and never promoted to a contact on its own.
+  const shipToBlock = (text.match(/SHIP\s*TO:[\s\S]{0,300}?(?:SEND INVOICES|ORDER DATE)/i) || [''])[0];
+  const attn = shipToBlock.match(/Attn:\s*([^\n]+)/i);
+  if (attn) {
+    const v = attn[1].replace(/\s+/g, ' ').trim();
+    if (v && v !== '-' && v.length > 2 && !/^[A-Z]{2,4}\d{1,2}$/.test(v)) out.poAttnName = v.slice(0, 60);
+  }
+
+  const rev = text.match(/REVISED BY:[^\n]*\n([^\n]*)/i);
+  if (rev) {
+    const hit = rev[1].match(NAME_EMAIL_RE);
+    if (hit) out.poRevisedByEmail = hit[2].toLowerCase();
+  }
+
+  // Last resort so a PO with an odd layout still routes somewhere sensible.
+  if (!out.poContactEmail) {
+    const any = text.match(/[\w.+-]+@amazon\.com/i);
+    if (any) { out.poContactEmail = any[0].toLowerCase(); out.poContactSource = 'anywhere-in-document'; }
+  }
+  return out;
+}
+
 async function fetchAndExtract(fileName, folder) {
   const { PDFParse } = require('pdf-parse');
   const enc = encodeURIComponent(folder || PO_DOCS_FOLDERS[PO_DOCS_FOLDERS.length - 1]).replace(/%2F/g, '/') + '/' + encodeURIComponent(fileName);
@@ -169,7 +218,8 @@ async function fetchAndExtract(fileName, folder) {
   const usDate = (s) => { if (!s) return null; const [mm, dd, yy] = s.split('/'); return `${yy}-${String(+mm).padStart(2, '0')}-${String(+dd).padStart(2, '0')}`; };
   const pdfOrderDate = usDate((text.match(/ORDER DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
   const pdfRevisedDate = usDate((text.match(/REVISED DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
-  return { amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6, pdfOrderDate, pdfRevisedDate, pdfDatesV: 1 };
+  const contact = extractPoContact(text);
+  return { amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6, pdfOrderDate, pdfRevisedDate, pdfDatesV: 1, ...contact, contactV: 1 };
 }
 
 // Small concurrency limiter so we don't fire hundreds of parses at once.
@@ -238,8 +288,11 @@ async function scanPoDocs(opts = {}) {
           // address→site map), so anything below v4 re-parses once.
           // pdfDatesV gate: entries parsed before the internal ORDER/REVISED
           // date extraction re-parse ONCE to pick the dates up (2026-08-05).
-          if (e.latestFile && e.docAmount !== undefined && (e.siteExtractV === 6 || e.docSiteCode) && e.pdfDatesV === 1) {
-            prevByFile[e.latestFile.name] = { docAmount: e.docAmount, pdfVersion: e.pdfVersion, docSiteCode: e.docSiteCode, pdfRevised: e.pdfRevised, description: e.description, isSnow: e.isSnow, descLeadSite: e.descLeadSite, shipToAddr: e.shipToAddr, docParseError: e.docParseError, siteExtractV: e.siteExtractV, pdfOrderDate: e.pdfOrderDate, pdfRevisedDate: e.pdfRevisedDate, pdfDatesV: e.pdfDatesV };
+          // contactV gate: entries parsed before purchaser-contact extraction
+          // re-parse ONCE to pick the contact up (2026-09-10). Same pattern as
+          // the pdfDatesV gate above — a single catch-up pass, then steady state.
+          if (e.latestFile && e.docAmount !== undefined && (e.siteExtractV === 6 || e.docSiteCode) && e.pdfDatesV === 1 && e.contactV === 1) {
+            prevByFile[e.latestFile.name] = { docAmount: e.docAmount, pdfVersion: e.pdfVersion, docSiteCode: e.docSiteCode, pdfRevised: e.pdfRevised, description: e.description, isSnow: e.isSnow, descLeadSite: e.descLeadSite, shipToAddr: e.shipToAddr, docParseError: e.docParseError, siteExtractV: e.siteExtractV, pdfOrderDate: e.pdfOrderDate, pdfRevisedDate: e.pdfRevisedDate, pdfDatesV: e.pdfDatesV, poContactName: e.poContactName, poContactEmail: e.poContactEmail, poContactSource: e.poContactSource, poAttnName: e.poAttnName, poRevisedByEmail: e.poRevisedByEmail, contactV: e.contactV };
           }
         }
       } catch (e) { /* first run */ }
@@ -268,6 +321,12 @@ async function scanPoDocs(opts = {}) {
         e.pdfOrderDate = x.pdfOrderDate;
         e.pdfRevisedDate = x.pdfRevisedDate;
         e.pdfDatesV = x.pdfDatesV;
+        e.poContactName = x.poContactName;
+        e.poContactEmail = x.poContactEmail;
+        e.poContactSource = x.poContactSource;
+        e.poAttnName = x.poAttnName;
+        e.poRevisedByEmail = x.poRevisedByEmail;
+        e.contactV = x.contactV;
         e.docParseError = null;
         parsedNew++;
       } catch (err) {

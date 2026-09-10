@@ -942,6 +942,8 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <button class="cust-pill" id="po-subtab-resubmissions" onclick="setPoFundsSubtab('resubmissions')">Resubmissions <span id="po-resubmissions-badge"></span></button>
       <button class="cust-pill" id="po-subtab-exceptions" onclick="setPoFundsSubtab('exceptions')">⚠️ Exceptions <span id="po-exceptions-badge"></span></button>
       <button class="cust-pill" id="po-subtab-aging" onclick="setPoFundsSubtab('aging')">⏳ Aging <span id="po-aging-badge"></span></button>
+      <button class="cust-pill" id="po-subtab-rejections" onclick="setPoFundsSubtab('rejections')">❌ Rejections <span id="po-rejections-badge"></span></button>
+      <button class="cust-pill" id="po-subtab-contacts" onclick="setPoFundsSubtab('contacts')">👥 Site Contacts</button>
     </div>
     <div id="po-form-container" style="display:none;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px;margin-bottom:16px;"></div>
     <div id="po-ledger-content">
@@ -972,6 +974,12 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-aging-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
+    <div id="po-rejections-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
+    <div id="po-contacts-content" style="display:none">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
   </div>
@@ -4320,6 +4328,8 @@ function poApplyFilter() {
   try { renderPoOrphans(); } catch (e) {}
   try { renderPoAging(); } catch (e) {}
   try { renderPoExceptions(); } catch (e) {}
+  try { renderPoRejections(); } catch (e) {}
+  if (_poFundsSubtab === 'contacts') { try { renderSiteContacts(); } catch (e) {} }
   if (_poFundsSubtab === 'sites') { try { renderPoSiteReport(); } catch (e) {} }
   if (_poFundsSubtab === 'pending-site') { try { renderPendingBySite(); } catch (e) {} }
   poUpdateBadges();
@@ -4341,6 +4351,12 @@ function poUpdateBadges() {
   set('po-aging-badge', ((_poAging || {}).totals || {}).count || 0, '#d97706');
   const ex = _poExceptions || {};
   set('po-exceptions-badge', (ex.exceptions || []).length + (ex.duplicates || []).length, '#dc2626');
+  // Rejections are filtered client-side like every other tab, so the badge
+  // reflects what the current BU/site filter actually shows.
+  const rej = poFilterRows((( _poRejections || {}).rows || [])
+    .filter(r => !r.resolved_at)
+    .map(r => ({ ...r, siteCode: r.site_code, businessUnit: r.business_unit })));
+  set('po-rejections-badge', rej.length, '#dc2626');
 }
 
 // One rendering of "which site, and which business unit" for every tab, so the
@@ -4417,6 +4433,7 @@ async function loadPoFunds() {
   loadPoResubmissions();  // async, non-blocking
   loadPoExceptions();     // async, non-blocking
   loadPoAging();          // async, non-blocking
+  loadPoRejections();     // async, non-blocking
   loadPoFreshness();      // async, non-blocking
 }
 
@@ -4507,6 +4524,186 @@ function openOrphanAssign(recordNo) {
 function exportOrphansCsv() {
   exportCsv('off-radar-invoices', ['Invoice', 'Customer', 'Site', 'Business Unit', 'SiteRaw', 'Amount', 'Date', 'Bucket', 'Source'],
     _poOrphans.map(o => [o.invoiceId, o.customerName || o.customerId || '', o.site || '', o.businessUnit || '', o.siteRaw || '', (o.amount || 0).toFixed(2), o.invoiceDate || '', o.bucket || '', o.source || '']));
+}
+
+// ─── Rejections: found, owned, and closed out ───────────────────────────────
+// A rejection used to be nothing more than a status on a feed row: nobody was
+// told, nobody owned it, and nothing recorded that it had been dealt with. Each
+// one is now routed to an internal owner and stays on this list until somebody
+// resolves it (Edwin 2026-09-10).
+let _poRejections = { rows: [], summary: {} }, _poRejShowResolved = false;
+
+async function loadPoRejections() {
+  const el = document.getElementById('po-rejections-content');
+  const badge = document.getElementById('po-rejections-badge');
+  if (!el) return;
+  try {
+    _poRejections = await apiFetch('/api/amazon/rejections' + (_poRejShowResolved ? '?resolved=1' : ''));
+    const open = (_poRejections.summary || {}).open || 0;
+    if (badge) { badge.textContent = open ? `(${open})` : ''; badge.style.color = open ? '#dc2626' : ''; }
+    renderPoRejections();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red);">${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPoRejections() {
+  const el = document.getElementById('po-rejections-content');
+  if (!el) return;
+  const rows = poFilterRows((_poRejections.rows || []).map(r => ({ ...r, siteCode: r.site_code, businessUnit: r.business_unit })));
+  const s = _poRejections.summary || {};
+  const sweep = _poRejections.lastSweep;
+  const head = `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="font-size:13px;color:var(--gray-600)">
+        <b style="color:var(--navy);font-size:15px">${s.open || 0} open</b> · ${fmt$(s.openAmount || 0)}${s.unacknowledged ? ` · <span style="color:#b45309">${s.unacknowledged} nobody has looked at</span>` : ''}
+      </div>
+      <span style="margin-left:auto"></span>
+      <label style="font-size:11.5px;color:var(--gray-500);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" ${_poRejShowResolved ? 'checked' : ''} onchange="_poRejShowResolved=!_poRejShowResolved;loadPoRejections()"> include resolved</label>
+      <button class="btn" style="font-size:11.5px;padding:4px 10px" onclick="poRejSweep(this)">↻ Check now</button>
+    </div>
+    ${sweep ? `<div style="font-size:11px;color:var(--gray-500);margin-bottom:10px">Last checked ${escHtml(String(sweep.at).slice(0, 16).replace('T', ' '))} UTC — ${sweep.scanned} rejected in the feed, ${sweep.autoResolved} already resubmitted${sweep.unrouted ? `, <span style="color:#b45309">${sweep.unrouted} with nobody to route to</span>` : ''}</div>` : ''}`;
+
+  if (!rows.length) {
+    el.innerHTML = head + `<div style="padding:40px;text-align:center;color:var(--gray-500)">
+      <div style="font-size:32px;margin-bottom:12px">✅</div>
+      <div style="font-size:15px;font-weight:600">No open rejections${poFilterActive() ? ' in this filter' : ''}</div>
+      <div style="font-size:13px">Anything Amazon rejects shows up here and is routed to whoever owns the site.</div></div>`;
+    return;
+  }
+
+  const body = rows.map(r => {
+    const resolved = !!r.resolved_at;
+    const age = r.first_seen ? Math.floor((Date.now() - Date.parse(String(r.first_seen).replace(' ', 'T') + 'Z')) / 86400000) : null;
+    return `<tr style="border-bottom:1px solid var(--gray-100);${resolved ? 'opacity:.55' : ''}">
+      <td style="padding:9px 12px">
+        <div style="font-weight:600;color:var(--navy);cursor:pointer" onclick="${r.record_no ? `openDrawer('${r.record_no}')` : ''}">${escHtml(r.invoice_id || r.payee_id)}</div>
+        <div style="font-size:11px;color:var(--gray-500)">${escHtml(r.po_number || 'no PO')}${r.entry_date ? ' · entered ' + escHtml(r.entry_date) : ''}</div>
+      </td>
+      <td style="padding:9px 12px">${poSiteCell(r)}</td>
+      <td style="padding:9px 12px;text-align:right;white-space:nowrap" class="amount">${fmt$(r.amount || 0)}</td>
+      <td style="padding:9px 12px;text-align:right">${age === null ? '—' : `<span style="font-weight:700;color:${age > 30 ? '#b91c1c' : age > 7 ? '#b45309' : 'var(--gray-600)'}">${age}d</span>`}</td>
+      <td style="padding:9px 12px">
+        ${r.routed_to
+          ? `<div style="font-size:12px">${escHtml(r.routed_to)}</div>`
+          : '<span style="color:#b91c1c;font-size:12px;font-weight:600">nobody — set a site contact</span>'}
+        ${r.siteContact && r.siteContact.amazon_email ? `<div style="font-size:10.5px;color:var(--gray-500)">Amazon: ${escHtml(r.siteContact.amazon_email)}</div>` : ''}
+      </td>
+      <td style="padding:9px 12px;white-space:nowrap;text-align:right">
+        ${resolved
+          ? `<span style="font-size:11px;color:#166534">${escHtml(r.resolution || 'resolved')}</span>`
+          : `${r.acknowledged_at ? `<span title="Seen by ${escHtml(r.acknowledged_by || '')}" style="font-size:11px;color:#166534;margin-right:6px">👁 seen</span>`
+                : `<button class="btn" style="font-size:11px;padding:3px 9px" onclick="poRejAck('${escHtml(r.payee_id)}')">Acknowledge</button>`}
+             <button class="btn" style="font-size:11px;padding:3px 9px" onclick="poRejRoute('${escHtml(r.payee_id)}','${escHtml(r.routed_to || '')}')">Route</button>
+             <button class="btn" style="font-size:11px;padding:3px 9px" onclick="poRejResolve('${escHtml(r.payee_id)}')">Resolve</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = head + `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
+          ${['Invoice', 'Site / BU', 'Amount', 'Age', 'Routed to', ''].map((h, i) =>
+            `<th style="padding:9px 12px;text-align:${i === 2 || i === 3 || i === 5 ? 'right' : 'left'};font-weight:600;color:var(--gray-700)">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
+async function poRejSweep(btn) {
+  btn.disabled = true; btn.textContent = '↻ Checking…';
+  try {
+    const r = await apiFetch('/api/amazon/rejections/sweep', { method: 'POST', body: JSON.stringify({ notify: true }) });
+    showToast(`${r.open} open · ${r.added} new · ${r.autoResolved} already resubmitted`, 'success');
+    loadPoRejections();
+  } catch (e) { showToast('Check failed: ' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '↻ Check now';
+}
+async function poRejAck(id) {
+  try { await apiFetch(`/api/amazon/rejections/${encodeURIComponent(id)}/ack`, { method: 'POST' }); loadPoRejections(); }
+  catch (e) { showToast(e.message, 'error'); }
+}
+async function poRejRoute(id, current) {
+  const email = prompt('Route this rejection to which internal address?\n\nLeave empty to clear.', current || '');
+  if (email === null) return;
+  try { await apiFetch(`/api/amazon/rejections/${encodeURIComponent(id)}/route`, { method: 'POST', body: JSON.stringify({ email: email.trim() }) }); loadPoRejections(); }
+  catch (e) { showToast(e.message, 'error'); }
+}
+async function poRejResolve(id) {
+  const how = prompt('How was it resolved? (e.g. resubmitted, credited, PO corrected)', 'resubmitted');
+  if (how === null) return;
+  try { await apiFetch(`/api/amazon/rejections/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify({ resolution: how }) }); loadPoRejections(); }
+  catch (e) { showToast(e.message, 'error'); }
+}
+
+// ─── Site contacts: who Amazon named on the PO, and who owns it here ────────
+let _siteContacts = [];
+
+async function loadSiteContacts() {
+  const el = document.getElementById('po-contacts-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const d = await apiFetch('/api/amazon/site-contacts');
+    _siteContacts = d.sites || [];
+    renderSiteContacts();
+  } catch (e) { el.innerHTML = `<div style="padding:20px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+function renderSiteContacts() {
+  const el = document.getElementById('po-contacts-content');
+  if (!el) return;
+  const rows = poFilterRows(_siteContacts);
+  const withAmazon = rows.filter(r => r.amazonEmail).length;
+  const withInternal = rows.filter(r => r.internalEmail).length;
+  const body = rows.map(r => `<tr style="border-bottom:1px solid var(--gray-100)">
+    <td style="padding:9px 12px">${poSiteCell(r)}</td>
+    <td style="padding:9px 12px">
+      ${r.amazonEmail
+        ? `<div style="font-size:12.5px">${escHtml(r.amazonName || '')} <span style="color:var(--gray-500)">${escHtml(r.amazonEmail)}</span></div>
+           <div style="font-size:10.5px;color:var(--gray-500)">${r.amazonPinned ? '📌 set by hand' : `from ${escHtml(r.amazonSource || 'a PO')}${r.amazonSeenAt ? ' · ' + escHtml(r.amazonSeenAt) : ''}`}${r.poCount > 1 ? ` · ${r.poCount} POs` : ''}</div>`
+        : '<span style="color:var(--gray-400);font-size:12px">not seen on a PO yet</span>'}
+    </td>
+    <td style="padding:9px 12px">
+      ${r.internalEmail
+        ? `<div style="font-size:12.5px">${escHtml(r.internalEmail)}</div><div style="font-size:10.5px;color:var(--gray-500)">${r.internalPinned ? '📌 set by hand' : escHtml(r.internalVia || '')}</div>`
+        : '<span style="color:#b91c1c;font-size:12px;font-weight:600">nobody — rejections cannot be routed</span>'}
+    </td>
+    <td style="padding:9px 12px;text-align:right"><button class="btn" style="font-size:11px;padding:3px 9px" onclick="siteContactEdit('${escHtml(r.siteCode)}')">Edit</button></td>
+  </tr>`).join('');
+  el.innerHTML = `
+    <div style="font-size:12.5px;color:var(--gray-600);margin-bottom:10px">
+      ${rows.length} site${rows.length === 1 ? '' : 's'} · <b>${withAmazon}</b> with an Amazon contact read off their POs · <b>${withInternal}</b> with someone here who owns it
+      <div style="font-size:11px;color:var(--gray-500);margin-top:2px">The Amazon contact is the purchaser named on the site's most recent PO, and is who site correspondence will go to. The internal contact is who a rejection gets routed to.</div>
+    </div>
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
+          ${['Site / BU', 'Amazon contact (from the PO)', 'Internal owner', ''].map((h, i) =>
+            `<th style="padding:9px 12px;text-align:${i === 3 ? 'right' : 'left'};font-weight:600;color:var(--gray-700)">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${body || '<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--gray-500)">No sites match this filter.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+async function siteContactEdit(siteCode) {
+  const r = _siteContacts.find(x => x.siteCode === siteCode) || {};
+  const internal = prompt(`Internal owner for ${siteCode} — rejections at this site route to them.\n\nLeave empty to fall back to the site collector.`, r.internalPinned ? (r.internalEmail || '') : '');
+  if (internal === null) return;
+  const amazon = prompt(`Amazon contact for ${siteCode} (leave empty to keep reading it from the POs).\n\nCurrently: ${r.amazonEmail || 'none'}${r.amazonPinned ? ' (set by hand)' : ' (from a PO)'}`, r.amazonPinned ? (r.amazonEmail || '') : '');
+  if (amazon === null) return;
+  try {
+    await apiFetch('/api/amazon/site-contacts', { method: 'POST', body: JSON.stringify({
+      siteCode, internalEmail: internal.trim(), amazonEmail: amazon.trim(),
+      amazonName: amazon.trim() ? (r.amazonName || null) : null,
+    }) });
+    loadSiteContacts();
+    loadPoRejections();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ─── Transmission exceptions (self-auditing EDI pipeline) ──────────────────
@@ -4808,6 +5005,8 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-subtab-resubmissions').classList.toggle('active', name === 'resubmissions');
   document.getElementById('po-subtab-exceptions').classList.toggle('active', name === 'exceptions');
   document.getElementById('po-subtab-aging').classList.toggle('active', name === 'aging');
+  document.getElementById('po-subtab-rejections').classList.toggle('active', name === 'rejections');
+  document.getElementById('po-subtab-contacts').classList.toggle('active', name === 'contacts');
   document.getElementById('po-ledger-content').style.display = name === 'ledger' ? '' : 'none';
   document.getElementById('po-sites-content').style.display = name === 'sites' ? '' : 'none';
   document.getElementById('po-pending-site-content').style.display = name === 'pending-site' ? '' : 'none';
@@ -4818,8 +5017,11 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-resubmissions-content').style.display = name === 'resubmissions' ? '' : 'none';
   document.getElementById('po-exceptions-content').style.display = name === 'exceptions' ? '' : 'none';
   document.getElementById('po-aging-content').style.display = name === 'aging' ? '' : 'none';
+  document.getElementById('po-rejections-content').style.display = name === 'rejections' ? '' : 'none';
+  document.getElementById('po-contacts-content').style.display = name === 'contacts' ? '' : 'none';
   if (name === 'sites') renderPoSiteReport();
   if (name === 'pending-site') renderPendingBySite();
+  if (name === 'contacts') loadSiteContacts();
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = (name === 'ledger' && currentUser && ['admin', 'manager'].includes(currentUser.role)) ? '' : 'none';
 }
@@ -6582,6 +6784,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260910f"></script>
-<script src="/amazon.js?v=20260910f"></script>
+<script src="/amazon.js?v=20260910g"></script>
 </body>
 </html>

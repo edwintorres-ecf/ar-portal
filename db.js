@@ -479,6 +479,76 @@ function initSchema() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_user ON report_jobs(user_email, status)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_status ON report_jobs(status, id)');
 
+  // ─── Site contacts (2026-09-10, Edwin) ────────────────────────────────────
+  // Two different people, deliberately kept apart:
+  //  - the AMAZON contact named on the site's POs (purchaser contact), who is
+  //    the recipient of site correspondence;
+  //  - the INTERNAL contact, who a rejection gets routed to so somebody here
+  //    owns fixing it.
+  // Learned values are overwritten by each newer PO; a pinned value never is.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS site_contacts (
+      site_code TEXT PRIMARY KEY,
+      amazon_name TEXT,
+      amazon_email TEXT,
+      amazon_source TEXT,              -- 'po:2D-…' when learned, 'manual' when pinned
+      amazon_pinned INTEGER DEFAULT 0,
+      amazon_seen_at TEXT,             -- PO date the learned value came from
+      internal_email TEXT,
+      internal_pinned INTEGER DEFAULT 0,
+      note TEXT,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Per-PO contact, kept separately from the site roll-up: a site can have
+  // several POs raised by different people, and a rejection belongs to ONE PO.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS po_contacts (
+      po_number TEXT PRIMARY KEY,
+      site_code TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      attn_name TEXT,
+      revised_by_email TEXT,
+      source TEXT,
+      doc_date TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_po_contacts_site ON po_contacts(site_code)');
+
+  // ─── Rejection register ───────────────────────────────────────────────────
+  // Amazon rejections were only ever visible as a status on a feed row, so
+  // nobody owned them and nothing recorded that they had been dealt with. Each
+  // one is now a tracked item with a route and a resolution.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS invoice_rejections (
+      payee_id TEXT PRIMARY KEY,
+      invoice_id TEXT,
+      record_no TEXT,
+      po_number TEXT,
+      site_code TEXT,
+      business_unit TEXT,
+      amount REAL,
+      status TEXT,
+      reason TEXT,
+      entry_date TEXT,
+      first_seen TEXT DEFAULT (datetime('now')),
+      last_seen TEXT DEFAULT (datetime('now')),
+      routed_to TEXT,
+      routed_at TEXT,
+      notified INTEGER DEFAULT 0,
+      acknowledged_by TEXT,
+      acknowledged_at TEXT,
+      resolved_at TEXT,
+      resolution TEXT,
+      superseded_by TEXT
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_rejections_open ON invoice_rejections(resolved_at, site_code)');
+
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
 
@@ -2223,6 +2293,123 @@ function getHouseAccounts() {
 
 // Customers held back from dunning. Independent of house_account — a customer
 // can be either, both, or neither.
+// ─── Site + PO contacts ─────────────────────────────────────────────────────
+// Learned from PO documents. A newer PO wins, EXCEPT where someone has pinned
+// the value by hand — a manual correction must survive the next scan.
+function upsertPoContact({ poNumber, siteCode, name, email, attnName, revisedByEmail, source, docDate }) {
+  if (!poNumber) return;
+  getDb().prepare(`
+    INSERT INTO po_contacts (po_number, site_code, contact_name, contact_email, attn_name, revised_by_email, source, doc_date, updated_at)
+    VALUES (?,?,?,?,?,?,?,?, datetime('now'))
+    ON CONFLICT(po_number) DO UPDATE SET
+      site_code=excluded.site_code, contact_name=excluded.contact_name, contact_email=excluded.contact_email,
+      attn_name=excluded.attn_name, revised_by_email=excluded.revised_by_email, source=excluded.source,
+      doc_date=excluded.doc_date, updated_at=datetime('now')
+  `).run(poNumber, siteCode || null, name || null, email || null, attnName || null, revisedByEmail || null, source || null, docDate || null);
+}
+
+function getPoContact(poNumber) {
+  return getDb().prepare('SELECT * FROM po_contacts WHERE po_number=?').get(poNumber) || null;
+}
+function getPoContactMap() {
+  const out = {};
+  try { for (const r of getDb().prepare('SELECT * FROM po_contacts').all()) out[r.po_number] = r; } catch (e) {}
+  return out;
+}
+
+function learnSiteAmazonContact({ siteCode, name, email, source, seenAt }) {
+  if (!siteCode || !email) return;
+  const d = getDb();
+  const cur = d.prepare('SELECT * FROM site_contacts WHERE site_code=?').get(siteCode);
+  if (cur && cur.amazon_pinned) return;             // hand-set: leave it alone
+  // Only move forward in time, so a back-fill of old PO documents cannot
+  // overwrite the contact learned from a more recent PO.
+  if (cur && cur.amazon_seen_at && seenAt && String(seenAt) < String(cur.amazon_seen_at)) return;
+  d.prepare(`
+    INSERT INTO site_contacts (site_code, amazon_name, amazon_email, amazon_source, amazon_seen_at, updated_at)
+    VALUES (?,?,?,?,?, datetime('now'))
+    ON CONFLICT(site_code) DO UPDATE SET
+      amazon_name=excluded.amazon_name, amazon_email=excluded.amazon_email,
+      amazon_source=excluded.amazon_source, amazon_seen_at=excluded.amazon_seen_at, updated_at=datetime('now')
+  `).run(siteCode, name || null, email, source || null, seenAt || null);
+}
+
+function setSiteContact(siteCode, fields, updatedBy) {
+  const d = getDb();
+  d.prepare('INSERT OR IGNORE INTO site_contacts (site_code) VALUES (?)').run(siteCode);
+  const sets = [], vals = [];
+  for (const k of ['amazon_name', 'amazon_email', 'amazon_source', 'amazon_pinned',
+                   'internal_email', 'internal_pinned', 'note']) {
+    if (fields[k] !== undefined) { sets.push(k + '=?'); vals.push(fields[k]); }
+  }
+  if (!sets.length) return getSiteContact(siteCode);
+  sets.push("updated_at=datetime('now')", 'updated_by=?');
+  vals.push(updatedBy || null, siteCode);
+  d.prepare('UPDATE site_contacts SET ' + sets.join(',') + ' WHERE site_code=?').run(...vals);
+  return getSiteContact(siteCode);
+}
+
+function getSiteContact(siteCode) {
+  return getDb().prepare('SELECT * FROM site_contacts WHERE site_code=?').get(siteCode) || null;
+}
+function getSiteContactMap() {
+  const out = {};
+  try { for (const r of getDb().prepare('SELECT * FROM site_contacts').all()) out[r.site_code] = r; } catch (e) {}
+  return out;
+}
+
+// ─── Rejections ─────────────────────────────────────────────────────────────
+function upsertRejection(r) {
+  const d = getDb();
+  const cur = d.prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(r.payeeId);
+  if (cur) {
+    // Seen again: refresh the facts, but never trample a resolution or an
+    // acknowledgement someone has already recorded.
+    d.prepare(`UPDATE invoice_rejections SET last_seen=datetime('now'), amount=?, reason=COALESCE(?, reason),
+       po_number=COALESCE(?, po_number), site_code=COALESCE(?, site_code), business_unit=COALESCE(?, business_unit),
+       record_no=COALESCE(?, record_no), invoice_id=COALESCE(?, invoice_id) WHERE payee_id=?`)
+      .run(r.amount ?? cur.amount, r.reason || null, r.poNumber || null, r.siteCode || null,
+           r.businessUnit || null, r.recordNo || null, r.invoiceId || null, r.payeeId);
+    return { row: d.prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(r.payeeId), isNew: false };
+  }
+  d.prepare(`INSERT INTO invoice_rejections
+      (payee_id, invoice_id, record_no, po_number, site_code, business_unit, amount, status, reason, entry_date)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(r.payeeId, r.invoiceId || null, r.recordNo || null, r.poNumber || null, r.siteCode || null,
+         r.businessUnit || null, r.amount || 0, r.status || 'Rejected', r.reason || null, r.entryDate || null);
+  return { row: d.prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(r.payeeId), isNew: true };
+}
+
+function setRejectionRoute(payeeId, email) {
+  getDb().prepare("UPDATE invoice_rejections SET routed_to=?, routed_at=datetime('now') WHERE payee_id=?").run(email || null, payeeId);
+}
+function markRejectionNotified(payeeId) {
+  getDb().prepare('UPDATE invoice_rejections SET notified=1 WHERE payee_id=?').run(payeeId);
+}
+function resolveRejection(payeeId, { resolution, supersededBy, by }) {
+  getDb().prepare("UPDATE invoice_rejections SET resolved_at=datetime('now'), resolution=?, superseded_by=COALESCE(?, superseded_by), acknowledged_by=COALESCE(acknowledged_by, ?) WHERE payee_id=?")
+    .run(resolution || null, supersededBy || null, by || null, payeeId);
+}
+function acknowledgeRejection(payeeId, by) {
+  getDb().prepare("UPDATE invoice_rejections SET acknowledged_by=?, acknowledged_at=datetime('now') WHERE payee_id=?").run(by, payeeId);
+}
+function listRejections({ includeResolved = false } = {}) {
+  const sql = includeResolved
+    ? 'SELECT * FROM invoice_rejections ORDER BY (resolved_at IS NOT NULL), first_seen DESC'
+    : 'SELECT * FROM invoice_rejections WHERE resolved_at IS NULL ORDER BY first_seen DESC';
+  try { return getDb().prepare(sql).all(); } catch (e) { return []; }
+}
+function rejectionSummary() {
+  try {
+    return getDb().prepare(`SELECT
+        SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN resolved_at IS NULL THEN amount ELSE 0 END) AS openAmount,
+        SUM(CASE WHEN resolved_at IS NULL AND acknowledged_at IS NULL THEN 1 ELSE 0 END) AS unacknowledged,
+        COUNT(*) AS total
+      FROM invoice_rejections`).get() || {};
+  } catch (e) { return {}; }
+}
+
 // ─── Report jobs ────────────────────────────────────────────────────────────
 function createReportJob({ userEmail, kind, label, params, totalCount, expiresDays }) {
   const d = getDb();
@@ -2748,6 +2935,20 @@ module.exports = {
   getHouseAccounts,
   getHouseAccountIds,
   getDunningHolds,
+  upsertPoContact,
+  getPoContact,
+  getPoContactMap,
+  learnSiteAmazonContact,
+  setSiteContact,
+  getSiteContact,
+  getSiteContactMap,
+  upsertRejection,
+  setRejectionRoute,
+  markRejectionNotified,
+  resolveRejection,
+  acknowledgeRejection,
+  listRejections,
+  rejectionSummary,
   createReportJob,
   listReportJobs,
   getReportJob,

@@ -781,6 +781,265 @@ async function fetchInvoicePdfBuffer(inv) {
   return null;
 }
 
+// ─── PO contacts and the rejection register ─────────────────────────────────
+// Amazon prints the person who raised each PO on the PO itself. That person is
+// the site's correspondence contact; a rejection against one of their POs has
+// to land on someone HERE who owns fixing it. Both are learned as PO documents
+// arrive, so the manager stays current without anyone maintaining a list
+// (Edwin 2026-09-10).
+function syncPoContactsFromDocs() {
+  let docs = {};
+  try { docs = JSON.parse(fs.readFileSync(path.join(__dirname, 'po-docs.json'), 'utf8')).byPo || {}; }
+  catch (e) { return { pos: 0, sites: 0, note: 'po-docs.json unavailable' }; }
+
+  // Newest PO document last, so the most recent contact is the one that sticks
+  // for the site.
+  const entries = Object.entries(docs)
+    .filter(([, d]) => d.poContactEmail)
+    .sort((a, b) => String(a[1].pdfRevisedDate || a[1].pdfOrderDate || '').localeCompare(String(b[1].pdfRevisedDate || b[1].pdfOrderDate || '')));
+
+  const sites = new Set();
+  for (const [po, d] of entries) {
+    const docDate = d.pdfRevisedDate || d.pdfOrderDate || null;
+    db.upsertPoContact({
+      poNumber: po, siteCode: d.docSiteCode || null,
+      name: d.poContactName, email: d.poContactEmail,
+      attnName: d.poAttnName, revisedByEmail: d.poRevisedByEmail,
+      source: d.poContactSource, docDate,
+    });
+    if (d.docSiteCode) {
+      db.learnSiteAmazonContact({
+        siteCode: d.docSiteCode, name: d.poContactName, email: d.poContactEmail,
+        source: 'po:' + po, seenAt: docDate,
+      });
+      sites.add(d.docSiteCode);
+    }
+  }
+  return { pos: entries.length, sites: sites.size };
+}
+
+// Who here owns a rejection at this site. Most specific wins: a pinned internal
+// contact, then the site's collector, then whoever holds the invoice.
+function internalContactForSite(siteCode, recordNo) {
+  try {
+    const sc = siteCode ? db.getSiteContact(siteCode) : null;
+    if (sc && sc.internal_email) return { email: sc.internal_email, via: 'site contact' };
+    if (siteCode) {
+      const collectors = db.getAllSiteCollectors ? db.getAllSiteCollectors() : {};
+      const c = collectors[siteCode];
+      if (c && c.email) return { email: c.email, via: 'site collector' };
+    }
+    if (recordNo) {
+      const inv = db.getAllInvoiceCollectors()[recordNo];
+      if (inv && inv.collector_email) return { email: inv.collector_email, via: 'invoice collector' };
+    }
+  } catch (e) { /* fall through */ }
+  return { email: null, via: null };
+}
+
+const REJECTED_STATUSES = new Set(['Rejected']);
+let _lastRejectionSweep = null;
+
+function doRejectionSweep(opts) {
+  const stats = sweepRejections(opts);
+  _lastRejectionSweep = { at: new Date().toISOString(), ...stats };
+  return _lastRejectionSweep;
+}
+
+// Sweeps the Payee feed for rejections, records each one, routes it, and closes
+// out any that have since been resubmitted under a new id.
+function sweepRejections({ notify = false } = {}) {
+  const stats = { scanned: 0, open: 0, added: 0, routed: 0, autoResolved: 0, notified: 0, unrouted: 0 };
+  let superseded = new Set(), supersededBy = {};
+  try { ({ superseded, supersededBy } = payee.getSupersededIds()); } catch (e) { /* older payee.js */ }
+
+  const invoices = sage.getCachedInvoices();
+  const byInvoiceId = new Map();
+  for (const i of invoices) if (i.invoiceId) byInvoiceId.set(payee.toPayeeId(i.invoiceId), i);
+  let ledger = {};
+  try { ledger = siteLedger.getLedgerMap(); } catch (e) { /* not built */ }
+  const master = db.getAmazonLocationMap();
+
+  const seen = new Set();
+  for (const [payeeId, item] of Object.entries(payee.getIndex())) {
+    const status = (item.status || '').trim();
+    if (!REJECTED_STATUSES.has(status)) continue;
+    stats.scanned++;
+    seen.add(payeeId);
+
+    const inv = byInvoiceId.get(payeeId) || null;
+    const site = inv && ledger[inv.recordNo] ? ledger[inv.recordNo].siteCode : null;
+    const rec = db.upsertRejection({
+      payeeId,
+      invoiceId: inv ? inv.invoiceId : payeeId,
+      recordNo: inv ? inv.recordNo : null,
+      poNumber: item.po || (inv ? inv.poNumber : null),
+      siteCode: site,
+      businessUnit: site && master[site] ? (master[site].businessUnit || null) : null,
+      amount: parseFloat(String(item.amount || '0').replace(/[^0-9.\-]/g, '')) || 0,
+      status,
+      reason: item.statusReason || item.reason || null,
+      entryDate: item.entryDate || null,
+    });
+    if (rec.isNew) stats.added++;
+
+    // A rejection that has already been resubmitted under a suffixed id is
+    // finished work — close it rather than leaving it on someone's list.
+    if (superseded.has(payeeId)) {
+      if (!rec.row.resolved_at) {
+        db.resolveRejection(payeeId, { resolution: 'resubmitted', supersededBy: supersededBy[payeeId] || null, by: 'auto' });
+        stats.autoResolved++;
+      }
+      continue;
+    }
+    if (rec.row.resolved_at) continue;
+    stats.open++;
+
+    if (!rec.row.routed_to) {
+      const owner = internalContactForSite(site, rec.row.record_no);
+      if (owner.email) { db.setRejectionRoute(payeeId, owner.email); stats.routed++; }
+      else stats.unrouted++;
+    }
+  }
+
+  // Notify each internal owner ONCE per rejection, and only when asked — the
+  // first sweep over an existing backlog must not fire hundreds of emails.
+  if (notify) {
+    for (const r of db.listRejections()) {
+      if (r.notified || !r.routed_to) continue;
+      db.markRejectionNotified(r.payee_id);
+      stats.notified++;
+      notifyUser(r.routed_to, 'collector',
+        `[ECF AR Portal] Amazon rejected ${r.invoice_id || r.payee_id}`,
+        `Amazon has rejected invoice ${r.invoice_id || r.payee_id}`
+        + (r.site_code ? ` for site ${r.site_code}` : '')
+        + (r.po_number ? ` on PO ${r.po_number}` : '')
+        + `.\n\nAmount: $${(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        + (r.reason ? `\nReason given: ${r.reason}` : '')
+        + `\n\nIt is on the Rejections tab of the Amazon PO Manager: ${portalBaseUrl()}\n\n—ECF AR Portal`)
+        .catch(e => console.error('[rejections] notify:', e.message));
+    }
+  }
+  return stats;
+}
+
+app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
+  try {
+    const contacts = db.getSiteContactMap();
+    const poContacts = db.getPoContactMap();
+    const collectors = db.getAllSiteCollectors();
+    const master = db.getAmazonLocationMap();
+    // Which POs named which person, so a site's contact can be traced back to
+    // the document it came from rather than being taken on trust.
+    const bySite = {};
+    for (const pc of Object.values(poContacts)) {
+      if (!pc.site_code) continue;
+      (bySite[pc.site_code] = bySite[pc.site_code] || []).push({
+        poNumber: pc.po_number, name: pc.contact_name, email: pc.contact_email, docDate: pc.doc_date,
+      });
+    }
+    const sites = new Set([...Object.keys(contacts), ...Object.keys(bySite), ...Object.keys(collectors)]);
+    res.json({
+      sites: [...sites].sort().map(code => {
+        const c = contacts[code] || {};
+        const pos = (bySite[code] || []).sort((a, b) => String(b.docDate || '').localeCompare(String(a.docDate || '')));
+        return {
+          siteCode: code,
+          businessUnit: master[code] ? (master[code].businessUnit || '') : '',
+          amazonName: c.amazon_name || null,
+          amazonEmail: c.amazon_email || null,
+          amazonSource: c.amazon_source || null,
+          amazonPinned: !!c.amazon_pinned,
+          amazonSeenAt: c.amazon_seen_at || null,
+          internalEmail: c.internal_email || (collectors[code] || {}).email || null,
+          internalPinned: !!c.internal_pinned,
+          internalVia: c.internal_email ? 'site contact' : ((collectors[code] || {}).email ? 'site collector' : null),
+          note: c.note || null,
+          poCount: pos.length,
+          pos: pos.slice(0, 8),
+        };
+      }),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/site-contacts', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const { siteCode, amazonName, amazonEmail, internalEmail, note, unpinAmazon } = req.body || {};
+    if (!siteCode) return res.status(400).json({ error: 'siteCode required' });
+    const fields = {};
+    if (amazonEmail !== undefined) {
+      // Typing a value pins it; clearing it hands the field back to the PO feed.
+      fields.amazon_email = amazonEmail || null;
+      fields.amazon_name = amazonName || null;
+      fields.amazon_pinned = amazonEmail ? 1 : 0;
+      fields.amazon_source = amazonEmail ? 'manual' : null;
+    }
+    if (unpinAmazon) { fields.amazon_pinned = 0; fields.amazon_source = null; }
+    if (internalEmail !== undefined) {
+      fields.internal_email = internalEmail || null;
+      fields.internal_pinned = internalEmail ? 1 : 0;
+    }
+    if (note !== undefined) fields.note = note;
+    const out = db.setSiteContact(siteCode, fields, req.session.user.email);
+    db.auditLog(req.session.user.email, 'site_contact_set', siteCode, JSON.stringify(fields));
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/amazon/rejections', requireAuth, (req, res) => {
+  try {
+    const includeResolved = req.query.resolved === '1';
+    let rows = db.listRejections({ includeResolved });
+    // A user with a location filter should see only their own sites' rejections.
+    try {
+      const lf = req.session.user && req.session.user.location_filter;
+      if (lf) {
+        const scope = siteLedger.siteScopeForLocations(sage.getCachedInvoices(), JSON.parse(lf));
+        if (scope) rows = rows.filter(r => r.site_code && scope.has(r.site_code));
+      }
+    } catch (e) { /* malformed filter — fall through unfiltered */ }
+    res.json({
+      summary: db.rejectionSummary(),
+      lastSweep: _lastRejectionSweep,
+      rows: rows.map(r => ({ ...r, siteContact: r.site_code ? db.getSiteContact(r.site_code) : null })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/rejections/sweep', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const stats = doRejectionSweep({ notify: req.body && req.body.notify === true });
+    res.json(stats);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/rejections/:payeeId/ack', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    db.acknowledgeRejection(req.params.payeeId, req.session.user.email);
+    db.auditLog(req.session.user.email, 'rejection_ack', req.params.payeeId, '');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/rejections/:payeeId/route', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const { email } = req.body || {};
+    db.setRejectionRoute(req.params.payeeId, email || null);
+    db.auditLog(req.session.user.email, 'rejection_route', req.params.payeeId, email || '(cleared)');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/amazon/rejections/:payeeId/resolve', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const { resolution } = req.body || {};
+    db.resolveRejection(req.params.payeeId, { resolution: resolution || 'handled', by: req.session.user.email });
+    db.auditLog(req.session.user.email, 'rejection_resolve', req.params.payeeId, resolution || 'handled');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Requested downloads: ask, keep working, collect later ──────────────────
 // Under /api/downloads rather than /api/reports so these can never shadow the
 // analytics report routes (/api/reports/aging-snapshot and friends) as either
@@ -5164,6 +5423,19 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // Report queue: requeue anything a restart interrupted, drop expired files,
   // then work whatever is waiting.
   try { reports.start(); } catch (e) { console.error('[reports] start failed:', e.message); }
+
+  // PO contacts + rejections. The FIRST sweep does not notify: it is adopting
+  // an existing backlog, and firing a mail for every historical rejection would
+  // be noise. Later sweeps notify on genuinely new ones only.
+  const doContactsAndRejections = (notify) => {
+    try {
+      const c = syncPoContactsFromDocs();
+      const r = doRejectionSweep({ notify });
+      console.log(`[contacts] ${c.pos} PO contacts, ${c.sites} sites · [rejections] ${r.open} open, ${r.added} new, ${r.routed} routed, ${r.autoResolved} auto-resolved, ${r.notified} notified`);
+    } catch (e) { console.warn('[contacts/rejections] failed:', e.message); }
+  };
+  setTimeout(() => doContactsAndRejections(false), 90 * 1000);
+  setInterval(() => doContactsAndRejections(true), 60 * 60 * 1000);
 
   // Keep the local AI models hot so interactive calls stay ~fast (no ~20s cold
   // load). Warm on boot, then re-ping every 100 min (inside the 2h keep_alive).
