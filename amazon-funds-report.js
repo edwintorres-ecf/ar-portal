@@ -266,13 +266,16 @@ function buildDeck(analysis) {
     .text(`Across ${a.totals.sites} Amazon sites where East Coast Facilities performs ${svc}, work has been completed and`
       + ` accepted but cannot be submitted, because the purchase order at that site has no funds left on it.`, 56, 118, { width: W - 112 });
   stat(56, 210, money(a.totals.pending), 'completed work waiting to be invoiced', RED);
-  stat(300, 210, money(a.totals.available), 'available across all Amazon POs', GREEN);
-  stat(544, 210, String(a.totals.shortSites), 'sites where the work exceeds the funds', AMBER);
+  stat(300, 210, money(a.totals.shortfall), 'of that, with no PO funds behind it', RED);
+  stat(544, 210, String(a.totals.shortSites), 'sites short of funds', AMBER);
   doc.roundedRect(56, 340, W - 112, 150, 8).fill('#f8fafc');
-  doc.fillColor(NAVY).fontSize(17).font('Helvetica-Bold').text('There is no shortage of money.', 80, 368);
+  doc.fillColor(NAVY).fontSize(17).font('Helvetica-Bold').text('No additional commitment is required.', 80, 368);
   doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
-    .text(`Amazon has committed ${money(a.totals.available)} across these POs — more than the ${money(a.totals.pending)} of work waiting.`
-      + ` The funds are simply on the wrong purchase orders.`, 80, 398, { width: W - 160, lineGap: 4 });
+    // Deliberately a WITHIN-business-unit claim. Comparing a portfolio-wide
+    // available balance against the shortfall would imply funds moving between
+    // business units, which is not how they are committed (Edwin 2026-09-10).
+    .text(`${money(a.totals.coverable)} of that shortfall — ${a.totals.coverable >= a.totals.shortfall - 1 ? 'all of it' : Math.round((a.totals.coverable / a.totals.shortfall) * 100) + '%'}`
+      + ` — already sits as unused funds on POs inside the SAME business unit, at sites with no work waiting.`, 80, 398, { width: W - 160, lineGap: 4 });
 
   // 2 — the mechanism, using the clearest real example
   const worstBu = a.buList
@@ -282,7 +285,8 @@ function buildDeck(analysis) {
   if (worstBu) {
     const st = worstBu.starved[0], su = worstBu.surplusSites.slice(0, 2);
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
-      .text(`${worstBu.bu} is the clearest case. Within this one business unit:`, 56, 118, { width: W - 112 });
+      .text(`Taking ${worstBu.bu} on its own — both sites below are ${worstBu.bu}, and no comparison here crosses`
+        + ` a business unit:`, 56, 118, { width: W - 112 });
     doc.roundedRect(56, 156, 330, 210, 8).fill('#fef2f2');
     doc.fillColor(RED).fontSize(11).font('Helvetica-Bold').text('WORK DONE, NO FUNDS', 80, 180);
     doc.fillColor(NAVY).fontSize(28).font('Helvetica-Bold').text(st.site, 80, 204);
@@ -299,35 +303,44 @@ function buildDeck(analysis) {
       yy += 74;
     }
     doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
-      .text(`Both sites sit in ${worstBu.bu}. The funding exists and is already approved — it is committed at a site that has`
-        + ` no work waiting, while the site with the work cannot be billed.`, 56, 396, { width: W - 112, lineGap: 4 });
+      .text(`The funding exists and is already approved within ${worstBu.bu}. It is committed at a site with no work waiting,`
+        + ` while the site with the work cannot be billed. ${worstBu.bu} alone holds ${money(worstBu.surplus)} of unused funds`
+        + ` against a ${money(worstBu.shortfall)} shortfall.`, 56, 396, { width: W - 112, lineGap: 4 });
     doc.fillColor(AMBER).fontSize(14).font('Helvetica-Bold')
-      .text(`Across all business units, ${money(a.totals.coverable)} of the shortfall sits as surplus inside the SAME business unit.`, 56, 456, { width: W - 112, lineGap: 4 });
+      .text(`The next slide shows every business unit measured the same way, each against its own funds.`, 56, 462, { width: W - 112, lineGap: 4 });
   }
 
   // 3 — scale, by business unit
-  slide(3, 'Scale', 'Every business unit shows the same pattern');
+  slide(3, 'Scale', 'Each business unit, measured against its own funds');
   let y = 150;
+  doc.fillColor(GREY).fontSize(12).font('Helvetica')
+    .text('Nothing below is compared across business units — each row stands on its own funding.', 56, 118, { width: W - 112 });
   doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
-  doc.text('BUSINESS UNIT', 56, y); doc.text('SITES', 240, y); doc.text('WORK WAITING', 320, y, { width: 120, align: 'right' });
-  doc.text('AVAILABLE ON POs', 470, y, { width: 130, align: 'right' }); doc.text('COVERABLE WITHIN BU', 620, y, { width: 130, align: 'right' });
+  doc.text('BUSINESS UNIT', 56, y); doc.text('SITES', 214, y); doc.text('WORK WAITING', 268, y, { width: 118, align: 'right' });
+  doc.text('SHORTFALL', 400, y, { width: 112, align: 'right' });
+  doc.text('UNUSED IN SAME BU', 524, y, { width: 118, align: 'right' }); doc.text('COVERABLE', 654, y, { width: 96, align: 'right' });
   y += 18;
   doc.moveTo(56, y).lineTo(W - 56, y).lineWidth(0.8).stroke('#cbd5e1');
   y += 10;
   for (const b of a.buList.filter(x => x.pending > 0 || x.available > 0).slice(0, 8)) {
-    doc.fillColor(NAVY).fontSize(12).font('Helvetica-Bold').text(b.bu, 56, y);
-    doc.fillColor('#1f2937').fontSize(12).font('Helvetica').text(String(b.sites.length), 240, y);
-    doc.fillColor(b.pending > 0 ? RED : '#1f2937').text(money(b.pending), 320, y, { width: 120, align: 'right' });
-    doc.fillColor(GREEN).text(money(b.available), 470, y, { width: 130, align: 'right' });
+    doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(b.bu, 56, y, { width: 156 });
+    doc.fillColor('#1f2937').fontSize(11.5).font('Helvetica').text(String(b.sites.length), 214, y);
+    doc.text(money(b.pending), 268, y, { width: 118, align: 'right' });
+    doc.fillColor(b.shortfall > 0 ? RED : '#94a3b8').text(b.shortfall > 0 ? money(b.shortfall) : '—', 400, y, { width: 112, align: 'right' });
+    doc.fillColor(GREEN).text(money(b.surplus), 524, y, { width: 118, align: 'right' });
     doc.fillColor(b.coverable > 0 ? AMBER : '#94a3b8').font(b.coverable > 0 ? 'Helvetica-Bold' : 'Helvetica')
-      .text(b.coverable > 0 ? money(b.coverable) : '—', 620, y, { width: 130, align: 'right' });
-    y += 34;
+      .text(b.coverable > 0 ? money(b.coverable) : '—', 654, y, { width: 96, align: 'right' });
+    y += 32;
   }
   doc.moveTo(56, y + 4).lineTo(W - 56, y + 4).lineWidth(0.8).stroke('#cbd5e1');
-  doc.fillColor(NAVY).fontSize(14).font('Helvetica-Bold').text('Total', 56, y + 18);
-  doc.fillColor(RED).text(money(a.totals.pending), 320, y + 18, { width: 120, align: 'right' });
-  doc.fillColor(GREEN).text(money(a.totals.available), 470, y + 18, { width: 130, align: 'right' });
-  doc.fillColor(AMBER).text(money(a.totals.coverable), 620, y + 18, { width: 130, align: 'right' });
+  doc.fillColor(NAVY).fontSize(13).font('Helvetica-Bold').text('Total', 56, y + 18);
+  doc.text(money(a.totals.pending), 268, y + 18, { width: 118, align: 'right' });
+  doc.fillColor(RED).text(money(a.totals.shortfall), 400, y + 18, { width: 112, align: 'right' });
+  doc.fillColor(GREEN).text(money(a.buList.reduce((t, b) => t + b.surplus, 0)), 524, y + 18, { width: 118, align: 'right' });
+  doc.fillColor(AMBER).text(money(a.totals.coverable), 654, y + 18, { width: 96, align: 'right' });
+  doc.fillColor(GREY).fontSize(10).font('Helvetica')
+    .text('Coverable is the lesser of a business unit\u2019s own shortfall and its own unused funds. It never assumes'
+      + ' funds moving between business units.', 56, y + 48, { width: W - 112, lineGap: 3 });
 
   // 4 — closed POs
   slide(4, 'A second, smaller leak', 'Purchase orders are being closed with funds still on them');
@@ -337,24 +350,26 @@ function buildDeck(analysis) {
       + (a.totals.neverUsedCount ? `, and ${a.totals.neverUsedCount} of them were never invoiced against at all.` : '.'), 56, 118, { width: W - 112 });
   y = 196;
   doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
-  doc.text('PURCHASE ORDER', 56, y); doc.text('SITE', 220, y); doc.text('PO VALUE', 300, y, { width: 110, align: 'right' });
-  doc.text('CHARGED', 430, y, { width: 110, align: 'right' }); doc.text('STILL ON IT', 560, y, { width: 120, align: 'right' });
+  doc.text('PURCHASE ORDER', 56, y); doc.text('SITE', 196, y); doc.text('BUSINESS UNIT', 258, y);
+  doc.text('PO VALUE', 380, y, { width: 110, align: 'right' });
+  doc.text('CHARGED', 500, y, { width: 110, align: 'right' }); doc.text('STILL ON IT', 620, y, { width: 116, align: 'right' });
   y += 18;
   doc.moveTo(56, y).lineTo(W - 56, y).lineWidth(0.8).stroke('#cbd5e1');
   y += 10;
   for (const r of a.closedWithFunds.slice(0, 8)) {
     doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(r.poNumber, 56, y);
-    doc.fillColor('#1f2937').fontSize(11.5).font('Helvetica').text(r.siteCode || '—', 220, y);
-    doc.text(money(r.ceilingAmount), 300, y, { width: 110, align: 'right' });
-    doc.fillColor((r.consumed || 0) === 0 ? RED : '#1f2937').text((r.consumed || 0) === 0 ? 'never invoiced' : money(r.consumed), 430, y, { width: 110, align: 'right' });
-    doc.fillColor(RED).font('Helvetica-Bold').text(money(r.available), 560, y, { width: 120, align: 'right' });
+    doc.fillColor('#1f2937').fontSize(11.5).font('Helvetica').text(r.siteCode || '—', 196, y);
+    doc.fillColor(GREY).text(r.businessUnit || '—', 258, y, { width: 116 });
+    doc.fillColor('#1f2937').text(money(r.ceilingAmount), 380, y, { width: 110, align: 'right' });
+    doc.fillColor((r.consumed || 0) === 0 ? RED : '#1f2937').text((r.consumed || 0) === 0 ? 'never invoiced' : money(r.consumed), 500, y, { width: 110, align: 'right' });
+    doc.fillColor(RED).font('Helvetica-Bold').text(money(r.available), 620, y, { width: 116, align: 'right' });
     y += 32;
   }
 
   // 5 — the ask
   slide(5, 'What we are asking for', 'Three changes that release the work already completed');
-  bullet(155, `Move or top up funding where the work actually is. ${money(a.totals.coverable)} of the shortfall already exists as surplus`
-    + ` inside the same business unit — no new commitment is needed, only reallocation.`, RED);
+  bullet(155, `Reallocate inside each business unit, not across them. ${money(a.totals.coverable)} of the ${money(a.totals.shortfall)} shortfall`
+    + ` already exists as unused funds on POs in the SAME business unit as the work — no new commitment required.`, RED);
   bullet(245, `Fund the sites that carry no PO headroom at all. These are the sites where invoices are held back the longest,`
     + ` and where the ageing is worst.`, AMBER);
   bullet(325, `Review purchase orders before they are closed. ${money(a.totals.closedFunds)} sits on POs that can no longer be`
