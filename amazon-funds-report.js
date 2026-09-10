@@ -40,13 +40,29 @@ function analyse(invoices, { snowOnly = true } = {}) {
     b.invoices += s.count || 0;
   }
   for (const b of Object.values(byBu)) {
+    // ARITHMETIC: per-site shortfall and surplus, over EVERY site.
+    // This was previously derived from the threshold-filtered "starved" list
+    // and summed their whole PENDING rather than their SHORTFALL — so it both
+    // overstated sites that had partial funding and dropped every site below
+    // the threshold. NACF came out $780k light and GSF/R2L showed nothing at
+    // all despite having real shortfalls (Edwin spotted it, 2026-09-10).
+    b.shortfall = 0; b.surplus = 0; b.overdrawn = 0; b.overdrawnSites = [];
+    for (const s of b.sites) {
+      const p = s.pending || 0, av = s.available || 0;
+      b.shortfall += Math.max(0, p - av);
+      b.surplus += Math.max(0, av - p);
+      // Negative available = already invoiced past the PO's value. Worth
+      // naming separately; it is a different problem from an empty PO.
+      if (av < 0) { b.overdrawn += av; b.overdrawnSites.push(s); }
+    }
+    b.coverable = Math.min(b.shortfall, b.surplus);
+
+    // The threshold lists are for CHOOSING A CLEAR EXAMPLE to show, nothing
+    // else. They must never feed a total.
     b.starved = b.sites.filter(s => (s.pending || 0) > STARVED_MIN_PENDING && (s.available || 0) < (s.pending || 0) * COVER_RATIO)
       .sort((x, y) => (y.pending || 0) - (x.pending || 0));
-    b.surplus = b.sites.filter(s => (s.available || 0) > SURPLUS_MIN_AVAILABLE && (s.pending || 0) < (s.available || 0) * COVER_RATIO)
+    b.surplusSites = b.sites.filter(s => (s.available || 0) > SURPLUS_MIN_AVAILABLE && (s.pending || 0) < (s.available || 0) * COVER_RATIO)
       .sort((x, y) => (y.available || 0) - (x.available || 0));
-    b.starvedTotal = b.starved.reduce((t, s) => t + (s.pending || 0), 0);
-    b.surplusTotal = b.surplus.reduce((t, s) => t + (s.available || 0), 0);
-    b.coverable = Math.min(b.starvedTotal, b.surplusTotal);
     b.sites.sort((x, y) => (y.pending || 0) - (x.pending || 0) || (y.available || 0) - (x.available || 0));
   }
 
@@ -63,9 +79,10 @@ function analyse(invoices, { snowOnly = true } = {}) {
     available: sites.reduce((t, s) => t + (s.available || 0), 0),
     invoices: sites.reduce((t, s) => t + (s.count || 0), 0),
     shortSites: sites.filter(s => (s.pending || 0) > (s.available || 0)).length,
-    shortfall: sites.filter(s => (s.pending || 0) > (s.available || 0))
-      .reduce((t, s) => t + ((s.pending || 0) - (s.available || 0)), 0),
+    shortfall: sites.reduce((t, s) => t + Math.max(0, (s.pending || 0) - (s.available || 0)), 0),
     coverable: Object.values(byBu).reduce((t, b) => t + b.coverable, 0),
+    overdrawnSites: sites.filter(s => (s.available || 0) < 0).length,
+    overdrawn: sites.reduce((t, s) => t + Math.min(0, s.available || 0), 0),
     closedCount: closedWithFunds.length,
     closedFunds: closedWithFunds.reduce((t, r) => t + (r.available || 0), 0),
     neverUsedCount: neverUsed.length,
@@ -104,6 +121,8 @@ async function buildWorkbook(invoices, opts = {}) {
     ['Sites where pending exceeds available', a.totals.shortSites],
     ['Total shortfall at those sites', a.totals.shortfall],
     ['Of that, coverable from surplus in the SAME business unit', a.totals.coverable],
+    ['Sites already invoiced past their PO value', a.totals.overdrawnSites],
+    ['Value invoiced beyond the PO', Math.abs(a.totals.overdrawn)],
     ['POs closed while still holding funds', a.totals.closedCount],
     ['Value stranded on closed POs', a.totals.closedFunds],
   ];
@@ -116,12 +135,12 @@ async function buildWorkbook(invoices, opts = {}) {
   s1.getColumn(1).width = 56; s1.getColumn(2).width = 20;
   s1.addRow([]);
 
-  const h = s1.addRow(['Business unit', 'Sites', 'Invoices pending', 'Pending value', 'Available on POs', 'Starved sites', 'Surplus sites', 'Coverable within BU']);
+  const h = s1.addRow(['Business unit', 'Sites', 'Invoices pending', 'Pending value', 'Available on POs', 'Shortfall', 'Surplus', 'Coverable within BU']);
   h.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
   [22, 8, 16, 16, 18, 14, 14, 20].forEach((w, i) => { s1.getColumn(i + 1).width = Math.max(s1.getColumn(i + 1).width || 0, w); });
   for (const b of a.buList) {
-    const r = s1.addRow([b.bu, b.sites.length, b.invoices, b.pending, b.available, b.starved.length, b.surplus.length, b.coverable]);
-    [4, 5, 8].forEach(ci => { r.getCell(ci).numFmt = money2; });
+    const r = s1.addRow([b.bu, b.sites.length, b.invoices, b.pending, b.available, b.shortfall, b.surplus, b.coverable]);
+    [4, 5, 6, 7, 8].forEach(ci => { r.getCell(ci).numFmt = money2; });
     if (b.coverable > 0) r.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
   }
 
@@ -145,7 +164,7 @@ async function buildWorkbook(invoices, opts = {}) {
     const master = db.getAmazonLocationMap();
     for (const s of b.sites) {
       const m = master[s.site] || {};
-      const starved = b.starved.includes(s), surplus = b.surplus.includes(s);
+      const starved = b.starved.includes(s), surplus = b.surplusSites.includes(s);
       const status = starved ? 'NEEDS FUNDS — work waiting, PO empty'
         : surplus ? 'Surplus — funds unused, no work waiting'
         : (s.pending || 0) > (s.available || 0) ? 'Short' : '';
@@ -227,10 +246,12 @@ function buildDeck(analysis) {
       + ` The funds are simply on the wrong purchase orders.`, 80, 398, { width: W - 160, lineGap: 4 });
 
   // 2 — the mechanism, using the clearest real example
-  const worstBu = a.buList.filter(b => b.coverable > 0).sort((x, y) => y.coverable - x.coverable)[0];
+  const worstBu = a.buList
+    .filter(b => b.coverable > 0 && b.starved.length && b.surplusSites.length)
+    .sort((x, y) => y.coverable - x.coverable)[0];
   slide(2, 'Why it happens', 'Funds are committed per site, but work does not follow the same split');
   if (worstBu) {
-    const st = worstBu.starved[0], su = worstBu.surplus.slice(0, 2);
+    const st = worstBu.starved[0], su = worstBu.surplusSites.slice(0, 2);
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
       .text(`${worstBu.bu} is the clearest case. Within this one business unit:`, 56, 118, { width: W - 112 });
     doc.roundedRect(56, 156, 330, 210, 8).fill('#fef2f2');
