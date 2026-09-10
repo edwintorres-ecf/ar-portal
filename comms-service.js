@@ -60,8 +60,25 @@ function verifyToken(token) {
 const TOKEN_RE = /ECF#([a-z0-9]{1,10}-[0-9a-f]{10})/i;
 
 // ─── Allowlist (the go-live gate) ────────────────────────────────────────────
+// An entry may be a full address OR a bare domain beginning with "@", which
+// permits every address on it. That is what makes real testing possible: the
+// whole team can be sent to and can reply, while customers stay blocked
+// (Edwin 2026-09-10). Clearing the list entirely is still the go-live step.
 function allowlist() {
-  return (process.env.COMMS_ALLOWLIST || '').split(',').map(graph.normEmail).filter(Boolean);
+  return (process.env.COMMS_ALLOWLIST || '').split(',')
+    .map(s => String(s || '').trim().toLowerCase())
+    .filter(Boolean)
+    .map(e => e.startsWith('@') ? e : graph.normEmail(e))
+    .filter(Boolean);
+}
+
+// True when the allowlist is empty (live) or the address is covered by it.
+function allowlistPermits(email) {
+  const allow = allowlist();
+  if (!allow.length) return true;
+  const e = graph.normEmail(email);
+  if (!e) return false;
+  return allow.some(a => a.startsWith('@') ? e.endsWith(a) : a === e);
 }
 
 // ─── Money / date formatting ─────────────────────────────────────────────────
@@ -290,9 +307,12 @@ function resolveRecipients(customerId, toEmails, ccEmails) {
   }
   const allow = allowlist();
   if (allow.length) {
-    const outside = [...to, ...cc].filter(e => !allow.includes(e));
+    const outside = [...to, ...cc].filter(e => !allowlistPermits(e));
     if (outside.length) {
-      throw new Error(`TEST MODE: recipient(s) not in COMMS_ALLOWLIST: ${outside.join(', ')}. Clearing the allowlist is the go-live step.`);
+      const domains = allow.filter(a => a.startsWith('@'));
+      throw new Error(`TEST MODE: recipient(s) not permitted by COMMS_ALLOWLIST: ${outside.join(', ')}. `
+        + (domains.length ? `Testing is open to ${domains.join(', ')}. ` : '')
+        + 'Clearing the allowlist is the go-live step.');
     }
   }
   return { to, cc };
@@ -650,5 +670,5 @@ function seedTemplates() {
 
 module.exports = {
   sendMessage, previewMessage, seedTemplates, buildStatementHtml, htmlToPdf, ecfLogoUri,
-  signToken, verifyToken, TOKEN_RE, allowlist, extractTokens, renderSignature,
+  signToken, verifyToken, TOKEN_RE, allowlist, allowlistPermits, extractTokens, renderSignature,
 };

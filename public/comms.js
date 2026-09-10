@@ -291,7 +291,7 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
     ? `Invoice ${invoiceId} · sends from ${config.mailbox || 'invoices@'}`
     : `Sends from ${config.mailbox || 'invoices@'}`;
   document.getElementById('composer-testmode').innerHTML = config.testMode
-    ? `<div style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:8px">TEST MODE: sends are restricted to the internal allowlist. Customers cannot receive email until Edwin clears COMMS_ALLOWLIST.</div>`
+    ? `<div style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:8px">TEST MODE: sends go only to ${commsAllowlistText(config)}. Customers cannot receive email until Edwin clears COMMS_ALLOWLIST.</div>`
     : '';
   document.getElementById('composer-to-wrap').innerHTML = contacts.length
     ? 'To: ' + contacts.map(c => `<label style="margin-right:12px;display:inline-flex;align-items:center;gap:4px">
@@ -2246,7 +2246,7 @@ async function commsLoadDunning() {
         ${tile(String(reachableNow), 'Customers reachable now', 'match a rule + dunning-approved contact')}
         ${tile(lastStats ? String(lastStats.digests || 0) : '—', 'Digests in last run', lastRun ? new Date((lastRun.started_at || '').replace(' ', 'T') + 'Z').toLocaleString() : 'no runs yet')}
       </div>
-      ${config.testMode ? `<div style="background:#fef3c7;color:#92400e;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:600;margin-bottom:14px">🧪 TEST MODE — every send (including armed dunning runs) is restricted to the internal allowlist until it is cleared.</div>` : ''}
+      ${config.testMode ? `<div style="background:#fef3c7;color:#92400e;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:600;margin-bottom:14px">🧪 TEST MODE — every send (including armed dunning runs) goes only to ${commsAllowlistText(config)}, until the allowlist is cleared.</div>` : ''}
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px">
         <div style="font-size:13px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.05em">Escalation pipeline</div>
@@ -2977,6 +2977,19 @@ async function orgSaveRole() {
 // The aging field only ever meant "days PAST due", so a rule like Edwin's
 // "Auto Assign <5 Days to Due Date" could not be expressed at all. Days are now
 // signed and relative to the due date: -5 means five days BEFORE it falls due.
+// Reads the allowlist back in plain words. A domain entry ("@ecf.com") means
+// anyone there can be tested against; a full address means only that person.
+function commsAllowlistText(config) {
+  const list = (config && config.allowlist) || [];
+  if (!list.length) return 'the internal allowlist';
+  const domains = list.filter(a => String(a).startsWith('@'));
+  const people = list.filter(a => !String(a).startsWith('@'));
+  const parts = [];
+  if (domains.length) parts.push('anyone at ' + domains.map(escHtml).join(' or '));
+  if (people.length) parts.push(people.map(escHtml).join(', '));
+  return parts.join(' and ');
+}
+
 let _arRules = [], _arLocs = [], _arHouse = [], _arCustomers = [];
 
 // A rule's customer scope in words. House accounts are called out separately

@@ -3110,6 +3110,9 @@ app.get('/api/comms/config', requireAuth, (req, res) => {
     mailbox,
     testMode: comms.allowlist().length > 0,
     allowlistSize: comms.allowlist().length,
+    // Say WHO can be tested against, not just that a gate exists — a bare
+    // "restricted to the allowlist" told nobody whether their own address works.
+    allowlist: comms.allowlist(),
     dunningArmed: process.env.DUNNING_ARMED === '1',
     statementsArmed: process.env.STATEMENTS_ARMED === '1',
     caps: effectiveCaps(req.session.user.email, req.session.user.role),
