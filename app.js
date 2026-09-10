@@ -3977,6 +3977,33 @@ app.get('/api/comms/templates/:key/versions', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Check the mailbox NOW. The scheduled poll runs every two minutes, which is
+// fine in normal use but makes testing look broken: you reply, look straight
+// away, and your message genuinely has not been fetched yet (Edwin 2026-09-10).
+let _manualPollRunning = false;
+app.post('/api/comms/inbound/poll', requireAuth, requirePerm('email.send'), async (req, res) => {
+  if (_manualPollRunning) return res.json({ alreadyRunning: true });
+  _manualPollRunning = true;
+  try {
+    const { runInboundPoll } = require('./comms-inbound');
+    const stats = await runInboundPoll({ notify: notifyUser });
+    db.auditLog(req.session.user.email, 'comm_poll_manual', null, JSON.stringify(stats));
+    res.json({ ok: true, ...stats, lastPoll: db.getCommState('inbound_last_poll') });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally { _manualPollRunning = false; }
+});
+
+app.get('/api/comms/inbound/state', requireAuth, (req, res) => {
+  try {
+    res.json({
+      lastPoll: db.getCommState('inbound_last_poll') || null,
+      intervalSeconds: 120,
+      running: _manualPollRunning,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/comms/conversations', requireAuth, (req, res) => {
   try {
     // needsReply=1: customer spoke last and the thread is open — the core

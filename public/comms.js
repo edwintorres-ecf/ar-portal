@@ -2066,8 +2066,12 @@ async function commsLoadMailbox() {
     ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
   ];
   root.innerHTML = `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 12px">
       ${chips.map(([k, label]) => `<button class="btn-sm" style="border:none;padding:5px 12px;border-radius:14px;cursor:pointer;font-size:12px;font-weight:600;background:${_mailboxFilter === k ? 'var(--navy)' : '#f1f5f9'};color:${_mailboxFilter === k ? '#fff' : 'var(--gray-700)'}" onclick="_mailboxFilter='${k}';commsLoadMailbox()">${label}</button>`).join('')}
+      <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span id="mailbox-poll-state" style="font-size:11.5px;color:var(--gray-500)"></span>
+        <button class="btn-sm" id="mailbox-check-btn" style="border:1px solid var(--gray-300);background:var(--white);padding:5px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600" onclick="commsCheckMail(this)">↻ Check mail</button>
+      </span>
     </div>
     <div id="mailbox-list"><div style="padding:24px;text-align:center;color:var(--gray-500)">Loading…</div></div>
     <div id="mailbox-thread" style="display:none"></div>`;
@@ -2080,8 +2084,9 @@ async function commsLoadMailbox() {
     const list = document.getElementById('mailbox-list');
     if (!convs.length) {
       list.innerHTML = _mailboxFilter === 'needs-reply'
-        ? '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Nothing awaiting a reply. Customer responses land here the moment they arrive.</div>'
+        ? '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Nothing awaiting a reply. The mailbox is checked every couple of minutes — use “Check mail” if you are expecting something now.</div>'
         : '<div style="padding:30px;text-align:center;color:var(--gray-500)">No conversations here.</div>';
+      commsPollState();
       return;
     }
     const dirIcon = (c) => c.last_direction === 'in' ? '📩' : c.last_direction === 'out' ? '📤' : '·';
@@ -2102,9 +2107,43 @@ async function commsLoadMailbox() {
           <td style="padding:8px 10px" onclick="event.stopPropagation()">
             ${commsCanEdit() && c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600" onclick="commsReplyToConversation(${c.id})">↩ Reply</button>` : ''}</td>
         </tr>`).join('')}</tbody></table>`;
+    commsPollState();
   } catch (e) {
     document.getElementById('mailbox-list').innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
+}
+
+// ─── Mailbox freshness ──────────────────────────────────────────────────────
+// "It did not reach the portal" was really "it has not been fetched yet": the
+// poll runs every two minutes and nothing on screen said so, or when it last
+// ran (Edwin 2026-09-10).
+async function commsPollState() {
+  const el = document.getElementById('mailbox-poll-state');
+  if (!el) return;
+  try {
+    const st = await apiFetch('/api/comms/inbound/state');
+    if (!st.lastPoll) { el.textContent = 'mailbox not checked yet'; return; }
+    const secs = Math.max(0, Math.round((Date.now() - Date.parse(st.lastPoll)) / 1000));
+    const ago = secs < 60 ? `${secs}s ago` : secs < 3600 ? `${Math.round(secs / 60)}m ago` : `${Math.round(secs / 3600)}h ago`;
+    // Amber once it is overdue — that is the difference between "wait a moment"
+    // and "the poller has stopped", which the old blank space could not say.
+    const late = secs > (st.intervalSeconds || 120) * 2;
+    el.innerHTML = `<span style="color:${late ? '#b45309' : 'var(--gray-500)'}">mail checked ${escHtml(ago)}${late ? ' — overdue' : ''}</span>`;
+  } catch (e) { el.textContent = ''; }
+}
+
+async function commsCheckMail(btn) {
+  btn.disabled = true; btn.textContent = '↻ Checking…';
+  try {
+    const r = await apiFetch('/api/comms/inbound/poll', { method: 'POST', body: JSON.stringify({}) });
+    if (r.alreadyRunning) showToast('Already checking — give it a second', 'info');
+    else {
+      const got = (r.filed || 0) + (r.autoFiled || 0) + (r.triage || 0);
+      showToast(got ? `${got} new message${got === 1 ? '' : 's'}` : 'No new mail', got ? 'success' : 'info');
+    }
+    await commsLoadMailbox();
+  } catch (e) { showToast('Check failed: ' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '↻ Check mail';
 }
 
 async function commsOpenThread(id) {
