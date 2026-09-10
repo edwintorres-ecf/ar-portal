@@ -1075,8 +1075,41 @@ app.post('/api/amazon/site-contacts', requireAuth, requirePerm('po.edit'), (req,
     }
     if (note !== undefined) fields.note = note;
     const out = db.setSiteContact(siteCode, fields, req.session.user.email);
+    // Keep the collector table in step. Two separate lists of "who owns this
+    // site" would drift, and everything that already reads site_collectors
+    // (auto-assign fallbacks, the drill-down) would quietly disagree.
+    if (internalEmail !== undefined) db.setSiteCollector(siteCode, internalEmail || null, req.session.user.email);
     db.auditLog(req.session.user.email, 'site_contact_set', siteCode, JSON.stringify(fields));
     res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Assign one person to many sites at once — the normal case when a branch or a
+// business unit changes hands.
+app.post('/api/amazon/site-contacts/bulk', requireAuth, requirePerm('po.edit'), (req, res) => {
+  try {
+    const { siteCodes, internalEmail, alsoRouteOpenRejections } = req.body || {};
+    if (!Array.isArray(siteCodes) || !siteCodes.length) return res.status(400).json({ error: 'siteCodes required' });
+    const email = (internalEmail || '').trim().toLowerCase() || null;
+    if (email && !email.endsWith('@eastcoastfacilities.com')) return res.status(400).json({ error: 'Must be an @eastcoastfacilities.com address' });
+    for (const code of siteCodes) {
+      db.setSiteContact(code, { internal_email: email, internal_pinned: email ? 1 : 0 }, req.session.user.email);
+      db.setSiteCollector(code, email, req.session.user.email);
+    }
+    // Rejections already sitting unrouted at those sites should land on the new
+    // owner immediately, rather than waiting for the next hourly sweep.
+    let rerouted = 0;
+    if (alsoRouteOpenRejections !== false && email) {
+      const set = new Set(siteCodes);
+      for (const r of db.listRejections()) {
+        if (!r.site_code || !set.has(r.site_code) || r.routed_to) continue;
+        db.setRejectionRoute(r.payee_id, email);
+        rerouted++;
+      }
+    }
+    db.auditLog(req.session.user.email, 'site_contact_bulk', null,
+      `${siteCodes.length} site(s) -> ${email || '(cleared)'}${rerouted ? `, ${rerouted} open rejection(s) rerouted` : ''}`);
+    res.json({ ok: true, count: siteCodes.length, rerouted });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
