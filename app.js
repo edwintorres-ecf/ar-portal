@@ -3574,10 +3574,6 @@ function applyAssignmentRules(triggeredBy) {
   for (const inv of invoices) {
     if (inv.totalDue <= 0.01) continue;
     if (invColl[inv.recordNo]) continue;
-    if (houseAccounts.has(inv.customerId)) {
-      skippedHouse[inv.customerId] = (skippedHouse[inv.customerId] || 0) + 1;
-      continue;
-    }
     const acct = acctByCust[inv.customerId];
     if (acct && acct.collector_email) continue;
     // Days relative to the DUE DATE, signed. `inv.daysOverdue` is floored at 0
@@ -3596,6 +3592,13 @@ function applyAssignmentRules(triggeredBy) {
       return d >= min && d <= max;
     });
     if (!rule) continue;
+    // Checked AFTER the rule matches, so the reported skip count is the number
+    // this exclusion actually PREVENTED — counting every unassigned house
+    // invoice would have reported 2,713 for a rule that wanted 52 of them.
+    if (houseAccounts.has(inv.customerId)) {
+      skippedHouse[inv.customerId] = (skippedHouse[inv.customerId] || 0) + 1;
+      continue;
+    }
     db.setInvoiceCollector(inv.recordNo, inv.invoiceId, rule.collector_email, 'auto-rule:' + rule.id);
     assigned++;
     byRule[rule.name] = (byRule[rule.name] || 0) + 1;
