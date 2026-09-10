@@ -5485,6 +5485,25 @@ function exportCaseStudy() {
   window.location = `/api/po/funds-case-study.pdf?snow=${_pbsSnowOnly ? 1 : 0}&t=${Date.now()}`;
 }
 
+// One workbook per business unit — summary, detail by PO, detail by site code.
+// Uses the BU already picked in the filter bar when there is exactly one, so the
+// common case is a single click.
+async function exportBuWorkbook() {
+  let bu = _poFilterBu.length === 1 ? _poFilterBu[0] : null;
+  if (bu === '(none)') bu = null;
+  if (!bu) {
+    let units = [];
+    try { units = (await apiFetch('/api/amazon/business-units')) || []; } catch (e) {}
+    const list = units.map(u => `${u.bu} — ${u.invoices} open, ${fmt$(u.amount)}`).join('\n');
+    const pick = prompt(`Which business unit?\n\n${list}\n\nType the code (e.g. NACF):`, units.length ? units[0].bu : 'NACF');
+    if (!pick) return;
+    bu = pick.trim();
+  }
+  showToast(`Building the ${bu} workbook…`, 'info');
+  window.location = `/api/amazon/bu-workbook.xlsx?bu=${encodeURIComponent(bu)}&season=2025-26`
+    + (_pbsSnowOnly ? '&snow=1' : '') + `&t=${Date.now()}`;
+}
+
 function exportPendingBySiteXlsx() {
   // Carry the on-screen BU/site filter into the workbook — an export that
   // silently widens back out to the whole book is worse than no export.
@@ -5727,6 +5746,7 @@ function renderPendingBySite() {
       <button class="btn" style="font-size:11px;padding:4px 10px" onclick="exportPendingBySiteXlsx()">⬇ Export Excel</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="Summary sheet plus one sheet per business unit, showing where funds are short and where they are sitting unused" onclick="exportFundsReport()">📊 Funds report by BU</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="Five-slide case study for Amazon, built from this data" onclick="exportCaseStudy()">📑 Case study (PDF)</button>
+      <button class="btn" style="font-size:11px;padding:4px 10px" title="One workbook per business unit: summary of stalled billing, detail by PO, detail by site code" onclick="exportBuWorkbook()">📘 BU workbook</button>
     </div>
     ${buStrip}
     ${reviewBanner}
