@@ -485,6 +485,11 @@ function initSchema() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_user ON report_jobs(user_email, status)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_status ON report_jobs(status, id)');
 
+  // One user row per address, whatever the capitalisation. Created here so the
+  // standby database gets it too; it fails harmlessly if duplicates still exist
+  // (run _dupusers.js --apply to merge them first).
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_user_roles_email_nocase ON user_roles(email COLLATE NOCASE)'); } catch (e) {}
+
   // ─── Site contacts (2026-09-10, Edwin) ────────────────────────────────────
   // Two different people, deliberately kept apart:
   //  - the AMAZON contact named on the site's POs (purchaser contact), who is
@@ -880,9 +885,14 @@ function seedDefaultRegions() {
 
 // ─── User Roles ────────────────────────────────────────────────────────────
 
+// Email addresses are case-insensitive; SQLite's TEXT comparison is not. A
+// case-sensitive lookup here is what let one person become two accounts: the
+// seeded row was "justin.gamez@", Microsoft signed them in as "Justin.Gamez@",
+// this found nothing, and provisionNewUser inserted a second row as a viewer
+// (Edwin spotted the duplicate in the org chart, 2026-09-10).
 function getUserRole(email) {
   const db = getDb();
-  const stmt = db.prepare('SELECT * FROM user_roles WHERE email = ?');
+  const stmt = db.prepare('SELECT * FROM user_roles WHERE email = ? COLLATE NOCASE');
   return stmt.get(email) || null;
 }
 
@@ -892,7 +902,7 @@ function upsertUserRole(email, name, role, locationFilter, customerFilter) {
   if (existing) {
     db.prepare(`
       UPDATE user_roles SET name=?, role=?, location_filter=?, customer_filter=?, updated_at=datetime('now')
-      WHERE email=?
+      WHERE email=? COLLATE NOCASE
     `).run(name, role, locationFilter, customerFilter, email);
   } else {
     db.prepare(`
@@ -905,6 +915,16 @@ function upsertUserRole(email, name, role, locationFilter, customerFilter) {
 
 function provisionNewUser(email, name) {
   const db = getDb();
+  // Someone seeded ahead of their first sign-in already HAS a row, possibly
+  // under a different capitalisation. Never create a second one — and never
+  // reset the role they were given to 'viewer'.
+  const existing = getUserRole(email);
+  if (existing) {
+    if (!existing.name && name) {
+      db.prepare('UPDATE user_roles SET name=? WHERE email=? COLLATE NOCASE').run(name, email);
+    }
+    return getUserRole(email);
+  }
   // Edwin always gets admin
   const role = (email.toLowerCase() === 'edwin.torres@eastcoastfacilities.com') ? 'admin' : 'viewer';
   db.prepare(`
@@ -2243,6 +2263,9 @@ function ensureInviteColumns() {
 function preProvisionUser(email, name, role, jobTitle) {
   const d = getDb();
   ensureInviteColumns();
+  // Store lower-case so what is seeded matches what Microsoft later signs in
+  // with, whatever case it hands back.
+  email = String(email || '').trim().toLowerCase();
   d.prepare(`
     INSERT OR IGNORE INTO user_roles (email, name, role, job_title)
     VALUES (?, ?, ?, ?)
