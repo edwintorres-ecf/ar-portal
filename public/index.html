@@ -595,7 +595,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     <div class="nav-group" data-group="insights">
       <div class="nav-tab nav-group-btn" onclick="toggleNavGroup(event,'insights')">Insights<span class="caret">▾</span></div>
       <div class="nav-group-menu">
-        <div class="nav-drop-item" data-view="reports" onclick="navGo('reports')">📊 Reports</div>
+        <div class="nav-drop-item" data-view="reports" onclick="navGo('reports')">📊 Reports<span id="downloads-badge" style="display:none;background:#16a34a;color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:5px"></span></div>
         <div class="nav-drop-item" data-view="activity" onclick="navGo('activity')">📋 Activity</div>
       </div>
     </div>
@@ -729,10 +729,12 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     <div class="invoice-table-container">
       <div class="invoice-table-header">
         <span id="table-count">Loading invoices…</span>
+        <span id="invoice-bulk-bar" style="display:none;margin-left:auto;align-items:center;gap:8px;font-size:12.5px"></span>
       </div>
       <table id="invoice-table">
         <thead>
           <tr>
+            <th style="width:30px" title="Select invoices to request copies of"><input type="checkbox" id="inv-sel-all" onclick="event.stopPropagation();invSelectAllVisible(this.checked)"></th>
             <th onclick="sortBy('invoiceId')">Invoice # <span class="sort-arrow">↕</span></th>
             <th onclick="sortBy('customerName')">Customer <span class="sort-arrow">↕</span></th>
             <th onclick="sortBy('locationName')">Location <span class="sort-arrow">↕</span></th>
@@ -745,6 +747,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
             <th>PDF</th>
           </tr>
           <tr class="col-filter-row">
+            <th></th>
             <th><input type="text" placeholder="Filter…" oninput="colFilterInput('invoiceId',this.value)"></th>
             <th><input type="text" placeholder="Filter…" oninput="colFilterInput('customerName',this.value)"></th>
             <th><input type="text" placeholder="Filter…" oninput="colFilterInput('locationName',this.value)"></th>
@@ -758,7 +761,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
           </tr>
         </thead>
         <tbody id="invoice-tbody">
-          <tr class="loading-row"><td colspan="10"><div class="spinner" style="border-color:rgba(30,58,95,0.2);border-top-color:var(--navy);"></div> Loading…</td></tr>
+          <tr class="loading-row"><td colspan="11"><div class="spinner" style="border-color:rgba(30,58,95,0.2);border-top-color:var(--navy);"></div> Loading…</td></tr>
         </tbody>
       </table>
       <div class="table-pagination" id="table-pagination" style="display:flex;align-items:center;justify-content:center;gap:14px;padding:12px;font-size:13px;color:var(--gray-600, #555);"></div>
@@ -1059,6 +1062,8 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 <!-- ─── REPORTS VIEW ─── -->
 <div id="view-reports" class="view">
   <div style="padding: 20px 24px; max-width: 1200px; margin: 0 auto;">
+    <!-- Anything requested from elsewhere in the portal lands here. -->
+    <div id="downloads-panel"></div>
     <div class="report-grid" id="report-grid">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading reports…</div>
     </div>
@@ -1330,6 +1335,54 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 // ─── State ─────────────────────────────────────────────────────────────────
 let allInvoices = [];
 let filteredInvoices = [];
+
+// ─── Invoice selection (for requesting copies in bulk) ──────────────────────
+// Keyed by record number and kept across paging and re-filtering, so a
+// selection built up over several pages survives long enough to be acted on.
+const _invSel = new Set();
+
+function invSelect(recordNo, on) {
+  if (on) _invSel.add(String(recordNo)); else _invSel.delete(String(recordNo));
+  renderInvoiceBulkBar();
+  syncInvSelectAllBox();
+}
+function invSelectAllVisible(on) {
+  for (const inv of currentPageInvoices()) {
+    if (on) _invSel.add(String(inv.recordNo)); else _invSel.delete(String(inv.recordNo));
+  }
+  renderInvoices();
+}
+function invSelectAllFiltered() {
+  for (const inv of filteredInvoices) _invSel.add(String(inv.recordNo));
+  renderInvoices();
+}
+function invClearSelection() { _invSel.clear(); renderInvoices(); }
+
+function syncInvSelectAllBox() {
+  const box = document.getElementById('inv-sel-all');
+  if (!box) return;
+  const page = currentPageInvoices();
+  box.checked = page.length > 0 && page.every(i => _invSel.has(String(i.recordNo)));
+}
+
+function renderInvoiceBulkBar() {
+  const bar = document.getElementById('invoice-bulk-bar');
+  if (!bar) return;
+  const n = _invSel.size;
+  if (!n) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  const notAllFiltered = filteredInvoices.length > n;
+  bar.innerHTML = `<span style="font-weight:600;color:var(--navy)">${n} selected</span>
+    <button class="btn" style="font-size:12px;padding:4px 12px" onclick="requestSelectedCopies()">📥 Request ${n} cop${n === 1 ? 'y' : 'ies'}</button>
+    ${notAllFiltered ? `<button class="btn" style="font-size:12px;padding:4px 10px" onclick="invSelectAllFiltered()">Select all ${filteredInvoices.length} filtered</button>` : ''}
+    <button class="btn" style="font-size:12px;padding:4px 10px" onclick="invClearSelection()">Clear</button>`;
+}
+
+async function requestSelectedCopies() {
+  const list = [...(_invSel)];
+  await requestInvoiceCopies(list, `${list.length} invoice cop${list.length === 1 ? 'y' : 'ies'}`);
+  invClearSelection();
+}
 let currentUser = null;
 let sortField = 'bucket';
 let sortAsc = false;
@@ -1395,6 +1448,7 @@ async function init() {
   renderCalendar();
   loadMentions();      // load mention badge on boot
   loadPortalUsers();   // load users for @mention autocomplete
+  dlRefreshBadge();    // requested files ready to collect — the point is the user is elsewhere
 
   // Auto-refresh every 5 minutes
   setInterval(() => loadInvoices(false), 5 * 60 * 1000);
@@ -1489,7 +1543,7 @@ async function apiFetch(url, opts = {}) {
 }
 
 async function loadInvoices(showLoading = true) {
-  if (showLoading) document.getElementById('invoice-tbody').innerHTML = '<tr class="loading-row"><td colspan="10"><div class="spinner" style="border-color:rgba(30,58,95,0.2);border-top-color:var(--navy);"></div> Loading…</td></tr>';
+  if (showLoading) document.getElementById('invoice-tbody').innerHTML = '<tr class="loading-row"><td colspan="11"><div class="spinner" style="border-color:rgba(30,58,95,0.2);border-top-color:var(--navy);"></div> Loading…</td></tr>';
   try {
     const data = await apiFetch('/api/invoices');
     allInvoices = data.invoices || [];
@@ -1732,8 +1786,9 @@ function renderTable() {
 
   if (filteredInvoices.length === 0) {
     count.textContent = '0 invoices';
-    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>No invoices found</h3><p>Try adjusting your filters.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><h3>No invoices found</h3><p>Try adjusting your filters.</p></div></td></tr>';
     renderPagination(1);
+    renderInvoiceBulkBar();
     return;
   }
 
@@ -1755,6 +1810,7 @@ function renderTable() {
     const pdfIcon = `<span class="pdf-icon" data-recordno="${inv.recordNo}" onclick="event.stopPropagation(); openPdf('${inv.recordNo}', '${escHtml(inv.invoiceId)}')" title="Open PDF">📄</span>`;
 
     return `<tr class="${bucketClass}" onclick="openDrawer('${inv.recordNo}')">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${_invSel.has(String(inv.recordNo)) ? 'checked' : ''} onchange="invSelect('${inv.recordNo}', this.checked)"></td>
       <td><strong>${escHtml(inv.invoiceId || inv.recordNo)}</strong></td>
       <td>${escHtml(inv.customerName || inv.customerId)}</td>
       <td>${escHtml(inv.locationName || inv.locationId)}</td>
@@ -1767,6 +1823,15 @@ function renderTable() {
       <td>${pdfIcon}</td>
     </tr>`;
   }).join('');
+  renderInvoiceBulkBar();
+  syncInvSelectAllBox();
+}
+
+// The current page's rows, so "select all" on the header ticks what is visible
+// rather than silently grabbing thousands of filtered rows.
+function currentPageInvoices() {
+  const start = (currentPage - 1) * TABLE_PAGE_SIZE;
+  return filteredInvoices.slice(start, start + TABLE_PAGE_SIZE);
 }
 
 // ─── Drawer ────────────────────────────────────────────────────────────────
@@ -1939,6 +2004,7 @@ function renderDrawer(data) {
       <h3>Actions</h3>
       <div class="btn-row">
         <button class="btn btn-pdf" onclick="openPdf('${inv.recordNo}', '${escHtml(inv.invoiceId)}')">📄 View PDF</button>
+        <button class="btn" title="Queue a copy and carry on working — it lands under Insights → Reports" onclick="requestInvoiceCopies(['${inv.recordNo}'], 'Copy of ${escHtml(inv.invoiceId)}')">📥 Request copy</button>
         <button class="btn btn-secondary" id="oe-lines-btn-${inv.recordNo}" onclick="toggleOeLines('${inv.recordNo}', '${escHtml(inv.invoiceId)}')">📋 Line Items</button>
         ${window._aiAvailable ? `<button class="btn btn-secondary" onclick="aiSummary('${inv.recordNo}')">🤖 AI Summary</button>` : ''}
         ${canEdit ? `
@@ -3370,7 +3436,149 @@ function filterByCustomer(customerId) {
 }
 
 // ─── Reports View ─────────────────────────────────────────────────────────────
+// ─── Requested downloads ────────────────────────────────────────────────────
+// Invoice copies are fetched from Omnia one at a time at 17-26 seconds each, so
+// asking for a dozen used to mean several minutes of blocked UI. Requests are
+// queued instead: ask, carry on, collect from here (Edwin 2026-09-10).
+let _dlJobs = [], _dlPollTimer = null, _dlViewAll = false;
+
+async function loadDownloads(silent) {
+  const el = document.getElementById('downloads-panel');
+  if (!el) return;
+  if (!silent && !_dlJobs.length) el.innerHTML = '<div style="padding:14px;color:var(--gray-500);font-size:13px">Loading requests…</div>';
+  try {
+    const d = await apiFetch('/api/downloads' + (_dlViewAll ? '?all=1' : ''));
+    _dlJobs = d.jobs || [];
+    renderDownloads(d);
+    dlSchedulePoll();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:14px;color:var(--red);font-size:13px">${escHtml(e.message)}</div>`;
+  }
+}
+
+// Poll only while something is actually being worked on — a finished queue
+// should not keep waking the server up.
+function dlSchedulePoll() {
+  clearTimeout(_dlPollTimer);
+  const busy = _dlJobs.some(j => j.status === 'queued' || j.status === 'running');
+  if (!busy) return;
+  _dlPollTimer = setTimeout(() => {
+    if (document.getElementById('downloads-panel')) loadDownloads(true);
+  }, 4000);
+}
+
+function dlStatusChip(j) {
+  const map = {
+    queued:   ['#f1f5f9', '#475569', '⏳ Queued'],
+    running:  ['#fef3c7', '#92400e', '⚙️ Building'],
+    done:     ['#dcfce7', '#166534', '✅ Ready'],
+    failed:   ['#fee2e2', '#991b1b', '⚠️ Failed'],
+    cancelled:['#f1f5f9', '#64748b', 'Cancelled'],
+  };
+  const [bg, fg, label] = map[j.status] || ['#f1f5f9', '#475569', j.status];
+  const pct = j.total_count ? Math.round((j.done_count / j.total_count) * 100) : 0;
+  const text = j.status === 'running' && j.total_count > 1 ? `⚙️ ${j.done_count} of ${j.total_count}` : label;
+  return `<span style="background:${bg};color:${fg};border-radius:10px;padding:2px 9px;font-size:11px;font-weight:600;white-space:nowrap">${text}</span>`
+    + (j.status === 'running' && j.total_count > 1
+      ? `<div style="height:3px;background:var(--gray-200);border-radius:2px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#f59e0b"></div></div>` : '');
+}
+
+function dlSize(n) {
+  if (!n) return '';
+  return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
+function renderDownloads(d) {
+  const el = document.getElementById('downloads-panel');
+  if (!el) return;
+  const jobs = _dlJobs;
+  const s = d.summary || {};
+  const badge = document.getElementById('downloads-badge');
+  if (badge) {
+    const n = (s.ready || 0);
+    badge.textContent = n ? String(n) : '';
+    badge.style.display = n ? '' : 'none';
+    badge.style.background = '#16a34a';
+  }
+  if (!jobs.length) {
+    // Nothing requested yet is the normal state; don't shout about it.
+    el.innerHTML = '';
+    return;
+  }
+  const rows = jobs.map(j => {
+    const when = (j.finished_at || j.created_at || '').replace('T', ' ').slice(0, 16);
+    const miss = (j.missing || []).length;
+    return `<tr style="border-top:1px solid var(--gray-100)">
+      <td style="padding:8px 12px">
+        <div style="font-weight:600;color:var(--navy)">${escHtml(j.label || j.kind)}</div>
+        <div style="font-size:11px;color:var(--gray-500)">${escHtml(when)} UTC${j.size_bytes ? ' · ' + dlSize(j.size_bytes) : ''}${_dlViewAll ? ' · ' + escHtml(j.user_email) : ''}</div>
+        ${j.status === 'failed' && j.error ? `<div style="font-size:11px;color:#b91c1c;margin-top:2px">${escHtml(j.error)}</div>` : ''}
+        ${miss ? `<div style="font-size:11px;color:#b45309;margin-top:2px" title="${escHtml((j.missing || []).join('\n'))}">${miss} invoice${miss === 1 ? '' : 's'} had no PDF and ${miss === 1 ? 'was' : 'were'} left out — hover for the list</div>` : ''}
+      </td>
+      <td style="padding:8px 12px;width:150px">${dlStatusChip(j)}</td>
+      <td style="padding:8px 12px;text-align:right;white-space:nowrap">
+        ${j.status === 'done' ? `<a class="btn" href="/api/downloads/${j.id}/file" style="font-size:12px;padding:4px 12px;text-decoration:none" onclick="setTimeout(()=>loadDownloads(true),1200)">⬇ Download</a>` : ''}
+        <button class="btn" style="font-size:12px;padding:4px 10px" onclick="dlRemove(${j.id}, '${j.status}')">${j.status === 'running' ? 'Stop' : '✕'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--gray-100)">
+        <div style="font-size:14px;font-weight:700;color:var(--navy)">📥 Your requested files</div>
+        <div style="font-size:12px;color:var(--gray-500)">
+          ${s.ready ? `<b style="color:#166534">${s.ready} ready</b>` : ''}${s.ready && (s.queued || s.running) ? ' · ' : ''}${(s.queued || s.running) ? `${(s.queued || 0) + (s.running || 0)} still building` : ''}
+        </div>
+        <span style="margin-left:auto"></span>
+        ${d.canSeeAll ? `<label style="font-size:11.5px;color:var(--gray-500);display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${_dlViewAll ? 'checked' : ''} onchange="dlToggleAll()"> whole queue</label>` : ''}
+        <button class="btn" style="font-size:11.5px;padding:3px 10px" onclick="loadDownloads()">↻</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${rows}</tbody></table>
+      <div style="padding:7px 14px;font-size:11px;color:var(--gray-500);border-top:1px solid var(--gray-100)">Files are kept for ${d.keepDays || 7} days, then cleaned up.</div>
+    </div>`;
+}
+
+function dlToggleAll() { _dlViewAll = !_dlViewAll; loadDownloads(); }
+
+async function dlRemove(id, status) {
+  if (status === 'running' && !confirm('Stop building this file?')) return;
+  try { await apiFetch('/api/downloads/' + id, { method: 'DELETE' }); loadDownloads(); }
+  catch (e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+// Entry point used from anywhere in the portal: hand it record numbers, it
+// queues the work and tells the user where the result will appear.
+async function requestInvoiceCopies(recordNos, label) {
+  const list = [...new Set((recordNos || []).map(String))].filter(Boolean);
+  if (!list.length) { showToast('Nothing selected', 'error'); return; }
+  try {
+    const r = await apiFetch('/api/downloads/invoice-copies', { method: 'POST',
+      body: JSON.stringify({ recordNos: list, label }) });
+    showToast(`Building ${r.queued} cop${r.queued === 1 ? 'y' : 'ies'} — collect it under Insights → Reports`
+      + (r.capped ? ` (capped at ${r.maxPerJob} per request)` : ''), 'success');
+    dlRefreshBadge();
+  } catch (e) { showToast('Request failed: ' + e.message, 'error'); }
+}
+
+// Keeps the nav badge honest while the user is somewhere else entirely — that
+// is the whole point of the feature, so the signal has to reach them.
+let _dlBadgeTimer = null;
+async function dlRefreshBadge() {
+  try {
+    const s = await apiFetch('/api/downloads/summary');
+    const badge = document.getElementById('downloads-badge');
+    if (badge) {
+      const n = s.ready || 0;
+      badge.textContent = n ? String(n) : '';
+      badge.style.display = n ? '' : 'none';
+    }
+    clearTimeout(_dlBadgeTimer);
+    if ((s.queued || 0) + (s.running || 0) > 0) _dlBadgeTimer = setTimeout(dlRefreshBadge, 5000);
+  } catch (e) { /* not logged in yet, or offline */ }
+}
+
 async function loadReports() {
+  loadDownloads();
   const grid = document.getElementById('report-grid');
   if (!grid) return;
   grid.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-500);">Loading reports…</div>';
@@ -6373,7 +6581,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260910e"></script>
-<script src="/amazon.js?v=20260910e"></script>
+<script src="/comms.js?v=20260910f"></script>
+<script src="/amazon.js?v=20260910f"></script>
 </body>
 </html>

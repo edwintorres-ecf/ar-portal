@@ -559,6 +559,23 @@ function amazonExportCsv() {
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 800);
 }
 
+// Copies of everything currently in view. Slow work, so it is queued rather
+// than run in the page — the user carries on and collects it from Reports.
+function amazonRequestCopies() {
+  const rows = amzFiltered();
+  if (!rows.length) { showToast('Nothing in view to copy', 'error'); return; }
+  const cap = 500;
+  const take = rows.slice(0, cap);
+  const where = _amzPath.length
+    ? _amzPath.map(st => `${st.key}=${st.value}`).join(' · ')
+    : 'all Amazon';
+  const msg = rows.length > cap
+    ? `${rows.length.toLocaleString()} invoices are in view — request the first ${cap}?\n\nNarrow the filters to reach the rest.`
+    : `Request PDF copies of ${rows.length} invoice${rows.length === 1 ? '' : 's'}?\n\nThey are fetched one at a time, so this runs in the background. Collect the file under Insights → Reports.`;
+  if (!confirm(msg)) return;
+  requestInvoiceCopies(take.map(r => r.recordNo), `Amazon copies — ${where} (${take.length})`);
+}
+
 function amazonToggleReport() { _amzShowReport = !_amzShowReport; amazonRender(); }
 
 function amzToolbarHtml(rows) {
@@ -570,6 +587,7 @@ function amzToolbarHtml(rows) {
     <button onclick="amazonExportCsv()" title="The ${n.toLocaleString()} rows currently shown" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ CSV</button>
     <button onclick="amazonExportExcel()" title="Excel workbook with summary sheets plus the detail rows" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">⬇ Excel report</button>
     <button onclick="amazonAssignVisibleSites()" title="Assign a collector to every site currently in view" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">👤 Assign collector</button>
+    <button onclick="amazonRequestCopies()" title="Queue PDF copies of the invoices currently in view — collect them under Insights → Reports" style="padding:6px 12px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12px;cursor:pointer;">📥 Request copies</button>
     <span style="font-size:11px;color:var(--gray-500);">exports follow the filters and drill you have set — ${n.toLocaleString()} invoice${n === 1 ? '' : 's'}</span>
   </div>
   ${_amzShowReport ? amzReportHtml(rows) : ''}`;

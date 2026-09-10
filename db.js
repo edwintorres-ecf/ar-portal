@@ -448,6 +448,37 @@ function initSchema() {
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold INTEGER DEFAULT 0"); } catch(e) {}
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold_reason TEXT DEFAULT NULL"); } catch(e) {}
 
+  // ─── Requested reports (2026-09-10, Edwin) ────────────────────────────────
+  // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
+  // of copies meant sitting on a spinner for minutes and being unable to do
+  // anything else. Requests are queued here, a worker fills them, and the file
+  // waits in the Reports section for collection.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS report_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT NOT NULL,
+      kind TEXT NOT NULL,                -- 'invoice-copies'
+      label TEXT,                        -- what the user sees in the list
+      params TEXT,                       -- JSON: the request, replayed by the worker
+      status TEXT NOT NULL DEFAULT 'queued',   -- queued|running|done|failed|cancelled
+      done_count INTEGER DEFAULT 0,
+      total_count INTEGER DEFAULT 0,
+      missing TEXT,                      -- JSON array of invoice ids with no PDF source
+      filename TEXT,
+      file_path TEXT,
+      size_bytes INTEGER,
+      content_type TEXT,
+      error TEXT,
+      downloaded_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      started_at TEXT,
+      finished_at TEXT,
+      expires_at TEXT
+    );
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_user ON report_jobs(user_email, status)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_report_jobs_status ON report_jobs(status, id)');
+
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
 
@@ -2192,6 +2223,78 @@ function getHouseAccounts() {
 
 // Customers held back from dunning. Independent of house_account — a customer
 // can be either, both, or neither.
+// ─── Report jobs ────────────────────────────────────────────────────────────
+function createReportJob({ userEmail, kind, label, params, totalCount, expiresDays }) {
+  const d = getDb();
+  const r = d.prepare(`INSERT INTO report_jobs (user_email, kind, label, params, total_count, expires_at)
+    VALUES (?,?,?,?,?, datetime('now','+' || ? || ' days'))`)
+    .run(userEmail, kind, label || null, JSON.stringify(params || {}), totalCount || 0, String(expiresDays || 7));
+  return d.prepare('SELECT * FROM report_jobs WHERE id=?').get(r.lastInsertRowid);
+}
+
+function listReportJobs(userEmail, { all = false, limit = 100 } = {}) {
+  const d = getDb();
+  const rows = all
+    ? d.prepare('SELECT * FROM report_jobs ORDER BY id DESC LIMIT ?').all(limit)
+    : d.prepare('SELECT * FROM report_jobs WHERE user_email=? COLLATE NOCASE ORDER BY id DESC LIMIT ?').all(userEmail, limit);
+  return rows.map(r => {
+    let missing = [];
+    try { missing = JSON.parse(r.missing || '[]'); } catch (e) { missing = []; }
+    return { ...r, missing };
+  });
+}
+
+function getReportJob(id) {
+  return getDb().prepare('SELECT * FROM report_jobs WHERE id=?').get(id) || null;
+}
+
+// Claims the oldest queued job for the worker. Marking it running in the same
+// statement that selects it is what stops two ticks grabbing the same job.
+function claimNextReportJob() {
+  const d = getDb();
+  const row = d.prepare("SELECT * FROM report_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1").get();
+  if (!row) return null;
+  const upd = d.prepare("UPDATE report_jobs SET status='running', started_at=datetime('now') WHERE id=? AND status='queued'").run(row.id);
+  if (!upd.changes) return null;
+  return d.prepare('SELECT * FROM report_jobs WHERE id=?').get(row.id);
+}
+
+function updateReportJob(id, f) {
+  const d = getDb();
+  const sets = [], vals = [];
+  for (const k of ['status', 'label', 'done_count', 'total_count', 'missing', 'filename', 'file_path',
+                   'size_bytes', 'content_type', 'error', 'downloaded_at', 'finished_at']) {
+    if (f[k] !== undefined) { sets.push(k + '=?'); vals.push(f[k]); }
+  }
+  if (!sets.length) return getReportJob(id);
+  vals.push(id);
+  d.prepare('UPDATE report_jobs SET ' + sets.join(',') + ' WHERE id=?').run(...vals);
+  return getReportJob(id);
+}
+
+function deleteReportJob(id) { getDb().prepare('DELETE FROM report_jobs WHERE id=?').run(id); }
+
+// Jobs past their keep-until date, plus anything left 'running' from before a
+// restart — a process that died mid-job would otherwise block the queue for
+// ever behind a job nobody is working on.
+function expiredReportJobs() {
+  return getDb().prepare("SELECT * FROM report_jobs WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')").all();
+}
+function resetStuckReportJobs() {
+  return getDb().prepare("UPDATE report_jobs SET status='queued', started_at=NULL WHERE status='running'").run().changes;
+}
+
+function reportJobSummary(userEmail) {
+  const d = getDb();
+  const row = d.prepare(`SELECT
+      SUM(CASE WHEN status='queued'  THEN 1 ELSE 0 END) AS queued,
+      SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running,
+      SUM(CASE WHEN status='done' AND downloaded_at IS NULL THEN 1 ELSE 0 END) AS ready,
+      SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+    FROM report_jobs WHERE user_email=? COLLATE NOCASE`).get(userEmail) || {};
+  return { queued: row.queued || 0, running: row.running || 0, ready: row.ready || 0, failed: row.failed || 0 };
+}
+
 function getDunningHolds() {
   try {
     return db.prepare('SELECT customer_id, customer_name, dunning_hold_reason FROM customer_accounts WHERE dunning_hold=1').all();
@@ -2645,6 +2748,15 @@ module.exports = {
   getHouseAccounts,
   getHouseAccountIds,
   getDunningHolds,
+  createReportJob,
+  listReportJobs,
+  getReportJob,
+  claimNextReportJob,
+  updateReportJob,
+  deleteReportJob,
+  expiredReportJobs,
+  resetStuckReportJobs,
+  reportJobSummary,
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,

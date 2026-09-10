@@ -23,6 +23,7 @@ const db      = require('./db');
 const payee   = require('./payee');
 const { scrapePayeeCentral, scrapeOpenPOs } = require('./payee-scraper');
 const { scrapePoDetails } = require('./payee-po-detail-scraper');
+const reports = require('./reports');
 const { scanPoDocs } = require('./po-doc-watcher');
 const poLedger = require('./po-ledger');
 const siteLedger = require('./site-ledger');
@@ -779,6 +780,108 @@ async function fetchInvoicePdfBuffer(inv) {
   }
   return null;
 }
+
+// ─── Requested downloads: ask, keep working, collect later ──────────────────
+// Under /api/downloads rather than /api/reports so these can never shadow the
+// analytics report routes (/api/reports/aging-snapshot and friends) as either
+// set grows. The UI still presents them inside the Reports section.
+// The worker needs Sage and the same PDF resolution the live route uses, but it
+// must not import the web layer, so they are handed to it here.
+reports.configure({
+  fetchInvoicePdfBuffer,
+  getInvoices: async () => {
+    const cached = sage.getCachedInvoices();
+    return cached.length ? cached : await sage.getInvoices();
+  },
+});
+
+app.post('/api/downloads/invoice-copies', requireAuth, async (req, res) => {
+  try {
+    const user = req.session.user;
+    const { recordNos, label } = req.body || {};
+    if (!Array.isArray(recordNos) || !recordNos.length) return res.status(400).json({ error: 'recordNos required' });
+
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    // Scope is resolved HERE, at request time, against the requester. The queue
+    // then holds only invoices this person was allowed to see when they asked.
+    invoices = applyUserFilter(invoices, user);
+    const byRecord = new Map(invoices.map(i => [String(i.recordNo), i]));
+    const wanted = [], denied = [];
+    for (const rn of recordNos) {
+      const inv = byRecord.get(String(rn));
+      if (inv) wanted.push(inv); else denied.push(String(rn));
+    }
+    if (!wanted.length) return res.status(404).json({ error: 'None of those invoices are available to you' });
+
+    const out = reports.requestInvoiceCopies({ userEmail: user.email, invoices: wanted, label });
+    db.auditLog(user.email, 'report_request', String(out.job.id), `invoice-copies x${out.queued}`);
+    res.json({
+      ok: true, jobId: out.job.id, queued: out.queued,
+      capped: out.capped, maxPerJob: reports.MAX_INVOICES_PER_JOB,
+      skipped: denied.length,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/downloads', requireAuth, (req, res) => {
+  try {
+    // Admins can see the whole queue, which is what makes "why is mine slow"
+    // answerable; everyone else sees only their own requests.
+    const all = req.query.all === '1' && hasPerm(req.session.user, 'users.admin');
+    res.json({
+      jobs: db.listReportJobs(req.session.user.email, { all }),
+      summary: db.reportJobSummary(req.session.user.email),
+      keepDays: reports.KEEP_DAYS,
+      canSeeAll: hasPerm(req.session.user, 'users.admin'),
+      viewingAll: all,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/downloads/summary', requireAuth, (req, res) => {
+  try { res.json(db.reportJobSummary(req.session.user.email)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/downloads/:id/file', requireAuth, (req, res) => {
+  try {
+    const job = db.getReportJob(parseInt(req.params.id, 10));
+    if (!job) return res.status(404).json({ error: 'Not found' });
+    const mine = String(job.user_email || '').toLowerCase() === String(req.session.user.email || '').toLowerCase();
+    // Someone else's file is not yours to read, admin or not — a report can
+    // contain invoices outside your scope.
+    if (!mine) return res.status(404).json({ error: 'Not found' });
+    if (job.status !== 'done' || !job.file_path) return res.status(409).json({ error: 'Not ready yet', status: job.status });
+    if (!fs.existsSync(job.file_path)) return res.status(410).json({ error: 'That file has been cleaned up — request it again' });
+
+    db.updateReportJob(job.id, { downloaded_at: new Date().toISOString().slice(0, 19).replace('T', ' ') });
+    db.auditLog(req.session.user.email, 'report_download', String(job.id), job.filename || '');
+    res.setHeader('Content-Type', job.content_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${(job.filename || 'report').replace(/"/g, '')}"`);
+    res.setHeader('Content-Length', job.size_bytes || fs.statSync(job.file_path).size);
+    res.setHeader('Cache-Control', 'no-store, private');
+    fs.createReadStream(job.file_path).pipe(res);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/downloads/:id', requireAuth, (req, res) => {
+  try {
+    const job = db.getReportJob(parseInt(req.params.id, 10));
+    if (!job) return res.json({ ok: true });
+    const mine = String(job.user_email || '').toLowerCase() === String(req.session.user.email || '').toLowerCase();
+    if (!mine && !hasPerm(req.session.user, 'users.admin')) return res.status(404).json({ error: 'Not found' });
+    if (job.status === 'running') {
+      // Let the worker notice and stop between invoices rather than killing it.
+      db.updateReportJob(job.id, { status: 'cancelled', finished_at: new Date().toISOString().slice(0, 19).replace('T', ' ') });
+      return res.json({ ok: true, cancelled: true });
+    }
+    if (job.file_path) { try { fs.unlinkSync(job.file_path); } catch (e) { /* already gone */ } }
+    db.deleteReportJob(job.id);
+    db.auditLog(req.session.user.email, 'report_delete', String(job.id), job.filename || job.kind);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/api/invoice/:recordno/pdf', requireAuth, async (req, res) => {
   try {
@@ -5057,6 +5160,10 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   };
   setTimeout(doSiteLedgerRebuild, 4 * 60 * 1000);
   setInterval(doSiteLedgerRebuild, 60 * 60 * 1000);
+
+  // Report queue: requeue anything a restart interrupted, drop expired files,
+  // then work whatever is waiting.
+  try { reports.start(); } catch (e) { console.error('[reports] start failed:', e.message); }
 
   // Keep the local AI models hot so interactive calls stay ~fast (no ~20s cold
   // load). Warm on boot, then re-ping every 100 min (inside the 2h keep_alive).
