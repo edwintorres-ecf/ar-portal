@@ -7108,7 +7108,7 @@ function renderAmazonView() {
   const matching = _amzArFilter ? d.invoices.filter(_amzArFilter.test) : d.invoices;
   const matchTotal = matching.reduce((t, i) => t + (i.totalDue || 0), 0);
   const invoices = matching.slice().sort((a, b) => b.totalDue - a.totalDue).slice(0, 300);
-  const rows = invoices.map(inv => {
+  const rows = tblSortRows(invoices, 'amazonar').map(inv => {
     const ps = inv.payeeStatus;
     const statusBadge = ps
       ? `<span style="background:${ps.statusMeta?.bg||'#f3f4f6'};color:${ps.statusMeta?.color||'#374151'};padding:2px 7px;border-radius:8px;font-size:11px;font-weight:600">${ps.statusMeta?.icon||''} ${ps.status}</span>`
@@ -7116,6 +7116,9 @@ function renderAmazonView() {
     const agingColor = inv.bucket === 'current' ? '#16a34a' : inv.bucket === '1-30' ? '#d97706' : inv.bucket === '31-60' ? '#ea580c' : '#dc2626';
     return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="openDrawer('${inv.recordNo}')">
       <td style="padding:8px 12px;font-weight:600;color:var(--navy)">${escHtml(inv.invoiceId || inv.recordNo)}</td>
+      <td style="padding:8px 12px;font-size:12px;white-space:nowrap">${inv.siteCode
+        ? `<span style="font-weight:600;color:var(--navy)">${escHtml(inv.siteCode)}</span>${inv.businessUnit ? `<div style="font-size:9.5px;color:#5b21b6;font-weight:600">${escHtml(inv.businessUnit)}</div>` : ''}`
+        : '<span style="color:var(--gray-400)">—</span>'}</td>
       <td style="padding:8px 12px;font-size:12px;color:var(--gray-600)">${escHtml(inv.locationName || inv.locationId || '—')}</td>
       <td style="padding:8px 12px;font-size:12px">${inv.whenCreated ? new Date(inv.whenCreated).toLocaleDateString() : '—'}</td>
       <td style="padding:8px 12px;text-align:right;font-weight:600">${fmt$(inv.totalDue)}</td>
@@ -7134,13 +7137,11 @@ function renderAmazonView() {
   <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto">
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice</th>
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">Location</th>
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">Date</th>
-        <th style="padding:9px 12px;text-align:right;font-weight:600;color:var(--gray-700)">Balance</th>
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">Aging</th>
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">Payee Status</th>
-        <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--gray-700)">PO</th>
+        ${sortTh([
+          ['Invoice', 'invoiceId'], ['Site / BU', 'siteCode'], ['Location', 'locationName'],
+          ['Date', 'whenCreated'], ['Balance', 'totalDue', 'right'], ['Aging', 'daysOverdue'],
+          ['Payee Status', null], ['PO', 'poNumber'],
+        ], 'amazonar', 'renderAmazonView')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>

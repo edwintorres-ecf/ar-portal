@@ -3621,10 +3621,25 @@ app.get('/api/amazon/overview', requireAuth, async (req, res) => {
     // whose only live attempt carries a suffix. resolveInvoice walks the chain
     // and picks the best attempt by status, and is what every other surface
     // already uses.
-    const enriched = amazon.map(inv => ({
-      ...inv,
-      payeeStatus: payee.resolveInvoice(payee.toPayeeId(inv.invoiceId)) || null,
-    }));
+    // Site attribution comes from the site ledger, which resolves a site for
+    // every Amazon invoice with provenance. The Sage LOCATION is the ECF branch
+    // that billed it, which is a different thing entirely — EWR8's work is
+    // billed out of Trenton — so showing only the location leaves you unable to
+    // tell which Amazon site an invoice belongs to (Edwin 2026-09-10).
+    let ledger = {}, master = {};
+    try { ledger = siteLedger.getLedgerMap(); } catch (e) { /* not built yet */ }
+    try { master = db.getAmazonLocationMap(); } catch (e) { /* master not loaded */ }
+    const enriched = amazon.map(inv => {
+      const sl = ledger[inv.recordNo] || {};
+      const loc = sl.siteCode ? master[sl.siteCode] : null;
+      return {
+        ...inv,
+        payeeStatus: payee.resolveInvoice(payee.toPayeeId(inv.invoiceId)) || null,
+        siteCode: sl.siteCode || '',
+        siteSource: sl.source || '',
+        businessUnit: loc ? (loc.businessUnit || '') : '',
+      };
+    });
 
     // Summary by payee status
     const byStatus = {};
