@@ -47,6 +47,22 @@ function poInSeason(r, win) {
   return t >= win.start && t < win.end;
 }
 
+// The season that is starting now, not the one being cleaned up. Every PO is
+// still COUNTED — we are working through last winter and all of it is in play —
+// but funds sitting on POs raised for the coming season are flagged, because
+// this document goes to Amazon and they will know those dates. Better we point
+// at it than they do (Edwin 2026-09-10).
+function upcomingSeasonStart(now = new Date()) {
+  const y = now.getUTCFullYear();
+  const julyThisYear = Date.UTC(y, 6, 1);
+  return now.getTime() >= julyThisYear ? julyThisYear : Date.UTC(y - 1, 6, 1);
+}
+function isUpcomingSeasonPo(r, boundary) {
+  const t = Date.parse(String(r.orderDate || r.docDate || ''));
+  if (isNaN(t)) return false;
+  return t >= boundary;
+}
+
 function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const win = seasonWindow(seasonKey);
   const all = siteLedger.buildAmazonRows(invoices, { payee });
@@ -99,17 +115,14 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     s.poCount++;
     s.pos.push(p);
   }
-  // Funds on NEXT season's POs, tracked separately and shown, never counted.
-  // The portal's Pending by Site screen counts every PO, so ORH3 reads $909,369
-  // there and $642,205 here — one $288,333 PO raised in July 2026. Showing the
-  // excluded figure is what makes the two views reconcilable (Edwin 2026-09-10).
-  if (win) {
-    for (const p of ledger) {
-      if (poInSeason(p, win)) continue;
-      const s = touchSite(p.siteCode || '(no site)');
-      s.nextSeason += (p.available || 0);
-      s.nextSeasonPos++;
-    }
+  // Of what IS counted, how much sits on POs raised for the coming season.
+  // Flagged, not removed — see upcomingSeasonStart.
+  const upcoming = upcomingSeasonStart();
+  for (const p of seasonPos) {
+    if (!isUpcomingSeasonPo(p, upcoming)) continue;
+    const s = touchSite(p.siteCode || '(no site)');
+    s.nextSeason += (p.available || 0);
+    s.nextSeasonPos++;
   }
   for (const s of Object.values(bySite)) {
     s.available = Math.round(s.available * 100) / 100;
@@ -138,6 +151,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     rows, buckets, stalled, stalledRows,
     bySite, siteList, excessSites, shortSites,
     excess, totalShort, coverable, variance, nextSeasonTotal,
+    upcomingSeasonLabel: `${new Date(upcomingSeasonStart()).getUTCFullYear()}\u2013${String(new Date(upcomingSeasonStart()).getUTCFullYear() + 1).slice(2)}`,
     ledger, seasonPos,
     generatedAt: new Date().toISOString(),
   };
@@ -165,11 +179,20 @@ async function buildBuWorkbook(invoices, opts) {
   s1.getColumn(6).width = 30;
   s1.getColumn(7).width = 78;
 
-  const title = s1.addRow(['', a.bu]);
+  const title = s1.addRow(['', `${a.bu} — billing we cannot complete`]);
   title.getCell(2).font = { bold: true, size: 20, color: { argb: NAVY } };
-  s1.addRow(['', `Amazon business unit${seasonLabel}`]).getCell(2).font = { size: 10, color: { argb: 'FF64748B' } };
-  s1.addRow(['', `Generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`])
+  s1.addRow(['', `Prepared for Amazon by East Coast Facilities${seasonLabel}`])
+    .getCell(2).font = { size: 11, color: { argb: 'FF334155' } };
+  s1.addRow(['', `${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`])
     .getCell(2).font = { size: 9, color: { argb: 'FF94A3B8' } };
+  s1.addRow([]);
+  const intro = s1.addRow(['', 'This covers work our crews have completed at your sites that we have not been able to turn '
+    + 'into a paid invoice. Everything here is open to date — we are still working through last winter, so no PO has been '
+    + 'left out on the grounds of age. Sheet 2 lists it by purchase order and sheet 3 by site code, down to the individual invoice.']);
+  s1.mergeCells(`B${intro.number}:G${intro.number}`);
+  intro.getCell(2).font = { size: 11, color: { argb: 'FF475569' } };
+  intro.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+  intro.height = 42;
   s1.addRow([]);
 
   const section = (text) => {
@@ -261,12 +284,16 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
   s1.addRow([]);
   section('FUNDS BY SITE — ALL POs CONSOLIDATED');
-  s1.addRow(['', a.seasonKey
-    ? `Available counts this business unit's ${a.seasonKey.replace('-', '–')} POs only. Funds on POs raised for the following season are listed separately and NOT counted — the portal's Pending by Site screen counts every PO, which is why a site can read higher there.`
-    : 'Every PO at the site is counted, whatever season it was raised for — the same basis as the portal\u2019s Pending by Site screen, so the two tie out.'])
-    .getCell(2).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+  const noteRow = s1.addRow(['', 'A site usually has several purchase orders. What matters is the site as a whole, so every PO at '
+    + 'the site is added together here — including any raised for the coming season, which are counted in the total and also '
+    + `shown separately in the last column so it is clear what part of the balance is ${a.upcomingSeasonLabel} money.`]);
+  s1.mergeCells(`B${noteRow.number}:G${noteRow.number}`);
+  noteRow.getCell(2).font = { italic: true, size: 9.5, color: { argb: 'FF64748B' } };
+  noteRow.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+  noteRow.height = 30;
   s1.addRow([]);
-  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available (this season)', 'On next season\u2019s POs (not counted)']);
+  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available across all its POs',
+    `of which on ${a.upcomingSeasonLabel} POs`]);
   sh.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
