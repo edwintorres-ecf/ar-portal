@@ -931,7 +931,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <input id="po-filter-site" placeholder="Site codes (AVP3 PIT2 …)" title="One or more site codes, separated by a space or comma" oninput="poSetSite(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;width:210px;text-transform:uppercase">
       <div id="po-filter-summary" style="font-size:11.5px;"></div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <!-- flex-wrap matters: two more tabs (Rejections, Site Contacts) pushed the
+         row past the 1300px container and they were simply clipped off the
+         right edge, invisible with no scrollbar (Edwin 2026-09-10). -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
       <button class="cust-pill active" id="po-subtab-ledger" onclick="setPoFundsSubtab('ledger')">Ledger</button>
       <button class="cust-pill" id="po-subtab-sites" onclick="setPoFundsSubtab('sites')">By Site</button>
       <button class="cust-pill" id="po-subtab-pending-site" onclick="setPoFundsSubtab('pending-site')">Pending by Site</button>
