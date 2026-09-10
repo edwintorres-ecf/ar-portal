@@ -5500,7 +5500,10 @@ async function exportBuWorkbook() {
     bu = pick.trim();
   }
   showToast(`Building the ${bu} workbook…`, 'info');
-  window.location = `/api/amazon/bu-workbook.xlsx?bu=${encodeURIComponent(bu)}&season=2025-26`
+  // No season filter: last winter is still being cleaned up, so the report has
+  // to include everything to date and tie to the Pending by Site screen. The
+  // snow toggle carries across so the two views match on that too.
+  window.location = `/api/amazon/bu-workbook.xlsx?bu=${encodeURIComponent(bu)}`
     + (_pbsSnowOnly ? '&snow=1' : '') + `&t=${Date.now()}`;
 }
 

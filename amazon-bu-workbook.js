@@ -263,7 +263,8 @@ async function buildBuWorkbook(invoices, opts) {
   section('FUNDS BY SITE — ALL POs CONSOLIDATED');
   s1.addRow(['', a.seasonKey
     ? `Available counts this business unit's ${a.seasonKey.replace('-', '–')} POs only. Funds on POs raised for the following season are listed separately and NOT counted — the portal's Pending by Site screen counts every PO, which is why a site can read higher there.`
-    : 'Available counts every PO at the site.']).getCell(2).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+    : 'Every PO at the site is counted, whatever season it was raised for — the same basis as the portal\u2019s Pending by Site screen, so the two tie out.'])
+    .getCell(2).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
   s1.addRow([]);
   const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available (this season)', 'On next season\u2019s POs (not counted)']);
   sh.eachCell((c, i) => {
