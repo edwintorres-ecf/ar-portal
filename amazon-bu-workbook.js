@@ -75,29 +75,54 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     amount: Math.round((stalled.pgr.amount + stalled.funds.amount + stalled.undeliverable.amount) * 100) / 100,
   };
 
-  // Excess funding = money on this BU's own POs at sites with nothing waiting
-  // against them. Negative balances are floored: an overdrawn PO is not spare.
-  const stalledByPo = {};
-  for (const r of [...buckets.pgr, ...buckets.funds, ...buckets.undeliverable]) {
-    if (r.po) stalledByPo[r.po] = (stalledByPo[r.po] || 0) + (r.amount || 0);
+  // ── Consolidate by SITE ────────────────────────────────────────────────
+  // Funds have to be read per site, not per PO: a site commonly has several POs,
+  // one nearly exhausted and another barely touched, and looking at them
+  // individually says nothing about whether that site can pay its own bills
+  // (Edwin 2026-09-10). Every PO at the site is summed first, then compared with
+  // what is stalled there.
+  const stalledRows = [...buckets.pgr, ...buckets.funds, ...buckets.undeliverable];
+  const bySite = {};
+  const touchSite = (code) => (bySite[code] = bySite[code] || {
+    site: code, stalled: 0, invoices: 0, available: 0, poCount: 0, pos: [],
+  });
+  for (const r of stalledRows) {
+    const s = touchSite(r.site || '(no site)');
+    s.stalled += r.amount || 0; s.invoices++;
   }
-  let excess = 0;
-  const excessPos = [];
   for (const p of seasonPos) {
-    const avail = Math.max(0, p.available || 0);
-    const owed = stalledByPo[p.poNumber] || 0;
-    const spare = Math.max(0, avail - owed);
-    if (spare > 0) { excess += spare; excessPos.push({ ...p, spare }); }
+    const s = touchSite(p.siteCode || '(no site)');
+    // Raw available, NOT floored per PO: an overdrawn PO genuinely reduces what
+    // the site has to work with, and flooring it would overstate the site.
+    s.available += (p.available || 0);
+    s.poCount++;
+    s.pos.push(p);
   }
-  excess = Math.round(excess * 100) / 100;
-  excessPos.sort((a, b) => b.spare - a.spare);
+  for (const s of Object.values(bySite)) {
+    s.available = Math.round(s.available * 100) / 100;
+    s.stalled = Math.round(s.stalled * 100) / 100;
+    s.spare = Math.max(0, s.available - s.stalled);
+    s.short = Math.max(0, s.stalled - Math.max(0, s.available));
+    s.pos.sort((x, y) => (y.available || 0) - (x.available || 0));
+  }
+  const siteList = Object.values(bySite).sort((x, y) => (y.stalled - y.available) - (x.stalled - x.available));
 
-  const variance = Math.round((stalled.total.amount - excess) * 100) / 100;
+  // Excess for the BU is the sum of what its SITES have spare, once each site's
+  // own stalled billing is met from its own POs.
+  const excess = Math.round(siteList.reduce((t, s) => t + s.spare, 0) * 100) / 100;
+  const excessSites = siteList.filter(s => s.spare > 0).sort((x, y) => y.spare - x.spare);
+  const shortSites = siteList.filter(s => s.short > 0).sort((x, y) => y.short - x.short);
+  const totalShort = Math.round(shortSites.reduce((t, s) => t + s.short, 0) * 100) / 100;
+
+  // What moving money inside the BU can actually reach, and what it cannot.
+  const coverable = Math.round(Math.min(excess, totalShort) * 100) / 100;
+  const variance = Math.round(Math.max(0, totalShort - excess) * 100) / 100;
 
   return {
     bu, seasonKey, snowOnly,
-    rows, buckets, stalled,
-    excess, excessPos, variance,
+    rows, buckets, stalled, stalledRows,
+    bySite, siteList, excessSites, shortSites,
+    excess, totalShort, coverable, variance,
     ledger, seasonPos,
     generatedAt: new Date().toISOString(),
   };
@@ -172,8 +197,8 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
 
   section('FUNDING');
-  const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessPos.length,
-    'Money still on this business unit’s own purchase orders, at sites with nothing waiting against them.']);
+  const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessSites.length,
+    'Every PO at each site added together first, then measured against what is stalled there. This is what is left over at the sites that can already cover themselves.']);
   ex.getCell(2).font = { bold: true, size: 11 };
   ex.getCell(3).numFmt = money;
   ex.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF166534' } };
@@ -184,10 +209,10 @@ async function buildBuWorkbook(invoices, opts) {
   ex.height = 30;
 
   const shortfall = a.variance > 0 ? a.variance : 0;
-  const va = s1.addRow(['', 'Variance of funding needed', shortfall, '',
+  const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length,
     a.variance > 0
-      ? 'New funding required after every spare dollar in this business unit has been moved.'
-      : 'None — this business unit already holds enough to cover its own stalled billing.']);
+      ? `New funding still required after moving every spare dollar from the ${a.excessSites.length} site(s) that have some, into the ${a.shortSites.length} that are short.`
+      : 'None — the sites with spare funds hold enough to cover every site that is short.']);
   va.getCell(2).font = { bold: true, size: 11 };
   va.getCell(3).numFmt = money;
   va.getCell(3).font = { bold: true, size: 12, color: { argb: a.variance > 0 ? 'FF991B1B' : 'FF166534' } };
@@ -199,31 +224,59 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
 
   section('ANALYSIS');
-  const moved = Math.min(a.excess, a.stalled.total.amount);
-  const pct = a.stalled.total.amount > 0 ? Math.round((moved / a.stalled.total.amount) * 100) : 0;
+  const pct = a.totalShort > 0 ? Math.round((a.coverable / a.totalShort) * 100) : 0;
   const analysis = a.variance > 0
-    ? `${a.bu} can clear ${M(moved)} of its ${M(a.stalled.total.amount)} stalled billing (${pct}%) by moving funds it `
-      + `already holds — no new commitment needed for that portion. The remaining ${M(a.variance)} needs new funding.`
-    : `${a.bu} needs no new funding. Moving ${M(moved)} that already sits on its own purchase orders clears all `
-      + `${M(a.stalled.total.amount)} of its stalled billing.`;
+    ? `${a.bu} has ${M(a.stalled.total.amount)} of stalled billing across ${a.siteList.filter(s => s.stalled > 0).length} sites. `
+      + `${a.shortSites.length} of those sites cannot cover what is stalled there, short by ${M(a.totalShort)} between them. `
+      + `Another ${a.excessSites.length} sites hold ${M(a.excess)} they do not need. Moving that across covers ${pct}% of the gap; `
+      + `the remaining ${M(a.variance)} has to be newly funded.`
+    : `${a.bu} needs no new funding. The ${a.excessSites.length} sites holding ${M(a.excess)} spare more than cover the `
+      + `${M(a.totalShort)} that the ${a.shortSites.length} short sites are missing — it only needs moving.`;
   const an = s1.addRow(['', analysis]);
   s1.mergeCells(`B${an.number}:E${an.number}`);
   an.getCell(2).font = { size: 12, color: { argb: NAVY } };
   an.getCell(2).alignment = { wrapText: true, vertical: 'top' };
   an.height = 46;
 
-  if (a.excessPos.length) {
-    s1.addRow([]);
-    const w = s1.addRow(['', 'Where that spare funding sits', '', '', '']);
-    w.getCell(2).font = { bold: true, size: 10, color: { argb: 'FF334155' } };
-    const wh = s1.addRow(['', 'PO', 'Spare', 'Site', '']);
-    wh.eachCell((c, i) => { if (i > 1) { c.font = { bold: true, size: 9.5 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; } });
-    for (const p of a.excessPos.slice(0, 15)) {
-      const r = s1.addRow(['', p.poNumber, p.spare, p.siteCode || '', '']);
-      r.getCell(3).numFmt = money;
-      r.getCell(3).font = { color: { argb: 'FF166534' } };
+  // Every site in the business unit, with ALL its POs consolidated into one
+  // funding position. A site's POs mean nothing individually — what matters is
+  // whether the site as a whole can cover what is stalled there.
+  s1.addRow([]);
+  s1.addRow([]);
+  section('FUNDS BY SITE — ALL POs CONSOLIDATED');
+  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available across all its POs   ·   Position']);
+  sh.eachCell((c, i) => {
+    if (i === 1) return;
+    c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+  });
+  // Worst position first — the sites that cannot pay their own way.
+  for (const st of a.siteList) {
+    if (st.stalled === 0 && st.available === 0) continue;
+    const r = s1.addRow(['', st.site, st.stalled, st.poCount, st.available]);
+    r.getCell(2).font = { bold: true, size: 10.5 };
+    r.getCell(3).numFmt = money;
+    r.getCell(4).alignment = { horizontal: 'center' };
+    r.getCell(5).numFmt = money;
+    if (st.short > 0) {
+      r.getCell(3).font = { bold: true, color: { argb: 'FF991B1B' } };
+      r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+    } else if (st.spare > 0) {
+      r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+      r.getCell(5).font = { color: { argb: 'FF166534' } };
     }
   }
+  const sf = s1.addRow(['', `${a.bu} total`, a.stalled.total.amount, a.seasonPos.length,
+    Math.round(a.seasonPos.reduce((t, p) => t + (p.available || 0), 0) * 100) / 100]);
+  sf.eachCell((c, i) => {
+    if (i === 1) return;
+    c.font = { bold: true, size: 11 };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+    c.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
+  });
+  sf.getCell(3).numFmt = money;
+  sf.getCell(4).alignment = { horizontal: 'center' };
+  sf.getCell(5).numFmt = money;
 
   // ── Sheet 2: Detail by PO ──
   const s2 = wb.addWorksheet('Detail by PO', { views: [{ state: 'frozen', ySplit: 2 }] });
@@ -238,7 +291,7 @@ async function buildBuWorkbook(invoices, opts) {
 
 // Both detail sheets are the same shape; only the outer grouping differs.
 function buildDetail(ws, a, mode, C) {
-  const stalledRows = [...a.buckets.pgr, ...a.buckets.funds, ...a.buckets.undeliverable];
+  const stalledRows = a.stalledRows;
   const reasonOf = (r) => r.payeeStatus === HOLD_PGR ? 'Pending Goods Receipt Hold'
     : (r.payeeStatus === HOLD_FUNDS || r.payeeStatus === HOLD_FUNDS_ALT) ? 'Insufficient PO Funds Hold'
     : 'Invoice cannot be delivered';
@@ -258,7 +311,7 @@ function buildDetail(ws, a, mode, C) {
 
   const head = ws.addRow(mode === 'po'
     ? ['PO', 'Site', 'Invoice', 'Inv. date', 'Due date', 'Amount', 'Why it is stalled', 'Payee Central status']
-    : ['Site', 'PO', 'Invoice', 'Inv. date', 'Due date', 'Amount', 'Why it is stalled', 'Payee Central status']);
+    : ['Site', 'PO', 'Invoice', 'Inv. date', 'Due date', 'Amount / available', 'Why it is stalled', 'Position']);
   head.eachCell(c => {
     c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.GRAY } };
@@ -278,13 +331,35 @@ function buildDetail(ws, a, mode, C) {
     const led = mode === 'po' ? a.ledger.find(p => p.poNumber === g.k) : null;
     // Group header carries the PO's own funding position, which is the thing
     // that explains most of what follows.
+    const st = mode === 'site' ? (a.bySite[g.k] || null) : null;
     const gh = ws.addRow(mode === 'po'
       ? [g.k, led ? (led.siteCode || '') : '', `${g.list.length} invoice${g.list.length === 1 ? '' : 's'}`, '', '', g.amt,
          led ? `PO value ${fmtUsd(led.ceilingAmount)} · left ${fmtUsd(led.available)}` : '', led ? (led.poStatus || '') : '']
-      : [g.k, `${new Set(g.list.map(r => r.po).filter(Boolean)).size} PO(s)`, `${g.list.length} invoice${g.list.length === 1 ? '' : 's'}`, '', '', g.amt, '', '']);
+      // Site header states the CONSOLIDATED position: every PO at this site
+      // added up, against everything stalled there.
+      : [g.k, st ? `${st.poCount} PO(s)` : '', `${g.list.length} invoice${g.list.length === 1 ? '' : 's'}`, '', '', g.amt,
+         st ? `${fmtUsd(st.available)} available across all its POs` : '',
+         st ? (st.short > 0 ? `SHORT ${fmtUsd(st.short)}` : st.spare > 0 ? `spare ${fmtUsd(st.spare)}` : 'covered') : '']);
     gh.eachCell(c => { c.font = { bold: true, size: 11, color: { argb: C.NAVY } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }; });
     gh.getCell(6).numFmt = C.money;
+    if (st) {
+      gh.getCell(8).font = { bold: true, size: 10, color: { argb: st.short > 0 ? 'FF991B1B' : 'FF166534' } };
+      gh.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.short > 0 ? C.RED : C.GREEN } };
+    }
 
+    // List the site's POs and what each still holds, so the consolidated number
+    // in the header can be checked against its parts.
+    if (st && st.pos.length) {
+      for (const p of st.pos) {
+        const pr = ws.addRow(['', p.poNumber, '', '', '', p.available || 0,
+          `PO value ${fmtUsd(p.ceilingAmount)} · billed ${fmtUsd(p.consumed)}`, p.poStatus || '']);
+        pr.getCell(2).font = { size: 10, italic: true, color: { argb: 'FF475569' } };
+        pr.getCell(6).numFmt = C.money;
+        pr.getCell(6).font = { size: 10, color: { argb: (p.available || 0) > 0 ? 'FF166534' : 'FF991B1B' } };
+        pr.getCell(7).font = { size: 9, color: { argb: 'FF64748B' } };
+        pr.getCell(8).font = { size: 9, color: { argb: 'FF64748B' } };
+      }
+    }
     g.list.sort((x, y) => (y.amount || 0) - (x.amount || 0));
     for (const r of g.list) {
       const why = reasonOf(r);
