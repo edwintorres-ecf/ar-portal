@@ -4810,7 +4810,8 @@ function renderSiteContacts() {
   // is the group — ten of them, not hundreds.
   const groups = {};
   for (const r of all) {
-    const key = (r[_scGroupBy] || '').trim() || '(not known)';
+    const key = (r[_scGroupBy] || '').trim()
+      || (_scGroupBy === 'serviceCenter' && !r.openInvoices ? 'No open invoices' : 'Not known');
     const g = groups[key] = groups[key] || { key, sites: [], owned: 0, owners: {} };
     g.sites.push(r.siteCode);
     if (r.internalEmail) { g.owned++; g.owners[r.internalEmail] = (g.owners[r.internalEmail] || 0) + 1; }
@@ -4883,7 +4884,8 @@ function renderSiteContacts() {
 async function scAssignGroup(key) {
   const g = {};
   for (const r of poFilterRows(_siteContacts)) {
-    const k = (r[_scGroupBy] || '').trim() || '(not known)';
+    const k = (r[_scGroupBy] || '').trim()
+      || (_scGroupBy === 'serviceCenter' && !r.openInvoices ? 'No open invoices' : 'Not known');
     if (k === key) (g.sites = g.sites || []).push(r.siteCode);
   }
   const codes = g.sites || [];
