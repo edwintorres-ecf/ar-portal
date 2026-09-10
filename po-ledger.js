@@ -99,6 +99,25 @@ function isValidSite(s) {
   return SITE_TOKEN_RE.test(String(s || '').trim());
 }
 
+// The Amazon PO prefix is not a site. Nor is a bare "2D"-style token, which is
+// what a naive parse of "2D-21989423" produces.
+const PO_PREFIX_RE = /^\d[A-Z]$/i;
+
+// Walks a preference chain and returns the first candidate that actually looks
+// like a site code. A MANUAL assignment is honoured even if it fails the shape
+// test — a human pinning an odd code knows better than the validator.
+function firstValidSite(candidates) {
+  const [manual, ...rest] = candidates;
+  if (manual) return normalizeSite(manual);
+  for (const c of rest) {
+    if (!c) continue;
+    const n = normalizeSite(c);
+    if (!n || PO_PREFIX_RE.test(n) || !isValidSite(n)) continue;
+    return n;
+  }
+  return null;
+}
+
 function filterAmazon(invoices) {
   return invoices.filter(inv => AMAZON_CUSTOMER_IDS.has(inv.customerId));
 }
@@ -581,8 +600,17 @@ function getPoLedger(invoices) {
       // the site Amazon actually cut the PO for), then invoice majority-vote,
       // then PDF extraction (SHIP TO block or the description's leading
       // "SITE - 20xx" pattern, e.g. "1 DUJ3 - 2026 - …").
-      siteCode: normalizeSite(po?.site_code || (detail && detail.site) || siteCodeByPo[poNumber] || (doc && doc.docSiteCode)
-        || (doc && doc.description && (doc.description.match(/(?:^|\s)([A-Z]{2,5}\d)\s*-\s*20\d\d/) || [])[1]) || null),
+      // Each candidate is validated before it is accepted: Amazon's PO detail
+      // page yielded "2D" for 2D-21989423 — the PO-number prefix read as a site
+      // code — which then beat the PO document's correct DUJ3. An invalid
+      // candidate is skipped, not trusted (Edwin 2026-09-10).
+      siteCode: firstValidSite([
+        po?.site_code,
+        detail && detail.site,
+        siteCodeByPo[poNumber],
+        doc && doc.docSiteCode,
+        doc && doc.description && (doc.description.match(/(?:^|\s)([A-Z]{2,5}\d)\s*-\s*20\d\d/) || [])[1],
+      ]),
       siteManual: !!po?.site_code,
       siteFromAmazon: !!(detail && detail.site),
       locationId: po?.location_id || null,

@@ -2608,9 +2608,10 @@ function switchView(name, el) {
 }
 
 // Grouped-dropdown nav interactions
-function navGo(name) { closeAllNavGroups(); closeProfileMenu(); switchView(name); }
+function navGo(name) { closeAllNavGroups(); closeProfileMenu(); if (typeof msCloseAll === 'function') msCloseAll(); switchView(name); }
 function toggleNavGroup(e, group) {
   e.stopPropagation();
+  if (typeof msCloseAll === 'function') msCloseAll();
   const g = document.querySelector(`.nav-group[data-group="${group}"]`);
   if (!g) return;
   const wasOpen = g.classList.contains('open');
@@ -4259,8 +4260,26 @@ function msPanelHtml(id) {
 }
 
 function msToggle(id) {
-  _msOpenId = _msOpenId === id ? null : id;
+  // Repaint the one being CLOSED as well as the one being opened. Without this,
+  // opening a second picker left the first one's panel on screen — the global
+  // outside-click handler never fires, because the click landed inside another
+  // .ms-wrap (Edwin's screenshot, 2026-09-10).
+  const prev = _msOpenId;
+  _msOpenId = prev === id ? null : id;
+  if (prev && prev !== id) msRepaint(prev);
   msRepaint(id);
+  // A dropdown and a nav menu should never be open at once.
+  if (_msOpenId && typeof closeAllNavGroups === 'function') { closeAllNavGroups(); closeProfileMenu(); }
+}
+
+// Close every open picker — used when something else takes over the screen.
+function msCloseAll() {
+  if (!_msOpenId) return;
+  const id = _msOpenId;
+  _msOpenId = null;
+  msRepaint(id);
+  // Belt and braces: any panel left behind by a repaint that found no wrap.
+  document.querySelectorAll('.ms-panel').forEach(p => p.remove());
 }
 function msSearch(id, q) {
   const r = _msReg[id]; if (!r) return;
@@ -4302,8 +4321,18 @@ function msRestoreOpen() {
 
 document.addEventListener('click', (e) => {
   if (!_msOpenId) return;
-  if (e.target.closest && e.target.closest('.ms-wrap')) return;
-  const id = _msOpenId; _msOpenId = null; msRepaint(id);
+  // A click inside the picker that is CURRENTLY open is part of using it;
+  // a click inside a different picker is handled by msToggle.
+  const wrap = e.target.closest && e.target.closest('.ms-wrap');
+  if (wrap && wrap.getAttribute('data-ms') === _msOpenId) return;
+  if (wrap) return;
+  msCloseAll();
+});
+
+// Escape closes the open dropdown, which is what every other menu on the page
+// already does.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _msOpenId) msCloseAll();
 });
 
 // ─── Business unit + site code filter, shared by every PO Manager tab ───────
@@ -6868,6 +6897,6 @@ function openStatement(customerId) {
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
 <script src="/comms.js?v=20260910h"></script>
-<script src="/amazon.js?v=20260910i"></script>
+<script src="/amazon.js?v=20260910j"></script>
 </body>
 </html>
