@@ -4762,7 +4762,7 @@ async function poRejResolve(id) {
 // ─── Site contacts: who Amazon named on the PO, and who owns it here ────────
 // Two different people per site, and they are managed differently: the Amazon
 // contact is READ from the POs (overridable), the internal owner is CHOSEN.
-let _siteContacts = [], _scSel = new Set(), _scOnlyUnowned = false;
+let _siteContacts = [], _scSel = new Set(), _scOnlyUnowned = false, _scGroupBy = 'serviceCenter';
 
 async function loadSiteContacts() {
   const el = document.getElementById('po-contacts-content');
@@ -4785,7 +4785,8 @@ function renderSiteContacts() {
   const unowned = all.length - withInternal;
   const body = rows.map(r => `<tr style="border-bottom:1px solid var(--gray-100);${_scSel.has(r.siteCode) ? 'background:#fffbeb' : ''}">
     <td style="padding:9px 12px"><input type="checkbox" ${_scSel.has(r.siteCode) ? 'checked' : ''} onchange="scPick('${escHtml(r.siteCode)}', this.checked)"></td>
-    <td style="padding:9px 12px">${poSiteCell(r)}</td>
+    <td style="padding:9px 12px">${poSiteCell(r)}
+      ${r.serviceCenter ? `<div style="font-size:9.5px;color:var(--gray-500);white-space:nowrap">${escHtml(r.serviceCenter)}</div>` : ''}</td>
     <td style="padding:9px 12px">
       ${r.amazonEmail
         ? `<div style="font-size:12.5px">${escHtml(r.amazonName || '')} <span style="color:var(--gray-500)">${escHtml(r.amazonEmail)}</span></div>
@@ -4801,7 +4802,52 @@ function renderSiteContacts() {
   </tr>`).join('');
   const users = (_portalUsers || []).filter(u => u && u.email);
   const sel = _scSel.size;
+  const userOptions = users.map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('');
+
+  // ── Assign a whole group at once ──────────────────────────────────────────
+  // 281 tick boxes is not "assigning easily". Sites belong to an ECF branch (or
+  // a business unit), and ownership follows that, so the real unit of decision
+  // is the group — ten of them, not hundreds.
+  const groups = {};
+  for (const r of all) {
+    const key = (r[_scGroupBy] || '').trim() || '(not known)';
+    const g = groups[key] = groups[key] || { key, sites: [], owned: 0, owners: {} };
+    g.sites.push(r.siteCode);
+    if (r.internalEmail) { g.owned++; g.owners[r.internalEmail] = (g.owners[r.internalEmail] || 0) + 1; }
+  }
+  const groupList = Object.values(groups).sort((a, b) => b.sites.length - a.sites.length);
+  const groupCards = groupList.map(g => {
+    const owners = Object.entries(g.owners).sort((a, b) => b[1] - a[1]);
+    const nameOf = (e) => ((users.find(u => u.email.toLowerCase() === e) || {}).name || e);
+    const state = g.owned === 0 ? `<span style="color:#b91c1c;font-weight:600">nobody</span>`
+      : g.owned === g.sites.length && owners.length === 1 ? `<span style="color:#166534;font-weight:600">${escHtml(nameOf(owners[0][0]))}</span>`
+      : `<span style="color:#b45309;font-weight:600">${g.owned} of ${g.sites.length} assigned</span>`;
+    return `<div style="background:var(--white);border:1px solid var(--gray-200);border-radius:9px;padding:9px 12px;min-width:250px;flex:1">
+      <div style="font-size:12.5px;font-weight:700;color:var(--navy)">${escHtml(g.key)}</div>
+      <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">${g.sites.length} site${g.sites.length === 1 ? '' : 's'} · ${state}</div>
+      <div style="display:flex;gap:5px">
+        <select id="scg-${escHtml(g.key.replace(/[^A-Za-z0-9]/g, '_'))}" style="flex:1;padding:4px 7px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px">
+          <option value="">Owner…</option>${userOptions}<option value="__clear__">— nobody —</option>
+        </select>
+        <button class="btn" style="font-size:11.5px;padding:3px 10px;white-space:nowrap" onclick="scAssignGroup('${escHtml(g.key)}')">Assign all ${g.sites.length}</button>
+      </div>
+    </div>`;
+  }).join('');
+
   el.innerHTML = `
+    <div style="background:#f8fafc;border:1px solid var(--gray-200);border-radius:11px;padding:11px 13px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;flex-wrap:wrap">
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">Assign a whole group at once</div>
+        <div style="font-size:11.5px;color:var(--gray-500)">Pick who owns each group — that sets every site in it.</div>
+        <span style="margin-left:auto"></span>
+        <label style="font-size:11.5px;color:var(--gray-600)">Group by
+          <select onchange="_scGroupBy=this.value;renderSiteContacts()" style="padding:3px 7px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-left:4px">
+            <option value="serviceCenter"${_scGroupBy === 'serviceCenter' ? ' selected' : ''}>ECF branch</option>
+            <option value="businessUnit"${_scGroupBy === 'businessUnit' ? ' selected' : ''}>Amazon business unit</option>
+          </select></label>
+      </div>
+      <div style="display:flex;gap:9px;flex-wrap:wrap">${groupCards}</div>
+    </div>
     <div style="font-size:12.5px;color:var(--gray-600);margin-bottom:10px">
       ${all.length} site${all.length === 1 ? '' : 's'} · <b>${withAmazon}</b> with an Amazon contact read off their POs · <b>${withInternal}</b> with an owner here${unowned ? ` · <b style="color:#b91c1c">${unowned} with nobody</b>` : ''}
       <div style="font-size:11px;color:var(--gray-500);margin-top:2px">The Amazon contact is the purchaser named on the site's most recent PO — that is who site correspondence goes to. The internal owner is who a rejection at this site gets routed to, and doubles as the site's collector.</div>
@@ -4831,6 +4877,31 @@ function renderSiteContacts() {
         <tbody>${body || '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--gray-500)">No sites match this filter.</td></tr>'}</tbody>
       </table>
     </div>`;
+}
+
+// One click for a whole branch or business unit.
+async function scAssignGroup(key) {
+  const g = {};
+  for (const r of poFilterRows(_siteContacts)) {
+    const k = (r[_scGroupBy] || '').trim() || '(not known)';
+    if (k === key) (g.sites = g.sites || []).push(r.siteCode);
+  }
+  const codes = g.sites || [];
+  if (!codes.length) return;
+  const pick = document.getElementById('scg-' + key.replace(/[^A-Za-z0-9]/g, '_'));
+  const raw = pick ? pick.value : '';
+  if (!raw) { showToast('Pick who should own them first', 'error'); return; }
+  const email = raw === '__clear__' ? '' : raw;
+  const name = email ? ((_portalUsers || []).find(u => u.email.toLowerCase() === email) || {}).name || email : 'nobody';
+  if (!confirm(`${email ? 'Make ' + name + ' the owner of' : 'Clear the owner on'} all ${codes.length} site${codes.length === 1 ? '' : 's'} in ${key}?`
+    + (email ? '\n\nThey also become the collector for those sites, and any open rejection there with nobody on it routes to them.' : ''))) return;
+  try {
+    const r = await apiFetch('/api/amazon/site-contacts/bulk', { method: 'POST',
+      body: JSON.stringify({ siteCodes: codes, internalEmail: email }) });
+    showToast(`${key}: ${r.count} site${r.count === 1 ? '' : 's'} → ${name}${r.rerouted ? ` · ${r.rerouted} rejection${r.rerouted === 1 ? '' : 's'} routed` : ''}`, 'success');
+    loadSiteContacts();
+    loadPoRejections();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
 function scPick(code, on) { if (on) _scSel.add(code); else _scSel.delete(code); renderSiteContacts(); }

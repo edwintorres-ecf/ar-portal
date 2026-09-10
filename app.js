@@ -1022,6 +1022,27 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
     const poContacts = db.getPoContactMap();
     const collectors = db.getAllSiteCollectors();
     const master = db.getAmazonLocationMap();
+
+    // Which ECF branch actually services each site, taken as the majority of
+    // its invoices. This is what makes assignment tractable: 213 sites collapse
+    // to ten branches, and "Trenton's sites are Iesha's" is one decision rather
+    // than twenty-three (Edwin 2026-09-10).
+    const scOf = {}, invCount = {};
+    try {
+      const rows = amazonScopedRows(req);
+      const tally = {};
+      for (const r of rows) {
+        if (!r.site) continue;
+        invCount[r.site] = (invCount[r.site] || 0) + 1;
+        const t = tally[r.site] = tally[r.site] || {};
+        const k = r.serviceCenter || '';
+        if (k) t[k] = (t[k] || 0) + 1;
+      }
+      for (const [site, t] of Object.entries(tally)) {
+        const best = Object.entries(t).sort((a, b) => b[1] - a[1])[0];
+        if (best) scOf[site] = best[0];
+      }
+    } catch (e) { /* no invoice data — groups just come back empty */ }
     // Which POs named which person, so a site's contact can be traced back to
     // the document it came from rather than being taken on trust.
     const bySite = {};
@@ -1038,6 +1059,8 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
         const pos = (bySite[code] || []).sort((a, b) => String(b.docDate || '').localeCompare(String(a.docDate || '')));
         return {
           siteCode: code,
+          serviceCenter: scOf[code] || '',
+          openInvoices: invCount[code] || 0,
           businessUnit: master[code] ? (master[code].businessUnit || '') : '',
           amazonName: c.amazon_name || null,
           amazonEmail: c.amazon_email || null,
