@@ -3307,6 +3307,40 @@ app.post('/api/po/:poNumber/service', requireAuth, requirePerm('po.edit'), (req,
 // ─── Pending-by-Site Excel export ────────────────────────────────────────
 // Styled .xlsx mirroring the on-screen report: per-PO rows, merged site cells
 // for Site / Site Pending / Site Available, red/green/amber color coding.
+// ─── Per-business-unit workbooks ────────────────────────────────────────────
+app.get('/api/amazon/bu-workbook.xlsx', requireAuth, async (req, res) => {
+  try {
+    const bu = String(req.query.bu || '').trim();
+    if (!bu) return res.status(400).json({ error: 'bu is required' });
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const { workbook, analysis } = await require('./amazon-bu-workbook').buildBuWorkbook(invoices, {
+      bu, seasonKey: req.query.season || null, snowOnly: req.query.snow === '1',
+    });
+    db.auditLog(req.session.user.email, 'export_bu_workbook', bu,
+      `stalled ${Math.round(analysis.stalled.total.amount)} · excess ${Math.round(analysis.excess)} · variance ${Math.round(analysis.variance)}`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-${bu.replace(/[^A-Za-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[api] bu-workbook error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/amazon/business-units', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    res.json(require('./amazon-bu-workbook').listBusinessUnits(invoices));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Funds-by-site report + the case study for Amazon ───────────────────────
 app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
   try {
