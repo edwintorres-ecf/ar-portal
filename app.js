@@ -904,22 +904,32 @@ function sweepRejections({ notify = false } = {}) {
     }
   }
 
-  // Notify each internal owner ONCE per rejection, and only when asked — the
-  // first sweep over an existing backlog must not fire hundreds of emails.
+  // Notify owners ONCE per rejection, and only when asked — the first sweep over
+  // an existing backlog must not fire hundreds of emails. Grouped BY SITE and
+  // sent through the same builder the manual button uses, so an automatic
+  // notice is identical to one a person sends and carries the same reply token.
   if (notify) {
-    for (const r of db.listRejections()) {
-      if (r.notified || !r.routed_to) continue;
-      db.markRejectionNotified(r.payee_id);
-      stats.notified++;
-      notifyUser(r.routed_to, 'collector',
-        `[ECF AR Portal] Amazon rejected ${r.invoice_id || r.payee_id}`,
-        `Amazon has rejected invoice ${r.invoice_id || r.payee_id}`
-        + (r.site_code ? ` for site ${r.site_code}` : '')
-        + (r.po_number ? ` on PO ${r.po_number}` : '')
-        + `.\n\nAmount: $${(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-        + (r.reason ? `\nReason given: ${r.reason}` : '')
-        + `\n\nIt is on the Rejections tab of the Amazon PO Manager: ${portalBaseUrl()}\n\n—ECF AR Portal`)
-        .catch(e => console.error('[rejections] notify:', e.message));
+    const pending = db.listRejections().filter(r => !r.notified && r.routed_to);
+    const bySite = {};
+    for (const r of pending) (bySite[r.site_code || ''] = bySite[r.site_code || ''] || []).push(r);
+    const managers = db.getSettingList('ar_manager_emails');
+    for (const [siteCode, list] of Object.entries(bySite)) {
+      const siteContact = siteCode ? db.getSiteContact(siteCode) : null;
+      const owner = list.map(x => x.routed_to).find(Boolean);
+      const to = [...new Set([owner, ...managers].filter(Boolean))];
+      if (!to.length) continue;
+      list.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+      try {
+        const notice = db.createRejectionNotice({
+          siteCode, payeeIds: list.map(x => x.payee_id), sentTo: to,
+          subject: '(building)', sentBy: 'auto-sweep',
+        });
+        const c = siteNoticeContent(siteCode, list, siteContact, notice.id);
+        db.getDb().prepare('UPDATE rejection_notices SET subject=? WHERE id=?').run(c.subject, notice.id);
+        for (const addr of to) sendGraphMail(addr, c.subject, c.body).catch(e => console.error('[rejections] notify:', e.message));
+        for (const r of list) db.markRejectionNotified(r.payee_id);
+        stats.notified += list.length;
+      } catch (e) { console.error('[rejections] notice build failed:', e.message); }
     }
   }
   return stats;
