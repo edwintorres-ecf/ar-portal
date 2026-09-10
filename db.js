@@ -548,6 +548,12 @@ function initSchema() {
     );
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_rejections_open ON invoice_rejections(resolved_at, site_code)');
+  // Read off the invoice's own Payee Central detail page — the Excel export
+  // carries neither the reason nor the Amazon contact (2026-09-10).
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN rejected_by TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN amazon_contact TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN description TEXT'); } catch (e) {}
+  try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN detail_at TEXT'); } catch (e) {}
 
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
@@ -2218,13 +2224,43 @@ function setCommState(key, value) {
   `).run(key, value == null ? null : String(value));
 }
 
+// Seeding and inviting are separate acts: a user can be set up, assigned work
+// and tested against long before anyone tells them the portal exists. The
+// invite mail records itself with markInvited so "who has actually been told"
+// stays answerable (Edwin 2026-09-10).
+function ensureInviteColumns() {
+  const d = getDb();
+  try { d.exec('ALTER TABLE user_roles ADD COLUMN invited_at TEXT'); } catch (e) {}
+  try { d.exec('ALTER TABLE user_roles ADD COLUMN invited_by TEXT'); } catch (e) {}
+}
+
 function preProvisionUser(email, name, role, jobTitle) {
   const d = getDb();
+  ensureInviteColumns();
   d.prepare(`
     INSERT OR IGNORE INTO user_roles (email, name, role, job_title)
     VALUES (?, ?, ?, ?)
   `).run(email, name || '', role || 'viewer', jobTitle || null);
+  // An existing row is UPDATED rather than left alone: re-seeding with a
+  // corrected name or role should take effect, which INSERT OR IGNORE alone
+  // would silently skip.
+  const sets = [], vals = [];
+  if (name) { sets.push('name=?'); vals.push(name); }
+  if (role) { sets.push('role=?'); vals.push(role); }
+  if (jobTitle !== undefined && jobTitle !== null) { sets.push('job_title=?'); vals.push(jobTitle); }
+  if (sets.length) { vals.push(email); d.prepare('UPDATE user_roles SET ' + sets.join(',') + ' WHERE email=? COLLATE NOCASE').run(...vals); }
   return d.prepare('SELECT * FROM user_roles WHERE email=?').get(email);
+}
+
+function markInvited(email, byEmail) {
+  ensureInviteColumns();
+  getDb().prepare("UPDATE user_roles SET invited_at=datetime('now'), invited_by=? WHERE email=? COLLATE NOCASE").run(byEmail || null, email);
+}
+
+function listUninvitedUsers() {
+  ensureInviteColumns();
+  try { return getDb().prepare('SELECT * FROM user_roles WHERE invited_at IS NULL ORDER BY email').all(); }
+  catch (e) { return []; }
 }
 
 // Returns { record_no: count } for all records that have notes
@@ -2378,6 +2414,16 @@ function upsertRejection(r) {
     .run(r.payeeId, r.invoiceId || null, r.recordNo || null, r.poNumber || null, r.siteCode || null,
          r.businessUnit || null, r.amount || 0, r.status || 'Rejected', r.reason || null, r.entryDate || null);
   return { row: d.prepare('SELECT * FROM invoice_rejections WHERE payee_id=?').get(r.payeeId), isNew: true };
+}
+
+// Never blanks a value it could not read: a transient scrape failure must not
+// erase a reason we already have.
+function updateRejectionDetail(payeeId, f) {
+  getDb().prepare(`UPDATE invoice_rejections SET
+      reason=COALESCE(?, reason), rejected_by=COALESCE(?, rejected_by),
+      amazon_contact=COALESCE(?, amazon_contact), description=COALESCE(?, description),
+      detail_at=datetime('now') WHERE payee_id=?`)
+    .run(f.reason || null, f.rejected_by || null, f.amazon_contact || null, f.description || null, payeeId);
 }
 
 function setRejectionRoute(payeeId, email) {
@@ -2861,6 +2907,9 @@ module.exports = {
   dunningSentExists,
   recordDunningSent,
   preProvisionUser,
+  ensureInviteColumns,
+  markInvited,
+  listUninvitedUsers,
   getUserRole,
   upsertUserRole,
   provisionNewUser,
@@ -2943,6 +2992,7 @@ module.exports = {
   getSiteContact,
   getSiteContactMap,
   upsertRejection,
+  updateRejectionDetail,
   setRejectionRoute,
   markRejectionNotified,
   resolveRejection,

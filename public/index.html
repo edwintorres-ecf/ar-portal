@@ -4145,6 +4145,62 @@ let _poMismatches = [];
 let _poResubmissions = [];
 let _poFundsSubtab = 'ledger';
 
+// ─── Shared table sorting ───────────────────────────────────────────────────
+// Several tables were built with fixed ordering, so a list of 200 rejections or
+// site contacts could not be put in invoice, customer, location or age order
+// (Edwin 2026-09-10). One helper gives every table the same clickable headers
+// and the same comparison rules, rather than each growing its own.
+const _tblSort = {};        // table key -> { field, dir }
+
+function tblSortState(key, fallbackField, fallbackDir) {
+  if (!_tblSort[key]) _tblSort[key] = { field: fallbackField || null, dir: fallbackDir || 1 };
+  return _tblSort[key];
+}
+
+// Dates, money and text each need different handling, and a missing value must
+// sort last in BOTH directions rather than pretending to be zero or empty.
+function tblCompare(a, b, field, dir) {
+  const va = a == null ? null : a[field];
+  const vb = b == null ? null : b[field];
+  const emptyA = va === null || va === undefined || va === '';
+  const emptyB = vb === null || vb === undefined || vb === '';
+  if (emptyA && emptyB) return 0;
+  if (emptyA) return 1;
+  if (emptyB) return -1;
+  if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+  const da = Date.parse(String(va).replace(' ', 'T')), dbb = Date.parse(String(vb).replace(' ', 'T'));
+  const looksDate = /^\d{4}-\d{2}-\d{2}|^\w{3} \d{1,2}, \d{4}/.test(String(va));
+  if (looksDate && !isNaN(da) && !isNaN(dbb)) return (da - dbb) * dir;
+  const na = parseFloat(String(va).replace(/[$,]/g, '')), nb = parseFloat(String(vb).replace(/[$,]/g, ''));
+  if (!isNaN(na) && !isNaN(nb) && /^[\s$-]*[\d,.]+\s*$/.test(String(va))) return (na - nb) * dir;
+  return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+}
+
+function tblSortRows(rows, key, fallbackField, fallbackDir) {
+  const st = tblSortState(key, fallbackField, fallbackDir);
+  if (!st.field) return rows;
+  return [...rows].sort((a, b) => tblCompare(a, b, st.field, st.dir));
+}
+
+// cols: [label, field|null, align?]. A null field renders a plain header.
+function sortTh(cols, key, rerenderFn) {
+  const st = tblSortState(key);
+  return cols.map(([label, field, align]) => {
+    const active = field && st.field === field;
+    const arrow = active ? (st.dir === 1 ? ' ↑' : ' ↓') : (field ? ' <span style="opacity:.25">↕</span>' : '');
+    const click = field ? ` onclick="tblSort('${key}','${field}','${rerenderFn}')" style="cursor:pointer;user-select:none;` : ' style="';
+    return `<th${click}padding:9px 12px;text-align:${align || 'left'};font-weight:600;color:${active ? 'var(--navy)' : 'var(--gray-700)'};white-space:nowrap">${label}${arrow}</th>`;
+  }).join('');
+}
+
+function tblSort(key, field, rerenderFn) {
+  const st = tblSortState(key);
+  if (st.field === field) st.dir = -st.dir;
+  else { st.field = field; st.dir = 1; }
+  const fn = window[rerenderFn];
+  if (typeof fn === 'function') fn();
+}
+
 // ─── Multi-select dropdown, shared by the PO Manager and the Amazon drill-down ─
 // A plain <select> forces one value per filter, so "NACF and ATS" or "these four
 // sites" could not be asked at all — you had to run the view once per value and
@@ -4468,7 +4524,7 @@ function renderPoOrphans() {
   const canEdit = currentUser && ['admin', 'manager', 'ar_specialist'].includes(currentUser.role);
   const total = _poOrphans.reduce((s, o) => s + (o.amount || 0), 0);
   const withSite = _poOrphans.filter(o => o.hasValidSite).length;
-  const rows = _poOrphans.map(o => {
+  const rows = tblSortRows(_poOrphans, 'orphans', 'amount', -1).map(o => {
     const sugg = (o.suggestedPos || [])[0];
     const siteCell = o.hasValidSite
       ? escHtml(o.site)
@@ -4550,7 +4606,9 @@ async function loadPoRejections() {
 function renderPoRejections() {
   const el = document.getElementById('po-rejections-content');
   if (!el) return;
-  const rows = poFilterRows((_poRejections.rows || []).map(r => ({ ...r, siteCode: r.site_code, businessUnit: r.business_unit })));
+  const rows = tblSortRows(
+    poFilterRows((_poRejections.rows || []).map(r => ({ ...r, siteCode: r.site_code, businessUnit: r.business_unit }))),
+    'rejections', 'first_seen', 1);
   const s = _poRejections.summary || {};
   const sweep = _poRejections.lastSweep;
   const head = `
@@ -4562,6 +4620,7 @@ function renderPoRejections() {
       <label style="font-size:11.5px;color:var(--gray-500);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
         <input type="checkbox" ${_poRejShowResolved ? 'checked' : ''} onchange="_poRejShowResolved=!_poRejShowResolved;loadPoRejections()"> include resolved</label>
       <button class="btn" style="font-size:11.5px;padding:4px 10px" onclick="poRejSweep(this)">↻ Check now</button>
+      <button class="btn" style="font-size:11.5px;padding:4px 10px" title="Reads each rejection's reason off its Payee Central page — takes a minute" onclick="poRejReasons(this)">🔍 Get reasons</button>
     </div>
     ${sweep ? `<div style="font-size:11px;color:var(--gray-500);margin-bottom:10px">Last checked ${escHtml(String(sweep.at).slice(0, 16).replace('T', ' '))} UTC — ${sweep.scanned} rejected in the feed, ${sweep.autoResolved} already resubmitted${sweep.unrouted ? `, <span style="color:#b45309">${sweep.unrouted} with nobody to route to</span>` : ''}</div>` : ''}`;
 
@@ -4581,6 +4640,12 @@ function renderPoRejections() {
         <div style="font-weight:600;color:var(--navy);cursor:pointer" onclick="${r.record_no ? `openDrawer('${r.record_no}')` : ''}">${escHtml(r.invoice_id || r.payee_id)}</div>
         <div style="font-size:11px;color:var(--gray-500)">${escHtml(r.po_number || 'no PO')}${r.entry_date ? ' · entered ' + escHtml(r.entry_date) : ''}</div>
       </td>
+      <td style="padding:9px 12px">
+        ${r.reason
+          ? `<div style="font-size:12px;font-weight:600;color:#991b1b">${escHtml(r.reason)}</div>`
+          : '<span style="color:var(--gray-400);font-size:11.5px">not read yet</span>'}
+        ${r.rejected_by ? `<div style="font-size:10.5px;color:var(--gray-500)">by ${escHtml(r.rejected_by)}</div>` : ''}
+      </td>
       <td style="padding:9px 12px">${poSiteCell(r)}</td>
       <td style="padding:9px 12px;text-align:right;white-space:nowrap" class="amount">${fmt$(r.amount || 0)}</td>
       <td style="padding:9px 12px;text-align:right">${age === null ? '—' : `<span style="font-weight:700;color:${age > 30 ? '#b91c1c' : age > 7 ? '#b45309' : 'var(--gray-600)'}">${age}d</span>`}</td>
@@ -4588,7 +4653,8 @@ function renderPoRejections() {
         ${r.routed_to
           ? `<div style="font-size:12px">${escHtml(r.routed_to)}</div>`
           : '<span style="color:#b91c1c;font-size:12px;font-weight:600">nobody — set a site contact</span>'}
-        ${r.siteContact && r.siteContact.amazon_email ? `<div style="font-size:10.5px;color:var(--gray-500)">Amazon: ${escHtml(r.siteContact.amazon_email)}</div>` : ''}
+        ${r.amazon_contact ? `<div style="font-size:10.5px;color:var(--gray-500)">Amazon: ${escHtml(r.amazon_contact)}</div>`
+          : (r.siteContact && r.siteContact.amazon_email ? `<div style="font-size:10.5px;color:var(--gray-500)">Amazon: ${escHtml(r.siteContact.amazon_email)}</div>` : '')}
       </td>
       <td style="padding:9px 12px;white-space:nowrap;text-align:right">
         ${resolved
@@ -4605,8 +4671,10 @@ function renderPoRejections() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-          ${['Invoice', 'Site / BU', 'Amount', 'Age', 'Routed to', ''].map((h, i) =>
-            `<th style="padding:9px 12px;text-align:${i === 2 || i === 3 || i === 5 ? 'right' : 'left'};font-weight:600;color:var(--gray-700)">${h}</th>`).join('')}
+          ${sortTh([
+            ['Invoice', 'invoice_id'], ['Why Amazon rejected it', 'reason'], ['Site / BU', 'siteCode'],
+            ['Amount', 'amount', 'right'], ['Age', 'first_seen', 'right'], ['Routed to', 'routed_to'], ['', null, 'right'],
+          ], 'rejections', 'renderPoRejections')}
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
@@ -4622,6 +4690,26 @@ async function poRejSweep(btn) {
   } catch (e) { showToast('Check failed: ' + e.message, 'error'); }
   btn.disabled = false; btn.textContent = '↻ Check now';
 }
+async function poRejReasons(btn) {
+  btn.disabled = true; btn.textContent = '🔍 Reading…';
+  try {
+    const r = await apiFetch('/api/amazon/rejections/reasons', { method: 'POST', body: JSON.stringify({}) });
+    if (r.alreadyRunning) { showToast('Already reading reasons — give it a minute', 'info'); }
+    else {
+      showToast('Reading reasons from Payee Central — this takes a minute', 'success');
+      // It runs in the background; re-read a few times rather than making the
+      // user guess when it has finished.
+      let tries = 0;
+      const poll = setInterval(async () => {
+        tries++;
+        await loadPoRejections();
+        if (tries >= 8 || !(_poRejections.reasonScrapeRunning)) clearInterval(poll);
+      }, 15000);
+    }
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '🔍 Get reasons';
+}
+
 async function poRejAck(id) {
   try { await apiFetch(`/api/amazon/rejections/${encodeURIComponent(id)}/ack`, { method: 'POST' }); loadPoRejections(); }
   catch (e) { showToast(e.message, 'error'); }
@@ -4656,7 +4744,7 @@ async function loadSiteContacts() {
 function renderSiteContacts() {
   const el = document.getElementById('po-contacts-content');
   if (!el) return;
-  const rows = poFilterRows(_siteContacts);
+  const rows = tblSortRows(poFilterRows(_siteContacts), 'sitecontacts', 'siteCode', 1);
   const withAmazon = rows.filter(r => r.amazonEmail).length;
   const withInternal = rows.filter(r => r.internalEmail).length;
   const body = rows.map(r => `<tr style="border-bottom:1px solid var(--gray-100)">
@@ -4682,8 +4770,10 @@ function renderSiteContacts() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-          ${['Site / BU', 'Amazon contact (from the PO)', 'Internal owner', ''].map((h, i) =>
-            `<th style="padding:9px 12px;text-align:${i === 3 ? 'right' : 'left'};font-weight:600;color:var(--gray-700)">${h}</th>`).join('')}
+          ${sortTh([
+            ['Site / BU', 'siteCode'], ['Amazon contact (from the PO)', 'amazonEmail'],
+            ['Internal owner', 'internalEmail'], ['', null, 'right'],
+          ], 'sitecontacts', 'renderSiteContacts')}
         </tr></thead>
         <tbody>${body || '<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--gray-500)">No sites match this filter.</td></tr>'}</tbody>
       </table>
@@ -4792,7 +4882,7 @@ function renderPoAging() {
   const bucketCards = buckets.map(b => {
     const open = !!_poAgingOpen[b.status];
     const amt = b.shown.reduce((t, i) => t + (i.amount || 0), 0);
-    const rows = open ? b.shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
+    const rows = open ? tblSortRows(b.shown, 'aging', 'ageDays', -1).map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
         <td style="padding:8px 14px;font-weight:600;color:var(--navy);">${escHtml(i.invoiceNumber)}</td>
         <td style="padding:8px 14px;">${poSiteCell(i)}</td>
         <td style="padding:8px 14px;font-family:monospace;font-size:12px;">${escHtml(i.po || '—')}</td>
@@ -4814,9 +4904,11 @@ function renderPoAging() {
       </div>
       ${open ? `<table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid var(--gray-100);">
         <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
-          <th style="padding:8px 14px;text-align:left;">Invoice</th><th style="padding:8px 14px;text-align:left;">Site / BU</th><th style="padding:8px 14px;text-align:left;">PO</th>
-          <th style="padding:8px 14px;text-align:right;">Amount</th><th style="padding:8px 14px;text-align:left;">Entry date</th>
-          <th style="padding:8px 14px;text-align:right;">Age</th><th style="padding:8px 14px;text-align:right;">In status</th>
+          ${sortTh([
+            ['Invoice', 'invoiceNumber'], ['Site / BU', 'siteCode'], ['PO', 'po'],
+            ['Amount', 'amount', 'right'], ['Entry date', 'entryDate'],
+            ['Age', 'ageDays', 'right'], ['In status', 'daysInStatus', 'right'],
+          ], 'aging', 'renderPoAging')}
         </tr></thead><tbody>${rows}</tbody></table>` : ''}
     </div>`;
   }).join('');
@@ -5567,7 +5659,7 @@ function renderPoResubmissions() {
     </div>`;
     return;
   }
-  const rows = _poResubmissions.map(r => {
+  const rows = tblSortRows(_poResubmissions, 'resubmissions').map(r => {
     let flag, flagColor, flagBg;
     if (r.duplicateLive) { flag = '⚠️ Duplicate live'; flagColor = '#dc2626'; flagBg = '#fee2e2'; }
     else if (r.allDead) { flag = '❌ All cancelled/rejected'; flagColor = '#b45309'; flagBg = '#fef3c7'; }
@@ -5590,9 +5682,7 @@ function renderPoResubmissions() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice (Sage)</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Site</th>
-        <th style="padding:10px 14px;text-align:center;font-weight:600;color:var(--gray-700)">Attempts</th>
+        ${sortTh([['Invoice (Sage)', 'invoiceId'], ['Site', 'siteCode'], ['Attempts', 'attemptCount', 'center']], 'resubmissions', 'renderPoResubmissions')}
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Attempt chain (Payee Central)</th>
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Flag</th>
       </tr></thead>
@@ -5889,6 +5979,7 @@ function renderPoNeedsUpload() {
     : _poNeedsUpload;
   if (_poNeedsUploadSnowOnly) filtered = filtered.filter(inv => snowByPo[inv.assignedPo]);
   _poNeedsUploadFilteredIds = filtered.map(inv => inv.recordNo);
+  filtered = tblSortRows(filtered, 'needsupload');
   _shownNeedsUpload = filtered;
   const allChecked = filtered.length && filtered.every(inv => _poNeedsUploadSelected.has(inv.recordNo));
 
@@ -5949,15 +6040,11 @@ function renderPoNeedsUpload() {
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
         <th style="padding:10px 14px"><input type="checkbox" ${allChecked ? 'checked' : ''} onchange="poNuToggleAll(this.checked)" title="Select all (filtered)"></th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Customer</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Site Code</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice Date</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">PO on Record</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Amount</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)" title="Ceiling minus consumed minus other pending uploads — headroom before this invoice">PO Available*</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Before Upload</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)"></th>
+        ${sortTh([
+          ['Invoice', 'invoiceId'], ['Customer', 'customerName'], ['Site Code', 'siteCode'],
+          ['Invoice Date', 'invoiceDate'], ['PO on Record', 'poOnRecord'], ['Amount', 'amount'],
+          ['PO Available*', 'poAvailable'], ['Before Upload', null], ['', null],
+        ], 'needsupload', 'renderPoNeedsUpload')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -6333,6 +6420,7 @@ function renderPoUploaded() {
   let filtered = _poUploaded;
   if (_poUploadedStatusFilter) filtered = filtered.filter(u => u.status === _poUploadedStatusFilter);
   if (_poUploadedSiteFilter) filtered = filtered.filter(u => u.siteCode === _poUploadedSiteFilter);
+  filtered = tblSortRows(filtered, 'uploaded');
   _shownUploaded = filtered;
 
   const rows = filtered.map(u => {
@@ -6377,13 +6465,11 @@ function renderPoUploaded() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Customer</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Site Code</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">PO # (on record → Payee Central)</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Amount</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Entry Date</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Status</th>
+        ${sortTh([
+          ['Invoice', 'invoiceId'], ['Customer', 'customerName'], ['Site Code', 'siteCode'],
+          ['PO # (on record → Payee Central)', 'poNumber'], ['Amount', 'amount'],
+          ['Entry Date', 'entryDate'], ['Status', 'status'],
+        ], 'uploaded', 'renderPoUploaded')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -6415,7 +6501,7 @@ function renderPoMismatches() {
     </div>`;
     return;
   }
-  const rows = _poMismatches.map(m => {
+  const rows = tblSortRows(_poMismatches, 'mismatches').map(m => {
     const statusBadge = m.statusMeta
       ? `<span style="color:${m.statusMeta.color};background:${m.statusMeta.bg};border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600">${m.statusMeta.icon} ${escHtml(m.statusMeta.label)}</span>`
       : escHtml(m.status || '—');
@@ -6433,13 +6519,11 @@ function renderPoMismatches() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Customer</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Site / BU</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoiced Against</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Actually Submitted</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Amount</th>
-        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Status</th>
+        ${sortTh([
+          ['Invoice', 'invoiceId'], ['Customer', 'customerName'], ['Site / BU', 'siteCode'],
+          ['Invoiced Against', 'invoicedPo'], ['Actually Submitted', 'submittedPo'],
+          ['Amount', 'amount'], ['Status', 'status'],
+        ], 'mismatches', 'renderPoMismatches')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -6783,7 +6867,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260910f"></script>
-<script src="/amazon.js?v=20260910g"></script>
+<script src="/comms.js?v=20260910h"></script>
+<script src="/amazon.js?v=20260910h"></script>
 </body>
 </html>

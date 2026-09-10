@@ -1181,6 +1181,22 @@ async function commsAutoAssignRun(btn) {
       <option value="manager">Manager — everything a specialist can do, plus dunning and finance</option>
       <option value="admin">Admin — full access including user management</option>
     </select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-700);cursor:pointer;margin-top:10px;padding:8px 10px;background:var(--gray-50);border-radius:6px">
+      <input type="checkbox" id="invite-notify" checked onchange="commsInviteNotifyChanged()">
+      Email them the invitation now
+    </label>
+    <div id="invite-seed-note" style="display:none;font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;margin-top:6px">
+      Access will be set up and they can be assigned work immediately, but nothing is sent. They appear under “Set up, not yet invited” until you send it.
+    </div>
+
+    <details id="invite-bulk-wrap" style="margin-top:10px">
+      <summary style="font-size:12.5px;color:var(--navy);cursor:pointer;font-weight:600">Add several at once</summary>
+      <div style="font-size:11.5px;color:var(--gray-500);margin:6px 0">One per line: <code>email, name, role, job title</code>. Role is optional and falls back to the access level chosen above.</div>
+      <textarea id="invite-bulk" rows="5" placeholder="jane.doe@eastcoastfacilities.com, Jane Doe, ar_specialist, AR Specialist&#10;john.smith@eastcoastfacilities.com, John Smith, viewer"
+        style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;font-family:ui-monospace,monospace"></textarea>
+      <button onclick="commsSeedUsers()" style="margin-top:6px;padding:6px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:12.5px;cursor:pointer;font-weight:600">Seed these users (never emails)</button>
+    </details>
+
     <div id="invite-msg" style="font-size:12px;margin:10px 0 0 0;min-height:16px"></div>
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button onclick="commsCloseInvite()" style="padding:7px 14px;border:1px solid var(--gray-300);background:var(--white);border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
@@ -1208,6 +1224,32 @@ function commsCloseInvite() {
   if (m) m.style.display = 'none';
 }
 
+// The button has to say what it will actually do — "Send invitation" on a form
+// that sends nothing is exactly the kind of thing that gets clicked by mistake.
+function commsInviteNotifyChanged() {
+  const on = document.getElementById('invite-notify').checked;
+  const btn = document.getElementById('invite-send');
+  const note = document.getElementById('invite-seed-note');
+  if (btn) btn.textContent = on ? 'Send invitation' : 'Set up access (no email)';
+  if (note) note.style.display = on ? 'none' : '';
+}
+
+async function commsSeedUsers() {
+  const msg = document.getElementById('invite-msg');
+  const text = (document.getElementById('invite-bulk').value || '').trim();
+  if (!text) { msg.innerHTML = '<span style="color:var(--red)">Paste at least one line first.</span>'; return; }
+  const defaultRole = document.getElementById('invite-role').value;
+  msg.innerHTML = '<span style="color:var(--gray-500)">Setting them up…</span>';
+  try {
+    const r = await apiFetch('/api/admin/seed-users', { method: 'POST', body: JSON.stringify({ text, defaultRole }) });
+    const fresh = r.added.filter(a => !a.existed).length;
+    const updated = r.added.length - fresh;
+    msg.innerHTML = `<span style="color:#15803d">${fresh} user${fresh === 1 ? '' : 's'} set up${updated ? `, ${updated} updated` : ''}. No email sent.</span>`
+      + (r.skipped.length ? `<div style="color:var(--red);margin-top:4px">Skipped ${r.skipped.length}: ${r.skipped.map(x => escHtml(x.email) + ' (' + escHtml(x.why) + ')').join(', ')}</div>` : '');
+    if (typeof loadAdminUsers === 'function') setTimeout(loadAdminUsers, 300);
+  } catch (e) { msg.innerHTML = `<span style="color:var(--red)">Failed: ${escHtml(e.message)}</span>`; }
+}
+
 async function commsSendInvite() {
   const msg = document.getElementById('invite-msg');
   const btn = document.getElementById('invite-send');
@@ -1221,10 +1263,15 @@ async function commsSendInvite() {
   if (!email.endsWith('@eastcoastfacilities.com')) return fail('Must be an @eastcoastfacilities.com address.');
   if (!name) return fail('Please give their name — it goes in the invitation.');
   btn.disabled = true;
-  msg.innerHTML = '<span style="color:var(--gray-500)">Sending…</span>';
+  msg.innerHTML = document.getElementById('invite-notify').checked
+    ? '<span style="color:var(--gray-500)">Sending…</span>'
+    : '<span style="color:var(--gray-500)">Setting up access…</span>';
   try {
-    const r = await apiFetch('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email, name, role, job_title }) });
-    msg.innerHTML = `<span style="color:#15803d">Invitation sent to ${escHtml(r.email)} as ${escHtml(String(r.role).replace('_', ' '))}. Their access is live now.</span>`;
+    const notify = document.getElementById('invite-notify').checked;
+    const r = await apiFetch('/api/admin/invite', { method: 'POST', body: JSON.stringify({ email, name, role, job_title, notify }) });
+    msg.innerHTML = r.notified
+      ? `<span style="color:#15803d">Invitation sent to ${escHtml(r.email)} as ${escHtml(String(r.role).replace('_', ' '))}. Their access is live now.</span>`
+      : `<span style="color:#15803d">${escHtml(r.email)} is set up as ${escHtml(String(r.role).replace('_', ' '))}. Nothing was sent — invite them when you are ready.</span>`;
     setTimeout(commsCloseInvite, 2200);
     if (typeof loadAdminUsers === 'function') setTimeout(loadAdminUsers, 300);
   } catch (e) {

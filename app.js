@@ -839,6 +839,8 @@ function internalContactForSite(siteCode, recordNo) {
 
 const REJECTED_STATUSES = new Set(['Rejected']);
 let _lastRejectionSweep = null;
+let _lastReasonScrape = null;
+let _reasonScrapeRunning = false;
 
 function doRejectionSweep(opts) {
   const stats = sweepRejections(opts);
@@ -1002,6 +1004,8 @@ app.get('/api/amazon/rejections', requireAuth, (req, res) => {
     res.json({
       summary: db.rejectionSummary(),
       lastSweep: _lastRejectionSweep,
+      lastReasonScrape: _lastReasonScrape,
+      reasonScrapeRunning: _reasonScrapeRunning,
       rows: rows.map(r => ({ ...r, siteContact: r.site_code ? db.getSiteContact(r.site_code) : null })),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1012,6 +1016,30 @@ app.post('/api/amazon/rejections/sweep', requireAuth, requirePerm('po.edit'), (r
     const stats = doRejectionSweep({ notify: req.body && req.body.notify === true });
     res.json(stats);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Reads the REASON off each rejection's Payee Central detail page. Long-running
+// (a browser session per pass), so it answers immediately and works in the
+// background; the client re-reads the list when it finishes.
+app.post('/api/amazon/rejections/reasons', requireAuth, requirePerm('po.edit'), (req, res) => {
+  if (_reasonScrapeRunning) return res.json({ alreadyRunning: true });
+  _reasonScrapeRunning = true;
+  const refresh = !!(req.body && req.body.refresh);
+  const who = req.session.user.email;
+  res.json({ started: true, refresh });
+  (async () => {
+    try {
+      const { scrapeRejectionReasons } = require('./payee-rejection-scraper');
+      const stats = await scrapeRejectionReasons({ refresh });
+      _lastReasonScrape = { at: new Date().toISOString(), ...stats };
+      db.auditLog(who, 'rejection_reasons_scrape', null,
+        `${stats.updated}/${stats.attempted} reasons, ${stats.contacts || 0} contacts, ${stats.failed} failed`);
+      console.log('[rejections] reasons:', JSON.stringify(stats));
+    } catch (e) {
+      _lastReasonScrape = { at: new Date().toISOString(), error: e.message };
+      console.error('[rejections] reason scrape failed:', e.message);
+    } finally { _reasonScrapeRunning = false; }
+  })();
 });
 
 app.post('/api/amazon/rejections/:payeeId/ack', requireAuth, requirePerm('po.edit'), (req, res) => {
@@ -3825,14 +3853,69 @@ app.get('/api/overview', requireAuth, async (req, res) => {
 });
 
 // ─── API: Invite a user (pre-provision + invitation email) ───────────────────
+const PORTAL_ROLES = ['admin', 'manager', 'ar_specialist', 'viewer'];
+
+// Seed users WITHOUT telling them. Access is provisioned so they can be
+// assigned work and tested against; the invitation is a separate, later act
+// (Edwin 2026-09-10). Accepts one-per-line "email, name, role, job title".
+app.post('/api/admin/seed-users', requireAuth, requirePerm('invites.send'), (req, res) => {
+  try {
+    const { users, text, defaultRole } = req.body || {};
+    let list = Array.isArray(users) ? users : [];
+    if (!list.length && text) {
+      list = String(text).split(/\r?\n/).map(line => {
+        const parts = line.split(/\s*[,;\t]\s*/).map(x => x.trim()).filter(Boolean);
+        if (!parts.length) return null;
+        // The email may be in any column; everything else is positional after it.
+        const emailAt = parts.findIndex(p => p.includes('@'));
+        if (emailAt === -1) return null;
+        const rest = parts.filter((_, i) => i !== emailAt);
+        const roleAt = rest.findIndex(p => PORTAL_ROLES.includes(p.toLowerCase().replace(/\s+/g, '_')));
+        const role = roleAt === -1 ? null : rest[roleAt].toLowerCase().replace(/\s+/g, '_');
+        const others = rest.filter((_, i) => i !== roleAt);
+        return { email: parts[emailAt], name: others[0] || '', role, job_title: others[1] || null };
+      }).filter(Boolean);
+    }
+    if (!list.length) return res.status(400).json({ error: 'Nothing to seed' });
+
+    const added = [], skipped = [];
+    for (const u of list) {
+      const norm = String(u.email || '').trim().toLowerCase();
+      const role = PORTAL_ROLES.includes(u.role) ? u.role : (PORTAL_ROLES.includes(defaultRole) ? defaultRole : 'viewer');
+      if (!norm.endsWith('@eastcoastfacilities.com')) { skipped.push({ email: norm || '(blank)', why: 'not an @eastcoastfacilities.com address' }); continue; }
+      const existing = db.getUserRoleAnyCase ? db.getUserRoleAnyCase(norm) : null;
+      db.preProvisionUser(norm, u.name || '', role, u.job_title || null);
+      added.push({ email: norm, name: u.name || '', role, existed: !!existing });
+    }
+    db.auditLog(req.session.user.email, 'users_seeded', null,
+      `${added.length} provisioned WITHOUT invitation: ${added.map(a => a.email + '=' + a.role).join(', ')}`);
+    res.json({ ok: true, added, skipped, notified: false });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Who has access but has never been told about it.
+app.get('/api/admin/uninvited', requireAuth, requirePerm('invites.send'), (req, res) => {
+  try {
+    res.json(db.listUninvitedUsers().map(u => ({
+      email: u.email, name: u.name, role: u.role, job_title: u.job_title, created_at: u.created_at,
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/invite', requireAuth, requirePerm('invites.send'), async (req, res) => {
   try {
     const { email, name, role, job_title } = req.body || {};
+    // notify:false provisions access and sends nothing — the seeding path.
+    const notify = req.body && req.body.notify === false ? false : true;
     const norm = String(email || '').trim().toLowerCase();
     if (!norm.endsWith('@eastcoastfacilities.com')) return res.status(400).json({ error: 'Must be an @eastcoastfacilities.com address' });
-    if (!['admin', 'manager', 'ar_specialist', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (!PORTAL_ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
     db.preProvisionUser(norm, name || '', role, job_title || null);
     const inviter = req.session.user;
+    if (!notify) {
+      db.auditLog(inviter.email, 'user_seeded', null, `${norm} as ${role} (no invitation sent)`);
+      return res.json({ ok: true, email: norm, role, notified: false });
+    }
     await sendGraphMail(norm, 'You have been invited to the ECF AR Portal',
 `Hello${name ? ' ' + name.split(' ')[0] : ''},
 
@@ -3851,8 +3934,9 @@ Where to start:
 No separate password is needed. Questions? Reply to ${inviter.email}.
 
 —ECF AR Portal`);
+    db.markInvited(norm, inviter.email);
     db.auditLog(inviter.email, 'user_invite', null, `${norm} as ${role}`);
-    res.json({ ok: true, email: norm, role });
+    res.json({ ok: true, email: norm, role, notified: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
