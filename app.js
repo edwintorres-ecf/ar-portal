@@ -3307,6 +3307,49 @@ app.post('/api/po/:poNumber/service', requireAuth, requirePerm('po.edit'), (req,
 // ─── Pending-by-Site Excel export ────────────────────────────────────────
 // Styled .xlsx mirroring the on-screen report: per-PO rows, merged site cells
 // for Site / Site Pending / Site Available, red/green/amber color coding.
+// ─── Funds-by-site report + the case study for Amazon ───────────────────────
+app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
+  try {
+    const snowOnly = req.query.snow !== '0';
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const { workbook, analysis } = await require('./amazon-funds-report').buildWorkbook(invoices, { snowOnly });
+    db.auditLog(req.session.user.email, 'export_funds_report', null,
+      `${snowOnly ? 'snow' : 'all'} — ${analysis.buList.length} business units, ${analysis.totals.sites} sites`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-po-funds${snowOnly ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[api] funds-report error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/po/funds-case-study.pdf', requireAuth, async (req, res) => {
+  try {
+    const snowOnly = req.query.snow !== '0';
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const mod = require('./amazon-funds-report');
+    const analysis = mod.analyse(invoices, { snowOnly });
+    db.auditLog(req.session.user.email, 'export_case_study', null,
+      `${snowOnly ? 'snow' : 'all'} — pending ${Math.round(analysis.totals.pending)}`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-po-funding-case-study${snowOnly ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    mod.buildDeck(analysis).pipe(res);
+  } catch (e) {
+    console.error('[api] case-study error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
   try {
     const ExcelJS = require('exceljs');

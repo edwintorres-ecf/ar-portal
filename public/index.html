@@ -5476,6 +5476,15 @@ async function assignInvoiceSite(recordNo, invoiceId, currentSite) {
 // The &t= cache-buster is REQUIRED: Cloudflare edge-caches .xlsx URLs by
 // default, so a stable URL re-serves the first generated file forever
 // (bit us 2026-08-05 — stale exports with no origin hit).
+// Both take the ❄️ snow toggle from this screen, so what you are looking at is
+// what you get.
+function exportFundsReport() {
+  window.location = `/api/po/funds-report.xlsx?snow=${_pbsSnowOnly ? 1 : 0}&t=${Date.now()}`;
+}
+function exportCaseStudy() {
+  window.location = `/api/po/funds-case-study.pdf?snow=${_pbsSnowOnly ? 1 : 0}&t=${Date.now()}`;
+}
+
 function exportPendingBySiteXlsx() {
   // Carry the on-screen BU/site filter into the workbook — an export that
   // silently widens back out to the whole book is worse than no export.
@@ -5714,7 +5723,10 @@ function renderPendingBySite() {
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       ${pills}
       <span style="font-size:12px;color:var(--gray-500);margin-left:6px">${summary}</span>
-      <button class="btn" style="font-size:11px;padding:4px 10px;margin-left:auto" onclick="exportPendingBySiteXlsx()">⬇ Export Excel</button>
+      <span style="margin-left:auto"></span>
+      <button class="btn" style="font-size:11px;padding:4px 10px" onclick="exportPendingBySiteXlsx()">⬇ Export Excel</button>
+      <button class="btn" style="font-size:11px;padding:4px 10px" title="Summary sheet plus one sheet per business unit, showing where funds are short and where they are sitting unused" onclick="exportFundsReport()">📊 Funds report by BU</button>
+      <button class="btn" style="font-size:11px;padding:4px 10px" title="Five-slide case study for Amazon, built from this data" onclick="exportCaseStudy()">📑 Case study (PDF)</button>
     </div>
     ${buStrip}
     ${reviewBanner}
