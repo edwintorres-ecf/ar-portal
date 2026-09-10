@@ -130,6 +130,11 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     s.stalled = Math.round(s.stalled * 100) / 100;
     s.spare = Math.max(0, s.available - s.stalled);
     s.short = Math.max(0, s.stalled - Math.max(0, s.available));
+    // The same position with the coming season's money set aside. Amazon will
+    // do this arithmetic themselves; presenting it first is the stronger move.
+    s.availableThisSeason = Math.round((s.available - s.nextSeason) * 100) / 100;
+    s.spareThisSeason = Math.max(0, s.availableThisSeason - s.stalled);
+    s.shortThisSeason = Math.max(0, s.stalled - Math.max(0, s.availableThisSeason));
     s.pos.sort((x, y) => (y.available || 0) - (x.available || 0));
   }
   const siteList = Object.values(bySite).sort((x, y) => (y.stalled - y.available) - (x.stalled - x.available));
@@ -146,11 +151,17 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const coverable = Math.round(Math.min(excess, totalShort) * 100) / 100;
   const variance = Math.round(Math.max(0, totalShort - excess) * 100) / 100;
 
+  // And the same, if the coming season's commitments are held back for it.
+  const excessThisSeason = Math.round(siteList.reduce((t, s) => t + s.spareThisSeason, 0) * 100) / 100;
+  const shortThisSeason = Math.round(siteList.reduce((t, s) => t + s.shortThisSeason, 0) * 100) / 100;
+  const varianceThisSeason = Math.round(Math.max(0, shortThisSeason - excessThisSeason) * 100) / 100;
+
   return {
     bu, seasonKey, snowOnly,
     rows, buckets, stalled, stalledRows,
     bySite, siteList, excessSites, shortSites,
     excess, totalShort, coverable, variance, nextSeasonTotal,
+    excessThisSeason, shortThisSeason, varianceThisSeason,
     upcomingSeasonLabel: `${new Date(upcomingSeasonStart()).getUTCFullYear()}\u2013${String(new Date(upcomingSeasonStart()).getUTCFullYear() + 1).slice(2)}`,
     ledger, seasonPos,
     generatedAt: new Date().toISOString(),
@@ -249,6 +260,17 @@ async function buildBuWorkbook(invoices, opts) {
   ex.height = 30;
 
   const shortfall = a.variance > 0 ? a.variance : 0;
+  if (a.nextSeasonTotal > 0) {
+    const ns = s1.addRow(['', `— of which sits on ${a.upcomingSeasonLabel} purchase orders`, a.nextSeasonTotal, '', '', '',
+      `Raised for the coming season. Counted in the figure above because the work above it is still open, but shown separately so the position is clear either way.`]);
+    ns.getCell(2).font = { size: 10.5, italic: true, color: { argb: 'FF64748B' } };
+    ns.getCell(3).numFmt = money;
+    ns.getCell(3).font = { size: 10.5, color: { argb: 'FF64748B' } };
+    ns.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+    ns.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+    ns.height = 30;
+  }
+
   const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length, '', '',
     a.variance > 0
       ? `New funding still required after moving every spare dollar from the ${a.excessSites.length} site(s) that have some, into the ${a.shortSites.length} that are short.`
@@ -260,6 +282,19 @@ async function buildBuWorkbook(invoices, opts) {
   va.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
   va.getCell(7).alignment = { wrapText: true, vertical: 'top' };
   va.height = 30;
+
+  if (a.nextSeasonTotal > 0) {
+    const v2 = s1.addRow(['', `Variance if ${a.upcomingSeasonLabel} funds are kept for ${a.upcomingSeasonLabel}`,
+      a.varianceThisSeason, '', '', '',
+      `The same calculation with the coming season's purchase orders set aside, leaving only funds raised for the work that is actually outstanding.`]);
+    v2.getCell(2).font = { bold: true, size: 11 };
+    v2.getCell(3).numFmt = money;
+    v2.getCell(3).font = { bold: true, size: 12, color: { argb: 'FF991B1B' } };
+    v2.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
+    v2.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+    v2.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+    v2.height = 30;
+  }
   s1.addRow([]);
   s1.addRow([]);
 
@@ -272,11 +307,15 @@ async function buildBuWorkbook(invoices, opts) {
       + `the remaining ${M(a.variance)} has to be newly funded.`
     : `${a.bu} needs no new funding. The ${a.excessSites.length} sites holding ${M(a.excess)} spare more than cover the `
       + `${M(a.totalShort)} that the ${a.shortSites.length} short sites are missing — it only needs moving.`;
-  const an = s1.addRow(['', analysis]);
+  const analysisFull = a.nextSeasonTotal > 0
+    ? `${analysis} If the ${M(a.nextSeasonTotal)} committed on ${a.upcomingSeasonLabel} purchase orders is kept back for `
+      + `that season, the shortfall becomes ${M(a.varianceThisSeason)}.`
+    : analysis;
+  const an = s1.addRow(['', analysisFull]);
   s1.mergeCells(`B${an.number}:G${an.number}`);
   an.getCell(2).font = { size: 12, color: { argb: NAVY } };
   an.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-  an.height = 46;
+  an.height = 62;
 
   // Every site in the business unit, with ALL its POs consolidated into one
   // funding position. A site's POs mean nothing individually — what matters is
