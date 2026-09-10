@@ -103,6 +103,91 @@ function filterAmazon(invoices) {
   return invoices.filter(inv => AMAZON_CUSTOMER_IDS.has(inv.customerId));
 }
 
+// ─── Site metadata on every PO Manager row ──────────────────────────────────
+// Every tab already knew the site code but none of them knew the business unit,
+// so "show me pending money for one BU" was unanswerable without exporting and
+// pivoting by hand (Edwin 2026-09-10). One lookup, attached in one place, means
+// each tab filters the same way and none of them can drift from another.
+let _siteMetaCache = null, _siteMetaTs = 0;
+function siteMetaMap() {
+  const now = Date.now();
+  if (_siteMetaCache && (now - _siteMetaTs) < 5 * 60 * 1000) return _siteMetaCache;
+  try { _siteMetaCache = db.getAmazonLocationMap(); } catch (e) { _siteMetaCache = {}; }
+  _siteMetaTs = now;
+  return _siteMetaCache;
+}
+
+// Mutates and returns the row. `siteCode` may be absent on a row (mismatches,
+// exceptions) — the caller passes an explicit code in that case.
+function attachSiteMeta(row, explicitSite) {
+  const code = normalizeSite(explicitSite !== undefined ? explicitSite : row.siteCode) || null;
+  if (explicitSite !== undefined) row.siteCode = code;
+  const m = code ? siteMetaMap()[code] : null;
+  row.businessUnit = m ? (m.businessUnit || '') : '';
+  row.siteType = m ? (m.siteType || '') : '';
+  row.siteCity = m ? (m.city || '') : '';
+  row.siteState = m ? (m.state || '') : '';
+  row.siteServiceCenter = m ? (m.serviceCenter || '') : '';
+  // A site code we bill against but that isn't in the Amazon master is a real
+  // condition worth seeing, not an empty cell.
+  row.siteInMaster = !!m;
+  return row;
+}
+function attachSiteMetaAll(rows, siteOf) {
+  for (const r of rows) attachSiteMeta(r, siteOf ? siteOf(r) : undefined);
+  return rows;
+}
+
+// The site ledger (site-ledger.js) resolves a site for every Amazon invoice with
+// provenance, and covers cases raw Sage ship-to cannot: manual overrides, POs
+// that name the site, invoices whose ship-to is just "Amazon.com Services LLC".
+// Read straight from its table so this module stays dependency-free.
+let _invSiteCache = null, _invSiteTs = 0;
+function invoiceSiteMap() {
+  const now = Date.now();
+  if (_invSiteCache && (now - _invSiteTs) < 5 * 60 * 1000) return _invSiteCache;
+  const out = {};
+  try {
+    for (const r of db.getDb().prepare("SELECT record_no, site_code FROM invoice_site_ledger WHERE site_code IS NOT NULL AND site_code != ''").all()) {
+      out[String(r.record_no)] = r.site_code;
+    }
+  } catch (e) { /* ledger not built yet */ }
+  _invSiteCache = out; _invSiteTs = now;
+  return out;
+}
+function siteForInvoice(inv) {
+  if (isValidSite(inv.siteCode)) return normalizeSite(inv.siteCode);
+  return invoiceSiteMap()[String(inv.recordNo)] || null;
+}
+
+// The Payee Central feed is keyed by Amazon's own invoice number, which is our
+// Sage id with the dashes stripped and possibly a resubmission letter on the
+// end. Index the site ledger the same way so aging rows can carry a site too.
+let _payeeSiteCache = null, _payeeSiteTs = 0;
+function siteByPayeeId() {
+  const now = Date.now();
+  if (_payeeSiteCache && (now - _payeeSiteTs) < 5 * 60 * 1000) return _payeeSiteCache;
+  const out = {};
+  try {
+    for (const r of db.getDb().prepare("SELECT invoice_id, site_code FROM invoice_site_ledger WHERE site_code IS NOT NULL AND site_code != ''").all()) {
+      const pid = payee.toPayeeId(r.invoice_id);
+      if (pid) out[String(pid).toUpperCase()] = r.site_code;
+    }
+  } catch (e) { /* ledger not built yet */ }
+  _payeeSiteCache = out; _payeeSiteTs = now;
+  return out;
+}
+function siteForPayeeInvoice(invNo, poNumber, poSiteMap) {
+  const map = siteByPayeeId();
+  const key = String(invNo || '').toUpperCase();
+  if (map[key]) return map[key];
+  // A resubmission lives under the base id plus a letter; the base carries the site.
+  const base = key.replace(/[A-Z]$/, '');
+  if (base !== key && map[base]) return map[base];
+  // Last resort: the PO it was submitted against knows where the work was.
+  return (poSiteMap && poNumber) ? (poSiteMap[String(poNumber).toUpperCase()] || null) : null;
+}
+
 function parseAmount(value) {
   if (typeof value === 'number') return value;
   if (!value) return 0;
@@ -562,7 +647,7 @@ function getPoLedger(invoices) {
     if (b.available == null) return -1;
     return a.available - b.available;
   });
-  return ledger;
+  return attachSiteMetaAll(ledger);
 }
 
 /**
@@ -593,7 +678,7 @@ function getNeedsUpload(invoices) {
 
   const openPoMap = payee.getOpenPoMap().byPo;
 
-  return needsUpload.map(inv => {
+  const rows = needsUpload.map(inv => {
     const poRow = ledgerByPo[inv.effectivePo];
     const openEntry = openPoMap[(inv.effectivePo || '').toUpperCase()];
     const amount = inv.totalEntered || 0;
@@ -648,6 +733,7 @@ function getNeedsUpload(invoices) {
     if (a.wouldOverage === b.wouldOverage) return 0;
     return a.wouldOverage ? -1 : 1;
   });
+  return attachSiteMetaAll(rows);
 }
 
 /**
@@ -705,6 +791,9 @@ function getTransmissionExceptions() {
   }
   exceptions.sort((a, b) => b.ageHours - a.ageHours);
   duplicates.sort((a, b) => b.okTransmits - a.okTransmits);
+  const siteOf = (r) => siteForPayeeInvoice(payee.toPayeeId(r.invoiceId), r.po, null);
+  attachSiteMetaAll(exceptions, siteOf);
+  attachSiteMetaAll(duplicates, siteOf);
   return { graceHours: GRACE_HOURS, exceptions, duplicates };
 }
 
@@ -752,13 +841,14 @@ function getPoMismatches(invoices) {
         submittedAs: payeeEntry.payeeId !== (payeeId || '').toUpperCase() ? payeeEntry.payeeId : null,
         invoicedPo,
         submittedPo,
+        siteCode: siteForInvoice(inv),
         amount: parseAmount(payeeEntry.amount),
         status: payeeEntry.status,
         statusMeta: payeeEntry.statusMeta,
       });
     }
   }
-  return mismatches;
+  return attachSiteMetaAll(mismatches);
 }
 
 /**
@@ -777,7 +867,7 @@ function getUploaded(invoices) {
       recordNo: inv.recordNo,
       invoiceId: inv.invoiceId,
       customerName: inv.customerName,
-      siteCode: normalizeSite(inv.siteCode) || null,
+      siteCode: siteForInvoice(inv),
       poNumber,
       submittedPo: (payeeEntry.po || '').trim(),
       // resubmission-aware: what ID this actually lives under in Payee Central
@@ -790,7 +880,7 @@ function getUploaded(invoices) {
       entryDate: payeeEntry.entryDate,
     });
   }
-  return uploaded.sort((a, b) => (b.entryDate || '').localeCompare(a.entryDate || ''));
+  return attachSiteMetaAll(uploaded.sort((a, b) => (b.entryDate || '').localeCompare(a.entryDate || '')));
 }
 
 /**
@@ -810,7 +900,7 @@ function getResubmissionMonitor(invoices) {
       recordNo: inv.recordNo,
       invoiceId: inv.invoiceId,
       customerName: inv.customerName,
-      siteCode: normalizeSite(inv.siteCode) || null,
+      siteCode: siteForInvoice(inv),
       attemptCount: resolved.attemptCount,
       liveCount: resolved.liveCount,
       attempts: resolved.attempts, // [{id, status, entryDate}]
@@ -822,8 +912,8 @@ function getResubmissionMonitor(invoices) {
     });
   }
   // Anomalies first (duplicate-live, then all-dead), then by attempt count.
-  return rows.sort((a, b) =>
-    (b.duplicateLive - a.duplicateLive) || (b.allDead - a.allDead) || (b.attemptCount - a.attemptCount));
+  return attachSiteMetaAll(rows.sort((a, b) =>
+    (b.duplicateLive - a.duplicateLive) || (b.allDead - a.allDead) || (b.attemptCount - a.attemptCount)));
 }
 
 // When each underlying data source was last refreshed, for a "last updated"
@@ -897,7 +987,10 @@ function getOrphanInvoices(invoices) {
     });
   }
   // Biggest dollars first — triage the material ones.
-  return orphans.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  orphans.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  // `site` is this tab's own name for the code; feed it in explicitly so the
+  // row carries siteCode + businessUnit like every other tab.
+  return attachSiteMetaAll(orphans, r => r.site);
 }
 
 /**
@@ -946,7 +1039,14 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
     row.pendingUpload += inv.amount || 0; row.pendingUploadInvoiceCount++;
   }
   for (const s of Object.values(sites)) delete s.poIndex;
-  return Object.values(sites);
+  // Every site row gets its business unit, and so does every PO row under it,
+  // so "all the pending money for one BU" is a filter rather than an export.
+  const list = Object.values(sites);
+  for (const s of list) {
+    attachSiteMeta(s, s.site === '(no site)' ? null : s.site);
+    attachSiteMetaAll(s.poRows);
+  }
+  return list;
 }
 
 // ─── Payee aging: invoices parked in a non-terminal status ──────────────────
@@ -975,6 +1075,14 @@ function getPayeeAging(opts = {}) {
       since[r.invoice_number] = r.status_since;
     }
   } catch (e) { /* column absent on a database that has not synced yet */ }
+
+  // PO -> site, as the fallback for aging rows the site ledger cannot key.
+  const poSiteMap = {};
+  try {
+    for (const r of db.getDb().prepare('SELECT po_number, site_code FROM purchase_orders WHERE site_code IS NOT NULL').all()) {
+      poSiteMap[String(r.po_number).toUpperCase()] = r.site_code;
+    }
+  } catch (e) { /* purchase_orders unavailable */ }
 
   const reasons = new Map(AGING_STATUSES);
   const buckets = new Map();
@@ -1013,7 +1121,7 @@ function getPayeeAging(opts = {}) {
 
     const ss = since[invNo] || null;
     const ssMs = ss ? Date.parse(String(ss).replace(' ', 'T') + 'Z') : NaN;
-    const inv = {
+    const inv = attachSiteMeta({
       invoiceNumber: invNo,
       po: item.po || null,
       amount: parseAmount(item.amount),
@@ -1024,7 +1132,7 @@ function getPayeeAging(opts = {}) {
       pastDue,
       statusSince: ss,
       daysInStatus: isNaN(ssMs) ? null : Math.floor((now - ssMs) / DAY),
-    };
+    }, siteForPayeeInvoice(invNo, item.po, poSiteMap));
     if (isAging) add(status, reasons.get(status), inv);
     else add(PAST_DUE_KEY, 'Scheduled by Amazon, but the estimated due date has already passed', inv);
   }
@@ -1063,4 +1171,4 @@ function getPayeeAging(opts = {}) {
 
 module.exports = {
   getPayeeAging,
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice };

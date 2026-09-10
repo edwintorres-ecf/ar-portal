@@ -1045,8 +1045,17 @@ app.get('/api/customers/summary', requireAuth, async (req, res) => {
       }
     }
 
+    // House-account label travels with the customer wherever it is listed, so
+    // "who chases this one" is answerable without opening the account.
+    const houseById = {};
+    try {
+      for (const h of db.getHouseAccounts()) houseById[h.customer_id] = h.house_account_label || 'Managed at the office';
+    } catch (e) { /* migration not run */ }
+
     const result = [...customerMap.values()].map(c => ({
       ...c,
+      houseAccount: !!houseById[c.id],
+      houseLabel: houseById[c.id] || null,
       status: c.pastDueAR > 0 ? 'past_due' : (c.totalAR > 0 ? 'current' : 'clean'),
     })).sort((a, b) => b.pastDueAR - a.pastDueAR);
 
@@ -1350,7 +1359,11 @@ app.get('/api/po/meta', requireAuth, (req, res) => {
   try {
     const fresh = poLedger.getDataFreshness();
     const cacheInfo = sage.getCacheAge ? sage.getCacheAge() : null;
-    res.json({ ...fresh, sageInvoices: cacheInfo ? cacheInfo.fetchedAt : null, refreshRunning: _payeeRefreshRunning, refreshStarted: _payeeRefreshStarted });
+    // Business units for the PO Manager's shared filter bar. Sent with the meta
+    // the view already fetches, so the filter is populated before any tab loads.
+    let businessUnits = [];
+    try { businessUnits = db.getBusinessUnits().map(r => r.bu).filter(Boolean); } catch (e) { /* master not loaded */ }
+    res.json({ ...fresh, businessUnits, sageInvoices: cacheInfo ? cacheInfo.fetchedAt : null, refreshRunning: _payeeRefreshRunning, refreshStarted: _payeeRefreshStarted });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2539,6 +2552,12 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     // serviceType snow filter, placeholder/no-real-PO rows, site overrides) —
     // the export drifted when this logic lived in two places.
     let list = poLedger.getPendingBySite(invoices, { snowOnly });
+    // Same business-unit / site-code narrowing the screen applies, so the
+    // workbook matches what the person was looking at when they clicked.
+    const buFilter = (req.query.bu || '').trim();
+    const siteFilter = (req.query.site || '').trim().toUpperCase();
+    if (buFilter) list = list.filter(s => buFilter === '(none)' ? !s.businessUnit : s.businessUnit === buFilter);
+    if (siteFilter) list = list.filter(s => String(s.site || '').toUpperCase().includes(siteFilter));
     if (mode === 'pending') list = list.filter(s => s.pending > 0);
     else if (mode === 'spare') list = list.filter(s => s.available != null && s.available > 0);
     else if (mode === 'unassigned') {
@@ -2564,7 +2583,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     // Title + generated stamp
     ws.mergeCells('A1:L1');
     const title = ws.getCell('A1');
-    title.value = `ECF — Amazon PO Funds by Site (${mode}${snowOnly ? ' · snow only' : ''}) — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
+    title.value = `ECF — Amazon PO Funds by Site (${mode}${snowOnly ? ' · snow only' : ''}${buFilter ? ' · BU ' + buFilter : ''}${siteFilter ? ' · site ' + siteFilter : ''}) — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
     title.font = { bold: true, size: 12, color: { argb: NAVY } };
     ws.getRow(1).height = 20;
 
@@ -2614,7 +2633,9 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
       // (Single-PO sites skip the merge — a one-cell range throws in ExcelJS.)
       if (end > start) ws.mergeCells(`A${start}:A${end}`);
       const sc = ws.getCell(`A${start}`);
-      sc.value = `${s.site}\n${s.count} inv pending`;
+      // The BU rides in the merged site cell rather than a new column: the
+      // sheet's merges and totals are all pinned to A..L by index.
+      sc.value = `${s.site}${s.businessUnit ? ' · ' + s.businessUnit : ''}\n${s.count} inv pending`;
       sc.font = { bold: true, color: { argb: NAVY }, size: 10 };
       sc.alignment = { vertical: 'middle', wrapText: true };
       sc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LIGHT } };
@@ -2641,7 +2662,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     [6, 7, 8, 9, 11, 12].forEach(ci => { trow.getCell(ci).numFmt = money; });
     trow.getCell(12).font = { bold: true, size: 10, color: { argb: tot.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
 
-    db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''} — ${list.length} sites`);
+    db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''}${buFilter ? ' bu=' + buFilter : ''}${siteFilter ? ' site=' + siteFilter : ''} — ${list.length} sites`);
     // Cloudflare caches .xlsx URLs at the edge BY DEFAULT — without no-store,
     // every download re-serves the first generated file (observed 2026-08-05:
     // stale exports with no origin hit / no audit row). Belt: no-store here;
@@ -2904,16 +2925,55 @@ app.get('/api/customer-account/:id', requireAuth, (req, res) => {
 app.patch('/api/customer-account/:id', requireAuth, requirePerm('customers.manage'), (req, res) => {
   try {
     const user = req.session.user;
-    const { stop_service, owner_name, owner_email, customer_name, notes } = req.body;
+    const { stop_service, owner_name, owner_email, customer_name, notes, house_account, house_account_label } = req.body;
     const fields = {};
     if (stop_service !== undefined) fields.stop_service = stop_service;
     if (owner_name !== undefined)   fields.owner_name   = owner_name;
     if (owner_email !== undefined)  fields.owner_email  = owner_email;
     if (customer_name !== undefined) fields.customer_name = customer_name;
     if (notes !== undefined)        fields.notes        = notes;
+    if (house_account !== undefined) fields.house_account = house_account ? 1 : 0;
+    if (house_account_label !== undefined) fields.house_account_label = house_account_label;
     const acct = db.upsertCustomerAccount(req.params.id, customer_name || req.params.id, fields, user.email);
     const action = stop_service !== undefined ? (stop_service ? 'stop_service' : 'resume_service') : 'update_customer';
     db.auditLog(user.email, action, req.params.id, JSON.stringify(fields));
+    res.json(acct);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── House accounts: customers collected centrally at the office ────────────
+// The list doubles as the auto-assign exclusion list, so there is exactly one
+// place to look when asking "why did/didn't a rule touch this customer".
+app.get('/api/house-accounts', requireAuth, (req, res) => {
+  try {
+    const rows = db.getHouseAccounts();
+    const invoices = sage.getCachedInvoices();
+    const stats = {};
+    for (const inv of invoices) {
+      if (inv.totalDue <= 0.01) continue;
+      const s = stats[inv.customerId] = stats[inv.customerId] || { openCount: 0, openAmount: 0 };
+      s.openCount++; s.openAmount += inv.totalDue;
+    }
+    res.json(rows.map(r => ({
+      customerId: r.customer_id,
+      customerName: r.customer_name || r.customer_id,
+      label: r.house_account_label || 'Managed at the office',
+      openCount: (stats[r.customer_id] || {}).openCount || 0,
+      openAmount: (stats[r.customer_id] || {}).openAmount || 0,
+    })).sort((a, b) => b.openAmount - a.openAmount));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/house-accounts', requireAuth, requirePerm('customers.manage'), (req, res) => {
+  try {
+    const { customerId, on, label } = req.body || {};
+    if (!customerId) return res.status(400).json({ error: 'customerId required' });
+    const name = (sage.getCachedInvoices().find(i => i.customerId === customerId) || {}).customerName || customerId;
+    const acct = db.upsertCustomerAccount(customerId, name, {
+      house_account: on ? 1 : 0,
+      house_account_label: on ? (label || 'Managed at the office') : null,
+    }, req.session.user.email);
+    db.auditLog(req.session.user.email, on ? 'house_account_on' : 'house_account_off', customerId, label || '');
     res.json(acct);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3480,6 +3540,19 @@ function daysRelativeToDue(inv) {
   return Math.round((today - dueDay) / 86400000);
 }
 
+// A rule may be aimed at, or held off, specific customers by customer number.
+// 'all' ignores the list entirely; 'only' restricts the rule to those numbers;
+// 'except' runs everywhere but them. Matching is case-insensitive so "c-00403"
+// typed by hand still lines up with Sage's "C-00403".
+function ruleTargetsCustomer(rule, customerId) {
+  const mode = rule.targetMode || rule.target_mode || 'all';
+  if (mode === 'all') return true;
+  const list = (rule.targetCustomers || []).map(c => String(c).trim().toUpperCase());
+  if (!list.length) return true;                    // an empty list is not a filter
+  const hit = list.includes(String(customerId || '').trim().toUpperCase());
+  return mode === 'only' ? hit : !hit;
+}
+
 function applyAssignmentRules(triggeredBy) {
   const rules = db.listAssignmentRules().filter(r => r.active);
   if (!rules.length) return { assigned: 0, rules: 0 };
@@ -3487,11 +3560,21 @@ function applyAssignmentRules(triggeredBy) {
   const invColl = db.getAllInvoiceCollectors();
   const acctByCust = {};
   for (const acct of db.getAllCustomerAccounts()) acctByCust[acct.customer_id] = acct;
+  // House accounts are collected centrally at the office and are never swept up
+  // by a rule, whatever its window says. Without this, one aging rule put 52
+  // Amazon invoices ($906k) onto a service-centre collector who does not chase
+  // Amazon at all (Edwin 2026-09-10).
+  const houseAccounts = db.getHouseAccountIds();
   let assigned = 0;
   const byRule = {};
+  const skippedHouse = {};
   for (const inv of invoices) {
     if (inv.totalDue <= 0.01) continue;
     if (invColl[inv.recordNo]) continue;
+    if (houseAccounts.has(inv.customerId)) {
+      skippedHouse[inv.customerId] = (skippedHouse[inv.customerId] || 0) + 1;
+      continue;
+    }
     const acct = acctByCust[inv.customerId];
     if (acct && acct.collector_email) continue;
     // Days relative to the DUE DATE, signed. `inv.daysOverdue` is floored at 0
@@ -3502,6 +3585,7 @@ function applyAssignmentRules(triggeredBy) {
     const d = daysRelativeToDue(inv);
     if (d === null) continue;
     const rule = rules.find(r => {
+      if (!ruleTargetsCustomer(r, inv.customerId)) return false;
       const locs = r.locationIds && r.locationIds.length ? r.locationIds : (r.location_id ? [r.location_id] : []);
       if (locs.length && !locs.includes(inv.locationId)) return false;
       const min = r.min_days_past_due == null ? -99999 : r.min_days_past_due;
@@ -3513,9 +3597,11 @@ function applyAssignmentRules(triggeredBy) {
     assigned++;
     byRule[rule.name] = (byRule[rule.name] || 0) + 1;
   }
+  const houseSkipped = Object.values(skippedHouse).reduce((a, b) => a + b, 0);
   if (assigned) db.auditLog(triggeredBy || 'auto-assign', 'collector_auto_assign', null,
-    `${assigned} invoice(s): ${Object.entries(byRule).map(([n, c]) => n + '=' + c).join(', ')}`);
-  return { assigned, rules: rules.length, byRule };
+    `${assigned} invoice(s): ${Object.entries(byRule).map(([n, c]) => n + '=' + c).join(', ')}` +
+    (houseSkipped ? ` · ${houseSkipped} skipped as house accounts` : ''));
+  return { assigned, rules: rules.length, byRule, houseSkipped, skippedHouse };
 }
 
 app.get('/api/assignment-rules', requireAuth, requirePerm('collectors.assign'), (req, res) => {
@@ -3537,6 +3623,102 @@ app.delete('/api/assignment-rules/:id', requireAuth, requirePerm('customers.mana
     db.deleteAssignmentRule(parseInt(req.params.id, 10));
     db.auditLog(req.session.user.email, 'assignment_rule_delete', null, req.params.id);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Unassigned work, surfaced ──────────────────────────────────────────────
+// Rules only ever FILL gaps, so anything they do not match stays invisible: an
+// invoice can sail past its due date with nobody chasing it and no screen that
+// says so. This is that screen's data. House accounts are included but flagged,
+// because "nobody assigned" is the normal resting state for them, not a fault.
+app.get('/api/assignments/unassigned', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try {
+    const minDays = req.query.minDays === undefined ? 1 : parseInt(req.query.minDays, 10);
+    const includeHouse = req.query.house !== '0';
+    let invoices = sage.getCachedInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+
+    const invColl = db.getAllInvoiceCollectors();
+    const acctByCust = {};
+    for (const acct of db.getAllCustomerAccounts()) acctByCust[acct.customer_id] = acct;
+    const houseAccounts = db.getHouseAccountIds();
+
+    const rules = db.listAssignmentRules().filter(r => r.active);
+    // Why nothing picked it up — the difference between "no rule covers this"
+    // and "a rule covers it but has not run yet" is the whole point of the list.
+    const coveredByRule = (inv, d) => rules.some(r => {
+      if (!ruleTargetsCustomer(r, inv.customerId)) return false;
+      const locs = r.locationIds && r.locationIds.length ? r.locationIds : (r.location_id ? [r.location_id] : []);
+      if (locs.length && !locs.includes(inv.locationId)) return false;
+      const min = r.min_days_past_due == null ? -99999 : r.min_days_past_due;
+      const max = r.max_days_past_due == null ? 99999 : r.max_days_past_due;
+      return d >= min && d <= max;
+    });
+
+    const rows = [];
+    for (const inv of invoices) {
+      if (inv.totalDue <= 0.01) continue;
+      if (invColl[inv.recordNo]) continue;
+      const acct = acctByCust[inv.customerId];
+      if (acct && acct.collector_email) continue;    // owned at the customer level
+      const d = daysRelativeToDue(inv);
+      if (d === null || d < minDays) continue;
+      const isHouse = houseAccounts.has(inv.customerId);
+      if (isHouse && !includeHouse) continue;
+      rows.push({
+        recordNo: inv.recordNo, invoiceId: inv.invoiceId,
+        customerId: inv.customerId, customerName: inv.customerName,
+        locationId: inv.locationId, locationName: inv.locationName,
+        amount: inv.totalDue, whenDue: inv.whenDue, whenCreated: inv.whenCreated,
+        daysPastDue: d,
+        houseAccount: isHouse,
+        houseLabel: isHouse ? (acct && acct.house_account_label) || 'Managed at the office' : null,
+        ruleWouldCover: !isHouse && coveredByRule(inv, d),
+      });
+    }
+    rows.sort((a, b) => b.daysPastDue - a.daysPastDue || b.amount - a.amount);
+    res.json({
+      count: rows.length,
+      amount: rows.reduce((s, r) => s + r.amount, 0),
+      houseCount: rows.filter(r => r.houseAccount).length,
+      houseAmount: rows.filter(r => r.houseAccount).reduce((s, r) => s + r.amount, 0),
+      minDays, rows,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Undo what a rule should never have taken. Only touches assignments a RULE
+// made (assigned_by 'auto-rule:*') on customers now flagged as house accounts —
+// anything a person assigned by hand is left exactly as it is.
+app.post('/api/assignments/release-house', requireAuth, requirePerm('collectors.assign'), (req, res) => {
+  try {
+    const preview = req.body && req.body.preview;
+    const houseAccounts = db.getHouseAccountIds();
+    if (!houseAccounts.size) return res.json({ released: 0, byCustomer: {}, preview: !!preview });
+
+    const invoices = sage.getCachedInvoices();
+    const custByRecord = {};
+    for (const inv of invoices) custByRecord[String(inv.recordNo)] = inv;
+
+    const rows = db.getDb().prepare("SELECT record_no, collector_email FROM invoice_collector WHERE assigned_by LIKE 'auto-rule:%'").all();
+    const byCustomer = {};
+    let released = 0;
+    for (const r of rows) {
+      const inv = custByRecord[String(r.record_no)];
+      if (!inv || !houseAccounts.has(inv.customerId)) continue;
+      const key = `${inv.customerId} ${inv.customerName || ''}`.trim();
+      byCustomer[key] = byCustomer[key] || { count: 0, amount: 0, collectors: {} };
+      byCustomer[key].count++;
+      byCustomer[key].amount += inv.totalDue || 0;
+      byCustomer[key].collectors[r.collector_email] = (byCustomer[key].collectors[r.collector_email] || 0) + 1;
+      if (!preview) db.clearInvoiceCollector(r.record_no);
+      released++;
+    }
+    if (!preview && released) {
+      db.auditLog(req.session.user.email, 'collector_release_house', null,
+        `${released} rule-made assignment(s) released: ${Object.entries(byCustomer).map(([k, v]) => k + '=' + v.count).join(', ')}`);
+    }
+    res.json({ released, byCustomer, preview: !!preview });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

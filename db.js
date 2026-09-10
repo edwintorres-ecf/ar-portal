@@ -432,6 +432,15 @@ function initSchema() {
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN stop_service_issued_by TEXT DEFAULT NULL"); } catch(e) {}
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN stop_service_at TEXT DEFAULT NULL"); } catch(e) {}
 
+  // House accounts (2026-09-10, Edwin): customers collected centrally at the
+  // office rather than by a service-centre collector — Amazon above all. An
+  // aging-window rule swept 52 Amazon invoices ($906k) onto one collector
+  // because nothing told the engine those are not hers to chase. The flag both
+  // LABELS the customer everywhere and excludes it from every auto-assign rule;
+  // assignment on a house account is deliberate and individual.
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN house_account INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN house_account_label TEXT DEFAULT NULL"); } catch(e) {}
+
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
 
@@ -1563,9 +1572,14 @@ function updateUserJobTitle(email, jobTitle) {
 
 // `location_ids` (JSON array) supersedes the single `location_id`; the old
 // column is kept and still honoured so existing rules keep working untouched.
+// `target_mode`/`target_customers` mirror the dunning rules: 'all' ignores the
+// list, 'only' restricts the rule to the listed customers, 'except' runs it on
+// everyone but them. House accounts are excluded on top of this, globally.
 function ensureAssignmentRuleColumns() {
   const d = getDb();
   try { d.exec('ALTER TABLE assignment_rules ADD COLUMN location_ids TEXT'); } catch (e) { /* already present */ }
+  try { d.exec("ALTER TABLE assignment_rules ADD COLUMN target_mode TEXT DEFAULT 'all'"); } catch (e) { /* already present */ }
+  try { d.exec('ALTER TABLE assignment_rules ADD COLUMN target_customers TEXT'); } catch (e) { /* already present */ }
 }
 
 function listAssignmentRules() {
@@ -1574,7 +1588,9 @@ function listAssignmentRules() {
     let ids = [];
     try { ids = JSON.parse(r.location_ids || '[]'); } catch (e) { ids = []; }
     if (!ids.length && r.location_id) ids = [r.location_id];
-    return { ...r, locationIds: ids };
+    let custs = [];
+    try { custs = JSON.parse(r.target_customers || '[]'); } catch (e) { custs = []; }
+    return { ...r, locationIds: ids, targetMode: r.target_mode || 'all', targetCustomers: custs };
   });
 }
 function upsertAssignmentRule(id, f, by) {
@@ -1587,23 +1603,28 @@ function upsertAssignmentRule(id, f, by) {
     f.location_ids = list.length ? JSON.stringify(list) : null;
     f.location_id = list.length === 1 ? list[0] : null;
   }
+  if (Array.isArray(f.targetCustomers)) {
+    const list = f.targetCustomers.map(c => String(c).trim()).filter(Boolean);
+    f.target_customers = list.length ? JSON.stringify(list) : null;
+  }
+  if (f.targetMode !== undefined) f.target_mode = f.targetMode;
   if (id) {
     const sets = [], vals = [];
-    for (const k of ['name', 'active', 'priority', 'location_id', 'location_ids', 'min_days_past_due', 'max_days_past_due', 'collector_email']) {
+    for (const k of ['name', 'active', 'priority', 'location_id', 'location_ids', 'min_days_past_due', 'max_days_past_due', 'collector_email', 'target_mode', 'target_customers']) {
       if (f[k] !== undefined) { sets.push(k + '=?'); vals.push(f[k]); }
     }
     if (sets.length) { sets.push("updated_at=datetime('now')"); vals.push(id);
       d2.prepare('UPDATE assignment_rules SET ' + sets.join(',') + ' WHERE id=?').run(...vals); }
     return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(id);
   }
-  const r = d2.prepare('INSERT INTO assignment_rules (name, active, priority, location_id, location_ids, min_days_past_due, max_days_past_due, collector_email, created_by) VALUES (?,?,?,?,?,?,?,?,?)')
+  const r = d2.prepare('INSERT INTO assignment_rules (name, active, priority, location_id, location_ids, min_days_past_due, max_days_past_due, collector_email, target_mode, target_customers, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(f.name, f.active ? 1 : 0, f.priority || 1, f.location_id || null, f.location_ids || null,
       // Days are relative to the DUE DATE and may be negative, so a rule can
       // fire before an invoice is due. `|| 0` would swallow a legitimate 0 but
       // also a legitimate negative, hence the explicit null check.
       f.min_days_past_due == null ? 0 : parseInt(f.min_days_past_due, 10),
       f.max_days_past_due == null || f.max_days_past_due === '' ? null : parseInt(f.max_days_past_due, 10),
-      f.collector_email, by || null);
+      f.collector_email, f.target_mode || 'all', f.target_customers || null, by || null);
   return d2.prepare('SELECT * FROM assignment_rules WHERE id=?').get(r.lastInsertRowid);
 }
 function deleteAssignmentRule(id) { getDb().prepare('DELETE FROM assignment_rules WHERE id=?').run(id); }
@@ -2116,13 +2137,15 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
   const existing = getCustomerAccount(customerId);
   if (!existing) {
     db.prepare(`
-      INSERT INTO customer_accounts (customer_id, customer_name, stop_service, owner_name, owner_email, notes, updated_by)
-      VALUES (?,?,?,?,?,?,?)
+      INSERT INTO customer_accounts (customer_id, customer_name, stop_service, owner_name, owner_email, notes, house_account, house_account_label, updated_by)
+      VALUES (?,?,?,?,?,?,?,?,?)
     `).run(customerId, customerName,
       fields.stop_service ?? 0,
       fields.owner_name ?? null,
       fields.owner_email ?? null,
       fields.notes ?? null,
+      fields.house_account ? 1 : 0,
+      fields.house_account_label ?? null,
       updatedBy ?? null);
   } else {
     const sets = [];
@@ -2134,6 +2157,8 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
     if (fields.stop_service_effective_date !== undefined) { sets.push('stop_service_effective_date=?'); vals.push(fields.stop_service_effective_date); }
     if (fields.stop_service_issued_by !== undefined) { sets.push('stop_service_issued_by=?'); vals.push(fields.stop_service_issued_by); }
     if (fields.stop_service_at !== undefined) { sets.push('stop_service_at=?'); vals.push(fields.stop_service_at); }
+    if (fields.house_account !== undefined) { sets.push('house_account=?'); vals.push(fields.house_account ? 1 : 0); }
+    if (fields.house_account_label !== undefined) { sets.push('house_account_label=?'); vals.push(fields.house_account_label || null); }
     if (fields.notes !== undefined)        { sets.push('notes=?');        vals.push(fields.notes); }
     if (fields.customer_name || customerName) { sets.push('customer_name=?'); vals.push(fields.customer_name || customerName); }
     sets.push("updated_at=datetime('now')");
@@ -2146,6 +2171,17 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
 
 function getAllCustomerAccounts() {
   return db.prepare('SELECT * FROM customer_accounts').all();
+}
+
+// Customers collected centrally at the office. Read on every auto-assign run,
+// so it stays a plain Set lookup rather than a per-invoice query.
+function getHouseAccounts() {
+  try {
+    return db.prepare('SELECT customer_id, customer_name, house_account_label FROM customer_accounts WHERE house_account=1').all();
+  } catch (e) { return []; }   // column absent until the migration has run
+}
+function getHouseAccountIds() {
+  return new Set(getHouseAccounts().map(r => r.customer_id));
 }
 
 
@@ -2589,6 +2625,8 @@ module.exports = {
   getCustomerAccount,
   upsertCustomerAccount,
   getAllCustomerAccounts,
+  getHouseAccounts,
+  getHouseAccountIds,
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,

@@ -921,7 +921,15 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <button class="btn-create-invoice" id="btn-add-po" style="display:none" onclick="openPoForm()">+ Add PO</button>
       </div>
     </div>
-    <div id="po-funds-freshness" style="font-size:11px;color:var(--gray-500);margin-bottom:14px;">Loading data freshness…</div>
+    <div id="po-funds-freshness" style="font-size:11px;color:var(--gray-500);margin-bottom:10px;">Loading data freshness…</div>
+    <!-- Business unit + site code, applied to every tab below. -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <select id="po-filter-bu" onchange="poSetBu(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;background:var(--white);min-width:190px">
+        <option value="">All business units</option>
+      </select>
+      <input id="po-filter-site" placeholder="Site code (e.g. AVP3)" oninput="poSetSite(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;width:190px;text-transform:uppercase">
+      <div id="po-filter-summary" style="font-size:11.5px;"></div>
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <button class="cust-pill active" id="po-subtab-ledger" onclick="setPoFundsSubtab('ledger')">Ledger</button>
       <button class="cust-pill" id="po-subtab-sites" onclick="setPoFundsSubtab('sites')">By Site</button>
@@ -3322,10 +3330,13 @@ function renderCustomers() {
       ? `<span style="background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">Past Due</span>`
       : `<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">Current</span>`;
     const stopBadge = isStop ? `<span style="background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-left:4px">STOP</span>` : '';
+    // House account = collected at the office, never auto-assigned to a
+    // service-centre collector. Labelled here so it is obvious at a glance.
+    const houseBadge = c.houseAccount ? `<span title="${escHtml(c.houseLabel || 'Managed at the office')} — auto-assign rules never touch this customer" style="background:#f3e8ff;color:#6b21a8;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-left:4px">🏢 HOUSE</span>` : '';
     const oldest = c.oldestDaysPastDue > 0 ? `<span style="color:${c.oldestDaysPastDue>90?'var(--red)':'var(--gray-700)'}">${c.oldestDaysPastDue}d</span>` : '—';
     return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="filterByCustomer('${c.id}')">
       <td style="padding:10px 14px">
-        <div style="font-weight:600;color:var(--navy)">${escHtml(c.name)}${stopBadge}</div>
+        <div style="font-weight:600;color:var(--navy)">${escHtml(c.name)}${stopBadge}${houseBadge}</div>
         <div style="font-size:11px;color:var(--gray-500)">${c.id}</div>
       </td>
       <td style="padding:10px 14px;text-align:right">${(c.invoiceCount||0).toLocaleString()}</td>
@@ -3920,6 +3931,159 @@ let _poMismatches = [];
 let _poResubmissions = [];
 let _poFundsSubtab = 'ledger';
 
+// ─── Business unit + site code filter, shared by every PO Manager tab ───────
+// Each tab used to read its own array straight from the server, so a filter
+// would have had to be re-implemented ten times and would have drifted. Instead
+// the raw response is kept aside and every tab's array is DERIVED from it, so
+// one predicate governs the whole screen and no tab can disagree with another
+// about what "business unit X" contains (Edwin 2026-09-10).
+let _poFilterBu = '', _poFilterSite = '';
+const _poRaw = {};
+
+function poRowMatches(r) {
+  if (!r) return false;
+  if (_poFilterBu) {
+    const bu = r.businessUnit || '';
+    // "(none)" is a real answer: sites we bill that aren't in the Amazon master.
+    if (_poFilterBu === '(none)' ? bu !== '' : bu !== _poFilterBu) return false;
+  }
+  if (_poFilterSite) {
+    const s = String(r.siteCode || r.site || '').toUpperCase();
+    if (!s.includes(_poFilterSite)) return false;
+  }
+  return true;
+}
+function poFilterRows(rows) { return (rows || []).filter(poRowMatches); }
+function poFilterActive() { return !!(_poFilterBu || _poFilterSite); }
+
+// Aging and Exceptions are objects, not arrays; their totals have to be
+// recomputed or the header would keep quoting the unfiltered book.
+function poFilterAging(raw) {
+  if (!raw) return raw;
+  if (!poFilterActive()) return raw;
+  const buckets = (raw.buckets || []).map(b => {
+    const invoices = poFilterRows(b.invoices);
+    const ages = invoices.map(i => i.ageDays).filter(n => n !== null && n !== undefined).sort((a, c) => a - c);
+    return { ...b, invoices, count: invoices.length,
+      amount: Math.round(invoices.reduce((t, i) => t + (i.amount || 0), 0) * 100) / 100,
+      medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
+      oldestAge: ages.length ? ages[ages.length - 1] : null };
+  }).filter(b => b.invoices.length);
+  const all = buckets.reduce((a, b) => a.concat(b.invoices), []);
+  const band = (lo, hi) => {
+    const s = all.filter(i => i.ageDays !== null && i.ageDays >= lo && (hi === null || i.ageDays <= hi));
+    return { count: s.length, amount: Math.round(s.reduce((t, i) => t + (i.amount || 0), 0) * 100) / 100 };
+  };
+  return { ...raw, buckets,
+    totals: { count: all.length, amount: Math.round(all.reduce((t, i) => t + (i.amount || 0), 0) * 100) / 100 },
+    bands: { '0-30': band(0, 30), '31-60': band(31, 60), '61-90': band(61, 90), '90+': band(91, null) } };
+}
+function poFilterExceptions(raw) {
+  if (!raw) return raw;
+  if (!poFilterActive()) return raw;
+  return { ...raw, exceptions: poFilterRows(raw.exceptions), duplicates: poFilterRows(raw.duplicates) };
+}
+
+// Re-derive every tab from the raw responses, then repaint. Cheap enough to run
+// on each keystroke — nothing here refetches.
+function poApplyFilter() {
+  _poLedger        = poFilterRows(_poRaw.ledger);
+  _poUploaded      = poFilterRows(_poRaw.uploaded);
+  _poNeedsUpload   = poFilterRows(_poRaw.needsUpload);
+  _poMismatches    = poFilterRows(_poRaw.mismatches);
+  _poResubmissions = poFilterRows(_poRaw.resubmissions);
+  _poOrphans       = poFilterRows(_poRaw.orphans);
+  _poAging         = poFilterAging(_poRaw.aging);
+  _poExceptions    = poFilterExceptions(_poRaw.exceptions) || { exceptions: [], duplicates: [], graceHours: 72 };
+  poRenderFilterSummary();
+  try { renderPoLedger(); } catch (e) {}
+  try { renderPoUploaded(); } catch (e) {}
+  try { renderPoNeedsUpload(); } catch (e) {}
+  try { renderPoMismatches(); } catch (e) {}
+  try { renderPoResubmissions(); } catch (e) {}
+  try { renderPoOrphans(); } catch (e) {}
+  try { renderPoAging(); } catch (e) {}
+  try { renderPoExceptions(); } catch (e) {}
+  if (_poFundsSubtab === 'sites') { try { renderPoSiteReport(); } catch (e) {} }
+  if (_poFundsSubtab === 'pending-site') { try { renderPendingBySite(); } catch (e) {} }
+  poUpdateBadges();
+}
+
+function poUpdateBadges() {
+  const set = (id, n, color) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.textContent = n ? `(${n})` : '';
+    b.style.color = n ? (color || '') : '';
+  };
+  set('po-uploaded-badge', (_poUploaded || []).length);
+  set('po-needs-upload-badge', (_poNeedsUpload || []).length, '#d97706');
+  set('po-orphans-badge', (_poOrphans || []).length, '#dc2626');
+  set('po-mismatches-badge', (_poMismatches || []).length, '#dc2626');
+  set('po-resubmissions-badge', (_poResubmissions || []).length);
+  set('po-aging-badge', ((_poAging || {}).totals || {}).count || 0, '#d97706');
+  const ex = _poExceptions || {};
+  set('po-exceptions-badge', (ex.exceptions || []).length + (ex.duplicates || []).length, '#dc2626');
+}
+
+// One rendering of "which site, and which business unit" for every tab, so the
+// site code and the BU are always shown together and always look the same.
+function poSiteCell(r, extra) {
+  const code = r.siteCode || r.site || '';
+  if (!code) return `<span style="color:var(--gray-400)">—</span>${extra || ''}`;
+  const bu = r.businessUnit
+    ? `<div style="font-size:9.5px;color:#5b21b6;font-weight:600" title="Amazon business unit">${escHtml(r.businessUnit)}</div>`
+    : `<div style="font-size:9.5px;color:var(--gray-400)" title="This site code is not in the Amazon location master">no BU</div>`;
+  return `<div style="white-space:nowrap"><span style="font-weight:600;color:var(--navy);cursor:pointer" title="Filter every tab to ${escHtml(code)}" onclick="poJumpSite('${escHtml(code)}')">${escHtml(code)}</span>${extra || ''}</div>${bu}`;
+}
+function poJumpSite(code) {
+  _poFilterSite = String(code || '').toUpperCase();
+  const s = document.getElementById('po-filter-site'); if (s) s.value = _poFilterSite;
+  poApplyFilter();
+}
+
+function poSetBu(v) {
+  // Clicking the BU chip that's already on clears it — otherwise the only way
+  // back out of a rollup card is the select, which is easy to miss.
+  _poFilterBu = (_poFilterBu === v) ? '' : (v || '');
+  const b = document.getElementById('po-filter-bu'); if (b) b.value = _poFilterBu;
+  poApplyFilter();
+}
+function poSetSite(v) { _poFilterSite = String(v || '').trim().toUpperCase(); poApplyFilter(); }
+function poClearFilter() {
+  _poFilterBu = ''; _poFilterSite = '';
+  const b = document.getElementById('po-filter-bu'); if (b) b.value = '';
+  const s = document.getElementById('po-filter-site'); if (s) s.value = '';
+  poApplyFilter();
+}
+
+function poRenderFilterSummary() {
+  const el = document.getElementById('po-filter-summary');
+  if (!el) return;
+  if (!poFilterActive()) { el.innerHTML = ''; return; }
+  // Say what is being hidden and what it is worth, so a filtered screen can
+  // never be mistaken for the whole picture.
+  const hiddenLedger = (_poRaw.ledger || []).length - (_poLedger || []).length;
+  const shownPending = (_poNeedsUpload || []).reduce((t, r) => t + (r.amount || 0), 0);
+  const sites = new Set((_poLedger || []).map(r => r.siteCode).filter(Boolean));
+  const parts = [];
+  if (_poFilterBu) parts.push(`business unit <b>${escHtml(_poFilterBu)}</b>`);
+  if (_poFilterSite) parts.push(`site containing <b>${escHtml(_poFilterSite)}</b>`);
+  el.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:999px;padding:4px 12px;font-size:11.5px">
+    Filtered to ${parts.join(' · ')} — ${sites.size} site${sites.size === 1 ? '' : 's'}, ${(_poLedger || []).length} PO${(_poLedger || []).length === 1 ? '' : 's'}, ${fmt$(shownPending)} pending upload${hiddenLedger > 0 ? ` · ${hiddenLedger} PO${hiddenLedger === 1 ? '' : 's'} hidden` : ''}
+    <span style="cursor:pointer;font-weight:700" onclick="poClearFilter()" title="Clear the filter">✕</span></span>`;
+}
+
+function poPopulateBuFilter(units) {
+  const sel = document.getElementById('po-filter-bu');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All business units</option>' +
+    (units || []).map(u => `<option value="${escHtml(u)}">${escHtml(u)}</option>`).join('') +
+    '<option value="(none)">— not in the Amazon master —</option>';
+  sel.value = cur;
+}
+
 async function loadPoFunds() {
   const canEditPo = currentUser && ['admin', 'manager'].includes(currentUser.role);
   const addBtn = document.getElementById('btn-add-po');
@@ -3943,7 +4107,8 @@ async function loadPoOrphans() {
   const badge = document.getElementById('po-orphans-badge');
   if (!el) return;
   try {
-    _poOrphans = await apiFetch('/api/po/orphans');
+    _poRaw.orphans = await apiFetch('/api/po/orphans');
+    _poOrphans = poFilterRows(_poRaw.orphans);
     if (badge) { badge.textContent = _poOrphans.length ? `(${_poOrphans.length})` : ''; badge.style.color = _poOrphans.length ? '#dc2626' : ''; }
     renderPoOrphans();
   } catch (e) {
@@ -4019,8 +4184,8 @@ function openOrphanAssign(recordNo) {
 }
 
 function exportOrphansCsv() {
-  exportCsv('off-radar-invoices', ['Invoice', 'Customer', 'Site', 'SiteRaw', 'Amount', 'Date', 'Bucket', 'Source'],
-    _poOrphans.map(o => [o.invoiceId, o.customerName || o.customerId || '', o.site || '', o.siteRaw || '', (o.amount || 0).toFixed(2), o.invoiceDate || '', o.bucket || '', o.source || '']));
+  exportCsv('off-radar-invoices', ['Invoice', 'Customer', 'Site', 'Business Unit', 'SiteRaw', 'Amount', 'Date', 'Bucket', 'Source'],
+    _poOrphans.map(o => [o.invoiceId, o.customerName || o.customerId || '', o.site || '', o.businessUnit || '', o.siteRaw || '', (o.amount || 0).toFixed(2), o.invoiceDate || '', o.bucket || '', o.source || '']));
 }
 
 // ─── Transmission exceptions (self-auditing EDI pipeline) ──────────────────
@@ -4031,7 +4196,8 @@ async function loadPoExceptions() {
   const badge = document.getElementById('po-exceptions-badge');
   if (!el) return;
   try {
-    _poExceptions = await apiFetch('/api/po/exceptions');
+    _poRaw.exceptions = await apiFetch('/api/po/exceptions');
+    _poExceptions = poFilterExceptions(_poRaw.exceptions);
     const n = (_poExceptions.exceptions || []).length + (_poExceptions.duplicates || []).length;
     if (badge) { badge.textContent = n ? `(${n})` : ''; badge.style.color = n ? '#dc2626' : ''; }
     renderPoExceptions();
@@ -4050,7 +4216,8 @@ async function loadPoAging() {
   const badge = document.getElementById('po-aging-badge');
   if (!el) return;
   try {
-    _poAging = await apiFetch('/api/po/aging');
+    _poRaw.aging = await apiFetch('/api/po/aging');
+    _poAging = poFilterAging(_poRaw.aging);
     const n = _poAging.totals.count;
     if (badge) { badge.textContent = n ? `(${n})` : ''; badge.style.color = n ? '#dc2626' : ''; }
     renderPoAging();
@@ -4109,6 +4276,7 @@ function renderPoAging() {
     const amt = b.shown.reduce((t, i) => t + (i.amount || 0), 0);
     const rows = open ? b.shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
         <td style="padding:8px 14px;font-weight:600;color:var(--navy);">${escHtml(i.invoiceNumber)}</td>
+        <td style="padding:8px 14px;">${poSiteCell(i)}</td>
         <td style="padding:8px 14px;font-family:monospace;font-size:12px;">${escHtml(i.po || '—')}</td>
         <td style="padding:8px 14px;text-align:right;">${_agMoney(i.amount)}</td>
         <td style="padding:8px 14px;color:var(--gray-500);font-size:12px;">${escHtml(i.entryDate || '—')}</td>
@@ -4128,7 +4296,7 @@ function renderPoAging() {
       </div>
       ${open ? `<table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid var(--gray-100);">
         <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:11px;text-transform:uppercase;letter-spacing:.4px;">
-          <th style="padding:8px 14px;text-align:left;">Invoice</th><th style="padding:8px 14px;text-align:left;">PO</th>
+          <th style="padding:8px 14px;text-align:left;">Invoice</th><th style="padding:8px 14px;text-align:left;">Site / BU</th><th style="padding:8px 14px;text-align:left;">PO</th>
           <th style="padding:8px 14px;text-align:right;">Amount</th><th style="padding:8px 14px;text-align:left;">Entry date</th>
           <th style="padding:8px 14px;text-align:right;">Age</th><th style="padding:8px 14px;text-align:right;">In status</th>
         </tr></thead><tbody>${rows}</tbody></table>` : ''}
@@ -4175,10 +4343,10 @@ function renderPoAging() {
 
 function downloadPoAgingCsv() {
   if (!_poAging) return;
-  const rows = [['Status', 'Invoice', 'PO', 'Amount', 'Entry Date', 'Age (days)', 'Days in status', 'Estimated due', 'Past due']];
+  const rows = [['Status', 'Invoice', 'Site', 'Business Unit', 'PO', 'Amount', 'Entry Date', 'Age (days)', 'Days in status', 'Estimated due', 'Past due']];
   for (const b of (_poAging.buckets || [])) {
     for (const i of _agVisible(b)) {
-      rows.push([b.status, i.invoiceNumber, i.po || '', i.amount, i.entryDate || '', i.ageDays ?? '', i.daysInStatus ?? '', i.dueDate || '', i.pastDue ? 'yes' : '']);
+      rows.push([b.status, i.invoiceNumber, i.siteCode || '', i.businessUnit || '', i.po || '', i.amount, i.entryDate || '', i.ageDays ?? '', i.daysInStatus ?? '', i.dueDate || '', i.pastDue ? 'yes' : '']);
     }
   }
   const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
@@ -4205,6 +4373,7 @@ function renderPoExceptions() {
   }
   const exRows = ex.map(x => `<tr style="border-bottom:1px solid var(--gray-100)">
       <td style="padding:9px 14px;font-weight:600;color:var(--navy);cursor:pointer" onclick="openDrawer('${x.recordNo}')">${escHtml(x.invoiceId)}</td>
+      <td style="padding:9px 14px">${poSiteCell(x)}</td>
       <td style="padding:9px 14px">${escHtml(x.po || '—')}</td>
       <td style="padding:9px 14px">${escHtml(x.lastTransmitAt)} UTC</td>
       <td style="padding:9px 14px;text-align:right;color:#dc2626;font-weight:700">${x.ageHours}h</td>
@@ -4212,6 +4381,7 @@ function renderPoExceptions() {
     </tr>`).join('');
   const dupRows = dup.map(x => `<tr style="border-bottom:1px solid var(--gray-100)">
       <td style="padding:9px 14px;font-weight:600;color:var(--navy);cursor:pointer" onclick="openDrawer('${x.recordNo}')">${escHtml(x.invoiceId)}</td>
+      <td style="padding:9px 14px">${poSiteCell(x)}</td>
       <td style="padding:9px 14px">${escHtml(x.po || '—')}</td>
       <td style="padding:9px 14px;text-align:right;color:#b45309;font-weight:700">×${x.okTransmits}</td>
       <td style="padding:9px 14px">${escHtml(x.firstAt)} → ${escHtml(x.lastAt)}</td>
@@ -4222,7 +4392,7 @@ function renderPoExceptions() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-          <th style="padding:9px 14px;text-align:left;font-weight:600">Invoice</th><th style="padding:9px 14px;text-align:left;font-weight:600">PO</th><th style="padding:9px 14px;text-align:left;font-weight:600">Last transmit</th><th style="padding:9px 14px;text-align:right;font-weight:600">Age</th><th style="padding:9px 14px;text-align:right;font-weight:600">Sends</th>
+          <th style="padding:9px 14px;text-align:left;font-weight:600">Invoice</th><th style="padding:9px 14px;text-align:left;font-weight:600">Site / BU</th><th style="padding:9px 14px;text-align:left;font-weight:600">PO</th><th style="padding:9px 14px;text-align:left;font-weight:600">Last transmit</th><th style="padding:9px 14px;text-align:right;font-weight:600">Age</th><th style="padding:9px 14px;text-align:right;font-weight:600">Sends</th>
         </tr></thead><tbody>${exRows}</tbody>
       </table>
     </div>` : ''}
@@ -4230,7 +4400,7 @@ function renderPoExceptions() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
-          <th style="padding:9px 14px;text-align:left;font-weight:600">Invoice</th><th style="padding:9px 14px;text-align:left;font-weight:600">PO</th><th style="padding:9px 14px;text-align:right;font-weight:600">OK sends</th><th style="padding:9px 14px;text-align:left;font-weight:600">Window</th><th style="padding:9px 14px;text-align:left;font-weight:600">Feed</th>
+          <th style="padding:9px 14px;text-align:left;font-weight:600">Invoice</th><th style="padding:9px 14px;text-align:left;font-weight:600">Site / BU</th><th style="padding:9px 14px;text-align:left;font-weight:600">PO</th><th style="padding:9px 14px;text-align:right;font-weight:600">OK sends</th><th style="padding:9px 14px;text-align:left;font-weight:600">Window</th><th style="padding:9px 14px;text-align:left;font-weight:600">Feed</th>
         </tr></thead><tbody>${dupRows}</tbody>
       </table>
     </div>` : ''}`;
@@ -4255,6 +4425,7 @@ async function loadPoFreshness() {
   if (!el) return;
   try {
     const m = await apiFetch('/api/po/meta');
+    poPopulateBuFilter(m.businessUnits || []);
     const canRefresh = currentUser && ['admin', 'manager', 'ar_specialist'].includes(currentUser.role);
     const stamps = [
       ['Invoices (Sage)', m.sageInvoices],
@@ -4403,7 +4574,13 @@ async function assignInvoiceSite(recordNo, invoiceId, currentSite) {
 // default, so a stable URL re-serves the first generated file forever
 // (bit us 2026-08-05 — stale exports with no origin hit).
 function exportPendingBySiteXlsx() {
-  window.location.href = '/api/po/pending-by-site.xlsx?mode=' + encodeURIComponent(_pbsMode) + (_pbsSnowOnly ? '&snow=1' : '') + '&t=' + Date.now();
+  // Carry the on-screen BU/site filter into the workbook — an export that
+  // silently widens back out to the whole book is worse than no export.
+  window.location.href = '/api/po/pending-by-site.xlsx?mode=' + encodeURIComponent(_pbsMode)
+    + (_pbsSnowOnly ? '&snow=1' : '')
+    + (_poFilterBu ? '&bu=' + encodeURIComponent(_poFilterBu) : '')
+    + (_poFilterSite ? '&site=' + encodeURIComponent(_poFilterSite) : '')
+    + '&t=' + Date.now();
 }
 
 // % chip color-coded like the Excel PO tracker: red when negative/exhausted,
@@ -4449,12 +4626,19 @@ function renderPendingBySite() {
   const ledgerByPo = {};
   for (const r of _poLedger) ledgerByPo[r.poNumber] = r;
   const sites = {};
-  const ensureSite = (k) => (sites[k] = sites[k] || { site: k, count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [], poIndex: {} });
+  // Business unit comes off the ledger/needs-upload rows, which the server now
+  // stamps from the Amazon location master; carrying it on the site row is what
+  // makes a BU rollup possible without a second lookup.
+  const ensureSite = (k, bu) => {
+    const s = sites[k] = sites[k] || { site: k, businessUnit: bu || '', count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [], poIndex: {} };
+    if (!s.businessUnit && bu) s.businessUnit = bu;
+    return s;
+  };
 
   // (1) Capacity from the ledger — ceiling / consumed / available per PO. Pending
   // is ZEROED here and recomputed from invoices below (see why in step 2).
   for (const r of ledgerRows) {
-    const s = ensureSite(r.siteCode || '(no site)');
+    const s = ensureSite(r.siteCode || '(no site)', r.businessUnit);
     s.consumed += r.consumed || 0;
     if (r.ceilingAmount != null) { s.ceiling += r.ceilingAmount; s.anyCeiling = true; }
     if (r.available != null) s.available = (s.available || 0) + r.available;
@@ -4469,7 +4653,7 @@ function renderPendingBySite() {
   for (const inv of (_poNeedsUpload || [])) {
     const led = ledgerByPo[inv.assignedPo];
     if (_pbsSnowOnly && !(led && led.serviceType === "snow")) continue;
-    const s = ensureSite(inv.siteCode || '(no site)');
+    const s = ensureSite(inv.siteCode || '(no site)', inv.businessUnit);
     s.count++; s.pending += inv.amount || 0;
     let row = s.poIndex[inv.assignedPo];
     if (!row) {
@@ -4537,6 +4721,7 @@ function renderPendingBySite() {
     const isNoSite = s.site === '(no site)';
     const siteCell = `<td rowspan="${n}" style="padding:8px 8px;${mergedStyle}border-right:1px solid var(--gray-100);cursor:pointer" title="${isNoSite ? 'POs whose site could not be determined — no Sage invoice activity and no PO document parsed yet' : 'Open Needs Upload filtered to ' + escHtml(s.site)}" onclick="pbsDrill('${escHtml(s.site)}')">
         <div style="font-weight:700;color:${isNoSite ? 'var(--gray-500)' : 'var(--navy)'};white-space:nowrap">${isNoSite ? '❓ Unknown' : escHtml(s.site)}</div>
+        ${s.businessUnit ? `<div style="font-size:9.5px;color:#5b21b6;background:#ede9fe;border-radius:5px;padding:0 5px;display:inline-block;margin-top:2px;white-space:nowrap" title="Amazon business unit">${escHtml(s.businessUnit)}</div>` : (isNoSite ? '' : '<div style="font-size:9.5px;color:var(--gray-400);white-space:nowrap" title="Site code is not in the Amazon location master">no BU</div>')}
         <div style="font-size:10px;color:var(--gray-500);white-space:nowrap">${s.count} inv</div>
       </td>`;
     const sitePendingCell = `<td rowspan="${n}" style="padding:8px 8px;text-align:right;${mergedStyle}border-left:1px solid var(--gray-100)" class="amount"><strong>${c$(s.pending)}</strong></td>`;
@@ -4595,6 +4780,26 @@ function renderPendingBySite() {
       <button class="btn-sm" style="margin-left:auto;background:#f59e0b;color:#fff;font-weight:600;white-space:nowrap" onclick="openServiceReview()">Review &amp; classify</button>
     </div>` : '';
 
+  // Business-unit rollup. Click one to narrow the whole PO Manager to it —
+  // "all the available money under pending, by site, for one BU" is then just
+  // this table (Edwin 2026-09-10).
+  const buTot = {};
+  for (const s of list) {
+    const k = s.businessUnit || '(none)';
+    const b = buTot[k] = buTot[k] || { bu: k, sites: 0, count: 0, pending: 0, available: 0 };
+    b.sites++; b.count += s.count; b.pending += s.pending; b.available += (s.available || 0);
+  }
+  const buList = Object.values(buTot).sort((a, b) => b.pending - a.pending || b.available - a.available);
+  const buStrip = buList.length > 1 ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:stretch">
+      ${buList.map(b => `<div onclick="poSetBu('${escHtml(b.bu === '(none)' ? '(none)' : b.bu)}')" title="Narrow every PO Manager tab to ${escHtml(b.bu)}"
+        style="cursor:pointer;background:var(--white);border:1px solid ${_poFilterBu === b.bu ? '#5b21b6' : 'var(--gray-200)'};border-radius:9px;padding:7px 12px;min-width:140px">
+        <div style="font-size:10.5px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.3px">${escHtml(b.bu === '(none)' ? 'Not in master' : b.bu)}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px" class="amount">${c$(b.pending)}<span style="font-size:10px;font-weight:500;color:var(--gray-500)"> pending</span></div>
+        <div style="font-size:10.5px;color:var(--gray-500)">${b.sites} site${b.sites === 1 ? '' : 's'} · ${b.count} inv · ${c$(b.available)} remaining</div>
+      </div>`).join('')}
+    </div>` : '';
+
   if (!list.length) {
     el.innerHTML = `<div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${pills}</div>
     ${reviewBanner}
@@ -4608,6 +4813,7 @@ function renderPendingBySite() {
       <span style="font-size:12px;color:var(--gray-500);margin-left:6px">${summary}</span>
       <button class="btn" style="font-size:11px;padding:4px 10px;margin-left:auto" onclick="exportPendingBySiteXlsx()">⬇ Export Excel</button>
     </div>
+    ${buStrip}
     ${reviewBanner}
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
@@ -4648,32 +4854,32 @@ function exportCsv(filenameBase, header, dataRows) {
 // Each tab stashes exactly what it's showing (post-filter/sort) so exports match the view.
 let _shownLedger = [], _shownUploaded = [], _shownNeedsUpload = [];
 function exportLedgerCsv() {
-  exportCsv('po-ledger', ['PO #', 'Site', 'Location', 'Snow', 'Ceiling', 'Ceiling Source', 'PDF Amount', 'Consumed', 'Pending Upload', 'Available', 'Status', 'PO Doc'],
-    _shownLedger.map(r => [r.poNumber, r.siteCode || '', r.locationId || '', r.isSnow ? 'Y' : '', r.ceilingAmount ?? '', r.ceilingSource || '', r.docAmount ?? '', (r.consumed||0).toFixed(2), (r.pendingUpload||0).toFixed(2), r.available ?? '', r.status || '', r.docVersion != null ? 'v'+r.docVersion : '']));
+  exportCsv('po-ledger', ['PO #', 'Site', 'Business Unit', 'Location', 'Snow', 'Ceiling', 'Ceiling Source', 'PDF Amount', 'Consumed', 'Pending Upload', 'Available', 'Status', 'PO Doc'],
+    _shownLedger.map(r => [r.poNumber, r.siteCode || '', r.businessUnit || '', r.locationId || '', r.isSnow ? 'Y' : '', r.ceilingAmount ?? '', r.ceilingSource || '', r.docAmount ?? '', (r.consumed||0).toFixed(2), (r.pendingUpload||0).toFixed(2), r.available ?? '', r.status || '', r.docVersion != null ? 'v'+r.docVersion : '']));
 }
 function exportUploadedCsv() {
-  exportCsv('po-uploaded', ['Invoice', 'Customer', 'Site', 'PO on Record', 'Submitted PO', 'Submitted As', 'Amount', 'Entry Date', 'Status'],
-    _shownUploaded.map(u => [u.invoiceId || u.recordNo, u.customerName || '', u.siteCode || '', u.poNumber || '', u.submittedPo || '', u.submittedAs || '', (u.amount||0).toFixed(2), u.entryDate || '', u.status || '']));
+  exportCsv('po-uploaded', ['Invoice', 'Customer', 'Site', 'Business Unit', 'PO on Record', 'Submitted PO', 'Submitted As', 'Amount', 'Entry Date', 'Status'],
+    _shownUploaded.map(u => [u.invoiceId || u.recordNo, u.customerName || '', u.siteCode || '', u.businessUnit || '', u.poNumber || '', u.submittedPo || '', u.submittedAs || '', (u.amount||0).toFixed(2), u.entryDate || '', u.status || '']));
 }
 function exportNeedsUploadCsv() {
-  exportCsv('po-needs-upload', ['Invoice', 'Customer', 'Site', 'Invoice Date', 'PO on Record', 'Assigned PO', 'Amount', 'PO Available', 'Would Overage', 'Resubmission', 'Resubmit As'],
-    _shownNeedsUpload.map(i => [i.invoiceId || i.recordNo, i.customerName || '', i.siteCode || '', i.invoiceDate || '', i.poOnRecord || '', i.reassigned ? i.assignedPo : '', (i.amount||0).toFixed(2), i.poAvailable ?? '', i.wouldOverage ? 'Y' : '', i.isResubmission ? 'Y' : '', i.isResubmission ? (i.suggestedResubmitId||'') : '']));
+  exportCsv('po-needs-upload', ['Invoice', 'Customer', 'Site', 'Business Unit', 'Invoice Date', 'PO on Record', 'Assigned PO', 'Amount', 'PO Available', 'Would Overage', 'Resubmission', 'Resubmit As'],
+    _shownNeedsUpload.map(i => [i.invoiceId || i.recordNo, i.customerName || '', i.siteCode || '', i.businessUnit || '', i.invoiceDate || '', i.poOnRecord || '', i.reassigned ? i.assignedPo : '', (i.amount||0).toFixed(2), i.poAvailable ?? '', i.wouldOverage ? 'Y' : '', i.isResubmission ? 'Y' : '', i.isResubmission ? (i.suggestedResubmitId||'') : '']));
 }
 function exportMismatchesCsv() {
-  exportCsv('po-mismatches', ['Invoice', 'Customer', 'Invoiced PO', 'Submitted PO', 'Submitted As', 'Amount', 'Status'],
-    _poMismatches.map(m => [m.invoiceId || m.recordNo, m.customerName || '', m.invoicedPo || '', m.submittedPo || '', m.submittedAs || '', (m.amount||0).toFixed(2), m.status || '']));
+  exportCsv('po-mismatches', ['Invoice', 'Customer', 'Site', 'Business Unit', 'Invoiced PO', 'Submitted PO', 'Submitted As', 'Amount', 'Status'],
+    _poMismatches.map(m => [m.invoiceId || m.recordNo, m.customerName || '', m.siteCode || '', m.businessUnit || '', m.invoicedPo || '', m.submittedPo || '', m.submittedAs || '', (m.amount||0).toFixed(2), m.status || '']));
 }
 function exportResubmissionsCsv() {
-  exportCsv('po-resubmissions', ['Invoice', 'Site', 'Attempts', 'Live', 'Current Status', 'Current ID', 'Flag', 'Chain'],
-    _poResubmissions.map(r => [r.invoiceId || r.recordNo, r.siteCode || '', r.attemptCount, r.liveCount, r.currentStatus || '', r.currentId || '', r.duplicateLive ? 'DUPLICATE-LIVE' : (r.allDead ? 'ALL-DEAD' : 'normal'), (r.attempts||[]).map(a => a.id+':'+a.status).join(' | ')]));
+  exportCsv('po-resubmissions', ['Invoice', 'Site', 'Business Unit', 'Attempts', 'Live', 'Current Status', 'Current ID', 'Flag', 'Chain'],
+    _poResubmissions.map(r => [r.invoiceId || r.recordNo, r.siteCode || '', r.businessUnit || '', r.attemptCount, r.liveCount, r.currentStatus || '', r.currentId || '', r.duplicateLive ? 'DUPLICATE-LIVE' : (r.allDead ? 'ALL-DEAD' : 'normal'), (r.attempts||[]).map(a => a.id+':'+a.status).join(' | ')]));
 }
 function exportBtn(fn) { return `<button class="btn" style="font-size:11px;padding:4px 10px;margin-left:auto" onclick="${fn}()">⬇ Export</button>`; }
 
 function exportSiteReportCsv() {
   if (!_poSiteReportList.length) { showToast('Open the By Site report first', 'error'); return; }
-  const header = ['Site', '# POs', 'Snow POs', 'PO Value', 'Consumed', 'Remains to Upload', 'Available', 'Utilization %'];
+  const header = ['Site', 'Business Unit', '# POs', 'Snow POs', 'PO Value', 'Consumed', 'Remains to Upload', 'Available', 'Utilization %'];
   const rows = _poSiteReportList.map(s => [
-    s.site, s.poCount, s.snowPoCount,
+    s.site, s.businessUnit || '', s.poCount, s.snowPoCount,
     s.anyCeiling ? s.value.toFixed(2) : '',
     s.consumed.toFixed(2), s.pending.toFixed(2),
     s.anyCeiling ? s.available.toFixed(2) : '',
@@ -4685,9 +4891,9 @@ function exportSiteReportCsv() {
 
 function exportSitePoDetailCsv() {
   if (!_poSiteReportPos.length) { showToast('Open the By Site report first', 'error'); return; }
-  const header = ['Site', 'PO #', 'Snow', 'PO Status', 'Ceiling', 'Consumed', 'Remains to Upload', 'Available', 'PO Doc', 'Doc URL'];
+  const header = ['Site', 'Business Unit', 'PO #', 'Snow', 'PO Status', 'Ceiling', 'Consumed', 'Remains to Upload', 'Available', 'PO Doc', 'Doc URL'];
   const rows = _poSiteReportPos.map(r => [
-    r.siteCode || '(no site)', r.poNumber, r.isSnow ? 'Y' : '',
+    r.siteCode || '(no site)', r.businessUnit || '', r.poNumber, r.isSnow ? 'Y' : '',
     r.status || '', r.ceilingAmount != null ? r.ceilingAmount.toFixed(2) : '',
     (r.consumed || 0).toFixed(2), (r.pendingUpload || 0).toFixed(2),
     r.available != null ? r.available.toFixed(2) : '',
@@ -4710,8 +4916,9 @@ function renderPoSiteReport() {
   const sites = {};
   for (const r of rows) {
     const key = r.siteCode || '(no site)';
-    if (!sites[key]) sites[key] = { site: key, poCount: 0, snowPoCount: 0, value: 0, consumed: 0, pending: 0, available: 0, anyCeiling: false, pos: [] };
+    if (!sites[key]) sites[key] = { site: key, businessUnit: r.businessUnit || '', poCount: 0, snowPoCount: 0, value: 0, consumed: 0, pending: 0, available: 0, anyCeiling: false, pos: [] };
     const s = sites[key];
+    if (!s.businessUnit && r.businessUnit) s.businessUnit = r.businessUnit;
     s.poCount++;
     if (r.isSnow) s.snowPoCount++;
     if (r.ceilingAmount != null) { s.value += r.ceilingAmount; s.anyCeiling = true; }
@@ -4732,7 +4939,7 @@ function renderPoSiteReport() {
   const tot = list.reduce((a, s) => ({ poCount: a.poCount + s.poCount, value: a.value + s.value, consumed: a.consumed + s.consumed, pending: a.pending + s.pending, available: a.available + s.available }), { poCount: 0, value: 0, consumed: 0, pending: 0, available: 0 });
 
   const COLS = [
-    { f: 'site', label: 'Site' },
+    { f: 'site', label: 'Site / BU' },
     { f: 'poCount', label: '# POs' },
     { f: 'value', label: 'PO Value' },
     { f: 'consumed', label: 'Consumed' },
@@ -4755,7 +4962,7 @@ function renderPoSiteReport() {
     const expanded = _poSiteExpanded.has(s.site);
     const snow = s.snowPoCount ? ` <span title="${s.snowPoCount} snow PO(s)">❄️</span>` : '';
     const main = `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="togglePoSiteRow('${escHtml(s.site)}')">
-      <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${expanded ? '▾' : '▸'} ${escHtml(s.site)}${snow}</td>
+      <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${expanded ? '▾' : '▸'} ${escHtml(s.site)}${snow}${s.businessUnit ? `<div style="font-size:9.5px;color:#5b21b6;font-weight:600" title="Amazon business unit">${escHtml(s.businessUnit)}</div>` : ''}</td>
       <td style="padding:10px 14px;text-align:right">${s.poCount}</td>
       <td style="padding:10px 14px;text-align:right" class="amount">${s.anyCeiling ? fmt$(s.value) : '—'}</td>
       <td style="padding:10px 14px;text-align:right" class="amount">${fmt$(s.consumed)}</td>
@@ -4816,7 +5023,8 @@ async function loadPoResubmissions() {
   const badge = document.getElementById('po-resubmissions-badge');
   if (!el) return;
   try {
-    _poResubmissions = await apiFetch('/api/po/resubmissions');
+    _poRaw.resubmissions = await apiFetch('/api/po/resubmissions');
+    _poResubmissions = poFilterRows(_poRaw.resubmissions);
     const anomalies = _poResubmissions.filter(r => r.duplicateLive || r.allDead).length;
     if (badge) badge.textContent = anomalies ? `(${anomalies}⚠)` : (_poResubmissions.length ? `(${_poResubmissions.length})` : '');
     renderPoResubmissions();
@@ -4847,7 +5055,7 @@ function renderPoResubmissions() {
     }).join('');
     return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="openDrawer('${r.recordNo}')">
       <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${escHtml(r.invoiceId || r.recordNo)}</td>
-      <td style="padding:10px 14px">${escHtml(r.siteCode || '—')}</td>
+      <td style="padding:10px 14px">${poSiteCell(r)}</td>
       <td style="padding:10px 14px;text-align:center">${r.attemptCount}</td>
       <td style="padding:10px 14px">${chain}</td>
       <td style="padding:10px 14px"><span style="color:${flagColor};background:${flagBg};border-radius:10px;padding:2px 9px;font-size:11px;font-weight:600">${flag}</span></td>
@@ -4875,7 +5083,8 @@ async function loadPoLedger() {
   if (!el) return;
   el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>';
   try {
-    _poLedger = await apiFetch('/api/po/ledger');
+    _poRaw.ledger = await apiFetch('/api/po/ledger');
+    _poLedger = poFilterRows(_poRaw.ledger);
     renderPoLedger();
     if (_poFundsSubtab === 'pending-site') renderPendingBySite();
   } catch (e) {
@@ -4906,7 +5115,7 @@ function renderCeilingCell(row) {
 
 const PO_LEDGER_COLUMNS = [
   { field: 'poNumber',      label: 'PO #' },
-  { field: 'siteCode',      label: 'Site Code' },
+  { field: 'siteCode',      label: 'Site / BU' },
   { field: 'locationId',    label: 'Location' },
   { field: 'ceilingAmount', label: 'Ceiling' },
   { field: 'consumed',      label: 'Consumed' },
@@ -4985,7 +5194,7 @@ function renderPoLedger() {
     const poForEdit = { po_number: row.poNumber, location_id: row.locationId, customer_id: row.customerId, ceiling_amount: row.ceilingAmount, status: row.tracked ? row.status : 'active', notes: row.notes };
     return `<tr style="border-bottom:1px solid var(--gray-100)" title="${escHtml(row.docDescription || '')}">
       <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${escHtml(row.poNumber)}${snowTag}</td>
-      <td style="padding:10px 14px">${escHtml(row.siteCode || '—')}</td>
+      <td style="padding:10px 14px">${poSiteCell(row)}</td>
       <td style="padding:10px 14px">${escHtml(row.locationId || '—')}</td>
       <td style="padding:10px 14px" class="amount">${renderCeilingCell(row)}${discrepancy}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(row.consumed)}${row.reconGap != null && Math.abs(row.reconGap) > 500 ? ` <span title="Ledger consumed differs from Amazon's implied consumed (PO amount − Available) by ${fmt$(row.reconGap)} — matched-invoice scrape or backfill will reconcile" style="cursor:help">⚠</span>` : ''}<div style="font-size:11px;color:var(--gray-400)">${row.consumedInvoiceCount} invoice${row.consumedInvoiceCount!==1?'s':''}${row.consumedBackfill ? ` <span title="includes ${fmt$(row.consumedBackfill)} of pre-feed history backfilled from Amazon's own figure (settled invoices that aged off the feed)" style="cursor:help;color:#8a6d1a">+hist</span>` : ''}</div></td>
@@ -5041,7 +5250,8 @@ async function loadPoNeedsUpload() {
   const badge = document.getElementById('po-needs-upload-badge');
   if (!el) return;
   try {
-    _poNeedsUpload = await apiFetch('/api/po/needs-upload');
+    _poRaw.needsUpload = await apiFetch('/api/po/needs-upload');
+    _poNeedsUpload = poFilterRows(_poRaw.needsUpload);
     if (badge) badge.textContent = _poNeedsUpload.length ? `(${_poNeedsUpload.length})` : '';
     renderPoNeedsUpload();
     if (_poFundsSubtab === 'pending-site') renderPendingBySite();
@@ -5186,7 +5396,7 @@ function renderPoNeedsUpload() {
       <td style="padding:10px 14px"><input type="checkbox" ${_poNeedsUploadSelected.has(inv.recordNo) ? 'checked' : ''} onchange="poNuToggle('${inv.recordNo}', this.checked)"></td>
       <td style="padding:10px 14px;font-weight:600;color:var(--navy);cursor:pointer" onclick="openDrawer('${inv.recordNo}')">${escHtml(inv.invoiceId || inv.recordNo)}${resubmitBadge}${sentBadge}</td>
       <td style="padding:10px 14px">${escHtml(inv.customerName || '—')}</td>
-      <td style="padding:10px 14px;white-space:nowrap">${escHtml(inv.siteCode || '—')}${inv.siteOverride ? ' <span title="Site manually pinned for this invoice (multi-site PO)" style="font-size:9px;color:#0369a1">✎</span>' : ''} <span title="Pin this invoice's true service site (use when the PO covers multiple sites and the label is wrong)" style="cursor:pointer;font-size:10px;color:var(--gray-400)" onclick="assignInvoiceSite('${inv.recordNo}','${escHtml(inv.invoiceId || '')}','${escHtml(inv.siteCode || '')}')">🏷</span></td>
+      <td style="padding:10px 14px;white-space:nowrap">${poSiteCell(inv, `${inv.siteOverride ? ' <span title="Site manually pinned for this invoice (multi-site PO)" style="font-size:9px;color:#0369a1">✎</span>' : ''} <span title="Pin this invoice's true service site (use when the PO covers multiple sites and the label is wrong)" style="cursor:pointer;font-size:10px;color:var(--gray-400)" onclick="assignInvoiceSite('${inv.recordNo}','${escHtml(inv.invoiceId || '')}','${escHtml(inv.siteCode || '')}')">🏷</span>`)}</td>
       <td style="padding:10px 14px;font-size:12px;color:var(--gray-500)">${escHtml(inv.invoiceDate || '—')}</td>
       <td style="padding:10px 14px">${poCell}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(inv.amount)}</td>
@@ -5417,7 +5627,7 @@ function openServiceReview() {
       </tr></thead>
       <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--gray-100)">
         <td style="padding:6px 10px;font-weight:600;color:var(--navy);white-space:nowrap">${escHtml(r.poNumber)}${r.docUrl ? ` <a href="${escHtml(r.docUrl)}" target="_blank" title="Open PO document">📄</a>` : ''}</td>
-        <td style="padding:6px 10px">${escHtml(r.siteCode || '—')}</td>
+        <td style="padding:6px 10px">${poSiteCell(r)}</td>
         <td style="padding:6px 10px;text-align:right" class="amount">${fmt$(r.pendingUpload || 0)}</td>
         <td style="padding:6px 10px;color:var(--gray-500);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.docDescription || '')}">${escHtml(r.docDescription || '(no document)')}</td>
         <td style="padding:6px 10px"><select data-po="${escHtml(r.poNumber)}" class="svc-review-sel" style="padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px">
@@ -5572,7 +5782,8 @@ async function loadPoUploaded() {
   const badge = document.getElementById('po-uploaded-badge');
   if (!el) return;
   try {
-    _poUploaded = await apiFetch('/api/po/uploaded');
+    _poRaw.uploaded = await apiFetch('/api/po/uploaded');
+    _poUploaded = poFilterRows(_poRaw.uploaded);
     if (badge) badge.textContent = _poUploaded.length ? `(${_poUploaded.length})` : '';
     renderPoUploaded();
   } catch (e) {
@@ -5615,7 +5826,7 @@ function renderPoUploaded() {
     return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="openDrawer('${u.recordNo}')">
       <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${escHtml(u.invoiceId || u.recordNo)}${submittedAsBadge}</td>
       <td style="padding:10px 14px">${escHtml(u.customerName || '—')}</td>
-      <td style="padding:10px 14px">${escHtml(u.siteCode || '—')}</td>
+      <td style="padding:10px 14px">${poSiteCell(u)}</td>
       <td style="padding:10px 14px">${poCell}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(u.amount)}</td>
       <td style="padding:10px 14px;font-size:12px;color:var(--gray-500)">${escHtml(u.entryDate || '—')}</td>
@@ -5661,7 +5872,8 @@ async function loadPoMismatches() {
   const badge = document.getElementById('po-mismatches-badge');
   if (!el) return;
   try {
-    _poMismatches = await apiFetch('/api/po/mismatches');
+    _poRaw.mismatches = await apiFetch('/api/po/mismatches');
+    _poMismatches = poFilterRows(_poRaw.mismatches);
     if (badge) badge.textContent = _poMismatches.length ? `(${_poMismatches.length})` : '';
     renderPoMismatches();
   } catch (e) {
@@ -5687,6 +5899,7 @@ function renderPoMismatches() {
     return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="openDrawer('${m.recordNo}')">
       <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${escHtml(m.invoiceId || m.recordNo)}</td>
       <td style="padding:10px 14px">${escHtml(m.customerName || '—')}</td>
+      <td style="padding:10px 14px">${poSiteCell(m)}</td>
       <td style="padding:10px 14px">${escHtml(m.invoicedPo)}</td>
       <td style="padding:10px 14px">→ ${escHtml(m.submittedPo)}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(m.amount)}</td>
@@ -5699,6 +5912,7 @@ function renderPoMismatches() {
       <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoice</th>
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Customer</th>
+        <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Site / BU</th>
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Invoiced Against</th>
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Actually Submitted</th>
         <th style="padding:10px 14px;text-align:left;font-weight:600;color:var(--gray-700)">Amount</th>
@@ -6046,7 +6260,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260909g"></script>
-<script src="/amazon.js?v=20260909q"></script>
+<script src="/comms.js?v=20260910a"></script>
+<script src="/amazon.js?v=20260910a"></script>
 </body>
 </html>

@@ -1026,19 +1026,44 @@ async function commsLoadAutoAssign() {
   root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--gray-500)">Loading…</div>';
   try {
     // Kept so the rule editor can populate its pickers without refetching.
-    const [rules, meta, locs] = await Promise.all([
-      apiFetch('/api/assignment-rules'), commsGridMeta(), apiFetch('/api/locations-view').catch(() => [])]);
-    _arRules = rules; _arLocs = locs;
+    const [rules, meta, locs, house, customers] = await Promise.all([
+      apiFetch('/api/assignment-rules'), commsGridMeta(), apiFetch('/api/locations-view').catch(() => []),
+      apiFetch('/api/house-accounts').catch(() => []), apiFetch('/api/customers').catch(() => [])]);
+    _arRules = rules; _arLocs = locs; _arHouse = house; _arCustomers = customers;
+    const houseIds = new Set(house.map(h => h.customerId));
     root.innerHTML = `
       <h1 style="font-size:26px;font-weight:700;margin:6px 0 4px">Collector Auto-Assignment</h1>
       <div style="font-size:12.5px;color:#6b6458;margin-bottom:14px">Rules fill in a collector for UNASSIGNED invoices only (existing assignments are never overwritten). First matching rule by priority wins. Runs daily at ~7:45 AM ET, or on demand.</div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsAutoAssignRun(this)">▶ Run rules now</button>
+        <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600" onclick="commsShowUnassigned()">🔎 Past due &amp; unassigned</button>
       </div>
+
+      <!-- House accounts: the exclusion list AND the label, in one place. -->
+      <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <div style="font-size:12px;font-weight:700;color:#6b6458">🏢 HOUSE ACCOUNTS — COLLECTED AT THE OFFICE</div>
+          <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:4px 11px;border-radius:7px;cursor:pointer;font-weight:600;font-size:11.5px" onclick="commsHouseAdd()">+ Add customer</button>
+        </div>
+        <div style="font-size:11.5px;color:#6b6458;margin-bottom:8px">No auto-assign rule will ever touch these, whatever its window says — their invoices are assigned individually. They stay labelled as house accounts everywhere in the portal.</div>
+        ${house.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${house.map(h => `
+          <div style="display:inline-flex;align-items:center;gap:8px;background:#f6f4ee;border:1px solid var(--line,#e7e1d4);border-radius:9px;padding:6px 10px">
+            <div>
+              <div style="font-size:12.5px;font-weight:700">${escHtml(h.customerName)} <span style="font-weight:400;color:#6b6458">${escHtml(h.customerId)}</span></div>
+              <div style="font-size:10.5px;color:#6b6458">${escHtml(h.label)} · ${h.openCount} open · ${fmt$(h.openAmount)}</div>
+            </div>
+            <span style="cursor:pointer;color:#b91c1c;font-weight:700" title="Stop treating this as a house account" onclick="commsHouseRemove('${escHtml(h.customerId)}','${escHtml(h.customerName)}')">✕</span>
+          </div>`).join('')}</div>
+          <div style="margin-top:10px"><button class="btn-sm" style="background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600" onclick="commsReleaseHouse()">↩ Release rule-made assignments on house accounts</button>
+          <span style="font-size:11px;color:#6b6458;margin-left:6px">Undoes only what a RULE assigned. Anything a person assigned by hand is left alone.</span></div>`
+          : '<div style="font-size:12px;color:#6b6458">None yet. Amazon is the usual first one.</div>'}
+      </div>
+
+      <div id="unassigned-panel"></div>
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;overflow:hidden;margin-bottom:14px">
         <table style="width:100%;border-collapse:collapse;font-size:12.5px">
           <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase">
-            ${['Active', 'Priority', 'Name', 'Locations', 'Timing (days from due date)', 'Collector', ''].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
+            ${['Active', 'Priority', 'Name', 'Locations', 'Customers', 'Timing (days from due date)', 'Collector', ''].map(x => `<th style="padding:8px 12px">${x}</th>`).join('')}
           </tr></thead>
           <tbody>${rules.map(r => `
             <tr style="border-top:1px solid #f1ede3">
@@ -1046,12 +1071,13 @@ async function commsLoadAutoAssign() {
               <td style="padding:8px 12px">${r.priority}</td>
               <td style="padding:8px 12px;font-weight:600">${escHtml(r.name)}</td>
               <td style="padding:8px 12px">${commsRuleLocationsText(r, locs)}</td>
+              <td style="padding:8px 12px">${commsRuleCustomersText(r, houseIds)}</td>
               <td style="padding:8px 12px">${escHtml(commsRuleTimingText(r))}</td>
               <td style="padding:8px 12px">${escHtml(((_gridMeta.users || []).find(u => u.email.toLowerCase() === (r.collector_email || '').toLowerCase()) || {}).name || r.collector_email)}</td>
               <td style="padding:8px 12px;white-space:nowrap">
                 <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px;margin-right:4px" onclick="commsRuleEdit(${r.id})">Edit</button>
                 <button class="btn-sm" style="background:#fee2e2;color:#b91c1c;border:none;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:11px" onclick="commsAutoAssignDelete(${r.id})">✕</button></td>
-            </tr>`).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:#6b6458">No rules yet — add one below.</td></tr>'}</tbody>
+            </tr>`).join('') || '<tr><td colspan="8" style="padding:20px;text-align:center;color:#6b6458">No rules yet — add one below.</td></tr>'}</tbody>
         </table>
       </div>
       <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px">
@@ -1108,7 +1134,13 @@ async function commsAutoAssignRun(btn) {
   btn.disabled = true; btn.textContent = '▶ Running…';
   try {
     const r = await apiFetch('/api/assignment-rules/run', { method: 'POST' });
-    alert(r.assigned ? `Assigned ${r.assigned} invoice(s):\n` + Object.entries(r.byRule || {}).map(([n, x]) => `${n}: ${x}`).join('\n') : 'Nothing to assign — every matching invoice already has a collector.');
+    const house = r.houseSkipped
+      ? `\n\nSkipped ${r.houseSkipped} house-account invoice(s): ${Object.entries(r.skippedHouse || {}).map(([c, n]) => c + ' (' + n + ')').join(', ')}`
+      : '';
+    alert((r.assigned
+      ? `Assigned ${r.assigned} invoice(s):\n` + Object.entries(r.byRule || {}).map(([n, x]) => `${n}: ${x}`).join('\n')
+      : 'Nothing to assign — every matching invoice already has a collector.') + house);
+    commsLoadAutoAssign();
   } catch (e) { alert('Run failed: ' + e.message); }
   btn.disabled = false; btn.textContent = '▶ Run rules now';
 }
@@ -2945,7 +2977,172 @@ async function orgSaveRole() {
 // The aging field only ever meant "days PAST due", so a rule like Edwin's
 // "Auto Assign <5 Days to Due Date" could not be expressed at all. Days are now
 // signed and relative to the due date: -5 means five days BEFORE it falls due.
-let _arRules = [], _arLocs = [];
+let _arRules = [], _arLocs = [], _arHouse = [], _arCustomers = [];
+
+// A rule's customer scope in words. House accounts are called out separately
+// because they are excluded globally and a rule cannot override that — showing
+// only "All customers" would be a lie about what the rule actually does.
+function commsRuleCustomersText(r, houseIds) {
+  const mode = r.targetMode || r.target_mode || 'all';
+  const list = r.targetCustomers || [];
+  const houseNote = (houseIds && houseIds.size)
+    ? ` <span title="House accounts are excluded from every rule" style="font-size:10px;color:#6b6458">(minus ${houseIds.size} house)</span>` : '';
+  if (mode === 'all' || !list.length) return 'All' + houseNote;
+  const label = (id) => {
+    const c = (_arCustomers || []).find(x => x.id === id);
+    return escHtml(c ? c.name : id);
+  };
+  const shown = list.length <= 2
+    ? list.map(label).join(', ')
+    : `${label(list[0])} <span title="${escHtml(list.slice(1).join(', '))}" style="color:#6b6458">+${list.length - 1} more</span>`;
+  return mode === 'only'
+    ? `<span style="color:#166534;font-weight:600">only</span> ${shown}`
+    : `<span style="color:#b91c1c;font-weight:600">except</span> ${shown}${houseNote}`;
+}
+
+// ─── House accounts ─────────────────────────────────────────────────────────
+async function commsHouseAdd() {
+  const opts = (_arCustomers || []).map(c => `${c.id}  ${c.name}`).slice(0, 400).join('\n');
+  const input = prompt('Customer number to manage at the office (e.g. C-00403 for Amazon).\n\nOpen customers:\n' + opts);
+  if (!input) return;
+  const id = input.trim().split(/\s+/)[0].toUpperCase();
+  const label = prompt('Label for this account:', 'Managed at the office');
+  if (label === null) return;
+  try {
+    await apiFetch('/api/house-accounts', { method: 'POST', body: JSON.stringify({ customerId: id, on: true, label: label || 'Managed at the office' }) });
+    commsLoadAutoAssign();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsHouseRemove(id, name) {
+  if (!confirm(`Stop treating ${name || id} as a house account?\n\nAuto-assign rules will be free to pick up its invoices on the next run.`)) return;
+  try {
+    await apiFetch('/api/house-accounts', { method: 'POST', body: JSON.stringify({ customerId: id, on: false }) });
+    commsLoadAutoAssign();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// Show what would be released before releasing it — this hands invoices back to
+// nobody, so it should never be a surprise.
+async function commsReleaseHouse() {
+  let preview;
+  try { preview = await apiFetch('/api/assignments/release-house', { method: 'POST', body: JSON.stringify({ preview: true }) }); }
+  catch (e) { alert('Failed: ' + e.message); return; }
+  if (!preview.released) { alert('Nothing to release — no rule has assigned a house-account invoice.'); return; }
+  const detail = Object.entries(preview.byCustomer).map(([k, v]) =>
+    `  ${k}: ${v.count} invoice(s), ${fmt$(v.amount)} — ${Object.entries(v.collectors).map(([e, n]) => e + ' (' + n + ')').join(', ')}`).join('\n');
+  if (!confirm(`Release ${preview.released} rule-made assignment(s)?\n\n${detail}\n\nThese invoices go back to unassigned and will show under "Past due & unassigned". Manual assignments are not touched.`)) return;
+  try {
+    const r = await apiFetch('/api/assignments/release-house', { method: 'POST', body: JSON.stringify({}) });
+    alert(`Released ${r.released} assignment(s).`);
+    commsLoadAutoAssign();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// ─── Past due and nobody chasing it ─────────────────────────────────────────
+let _unassignedRows = [], _unassignedSel = new Set(), _unassignedMinDays = 1, _unassignedHouse = true;
+
+async function commsShowUnassigned() {
+  const el = document.getElementById('unassigned-panel');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;color:#6b6458">Loading…</div>';
+  try {
+    const d = await apiFetch(`/api/assignments/unassigned?minDays=${_unassignedMinDays}&house=${_unassignedHouse ? 1 : 0}`);
+    _unassignedRows = d.rows || [];
+    _unassignedSel = new Set();
+    commsRenderUnassigned(d);
+  } catch (e) { el.innerHTML = `<div style="padding:20px;color:var(--red)">${escHtml(e.message)}</div>`; }
+}
+
+function commsSetUnassignedDays(n) { _unassignedMinDays = n; commsShowUnassigned(); }
+function commsToggleUnassignedHouse() { _unassignedHouse = !_unassignedHouse; commsShowUnassigned(); }
+
+function commsRenderUnassigned(d) {
+  const el = document.getElementById('unassigned-panel');
+  if (!el) return;
+  const rows = _unassignedRows;
+  const pill = (label, n) => `<button class="btn-sm" style="background:${_unassignedMinDays === n ? '#1a1814' : '#fff'};color:${_unassignedMinDays === n ? '#fff' : '#1a1814'};border:1px solid var(--line,#e7e1d4);padding:4px 11px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="commsSetUnassignedDays(${n})">${label}</button>`;
+  const body = rows.map(r => `
+    <tr style="border-top:1px solid #f1ede3;background:${_unassignedSel.has(String(r.recordNo)) ? '#fffbeb' : ''}">
+      <td style="padding:6px 10px"><input type="checkbox" ${_unassignedSel.has(String(r.recordNo)) ? 'checked' : ''} onchange="commsUnassignedPick('${r.recordNo}',this.checked)"></td>
+      <td style="padding:6px 10px;font-weight:600;color:var(--navy);cursor:pointer" onclick="openDrawer('${r.recordNo}')">${escHtml(r.invoiceId || r.recordNo)}</td>
+      <td style="padding:6px 10px">${escHtml(r.customerName || r.customerId || '')}
+        ${r.houseAccount ? `<span title="${escHtml(r.houseLabel)} — rules never assign this" style="font-size:9.5px;background:#f3e8ff;color:#6b21a8;border-radius:5px;padding:0 5px;margin-left:4px;white-space:nowrap">🏢 house</span>` : ''}</td>
+      <td style="padding:6px 10px">${escHtml(r.locationName || r.locationId || '')}</td>
+      <td style="padding:6px 10px;text-align:right" class="amount">${fmt$(r.amount)}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:700;color:${r.daysPastDue > 60 ? '#b91c1c' : r.daysPastDue > 30 ? '#b45309' : '#6b6458'}">${r.daysPastDue}d</td>
+      <td style="padding:6px 10px;font-size:11px;color:#6b6458">${r.houseAccount ? 'house account — assign by hand'
+        : r.ruleWouldCover ? '<span style="color:#166534">a rule covers it — run the rules</span>'
+        : 'no rule covers it'}</td>
+    </tr>`).join('');
+  const selCount = _unassignedSel.size;
+  const selAmt = rows.filter(r => _unassignedSel.has(String(r.recordNo))).reduce((t, r) => t + r.amount, 0);
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:700;color:#6b6458">🔎 PAST DUE, NOBODY ASSIGNED</div>
+        <div style="font-size:12.5px"><b>${d.count}</b> invoice${d.count === 1 ? '' : 's'} · <b>${fmt$(d.amount)}</b>${d.houseCount ? ` · of which ${d.houseCount} house (${fmt$(d.houseAmount)})` : ''}</div>
+        <span style="margin-left:auto"></span>
+        ${pill('1+ days', 1)}${pill('15+', 15)}${pill('30+', 30)}${pill('60+', 60)}
+        <label style="font-size:11.5px;color:#6b6458;display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" ${_unassignedHouse ? 'checked' : ''} onchange="commsToggleUnassignedHouse()"> show house accounts</label>
+      </div>
+      ${rows.length ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="commsUnassignedAll(true)">Select all ${rows.length}</button>
+        <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="commsUnassignedAll(false)">Clear</button>
+        <select id="unassigned-collector" style="padding:5px 9px;border:1px solid var(--line,#e7e1d4);border-radius:7px;font-size:12.5px">
+          <option value="">Assign selected to…</option>
+          ${(_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('')}
+        </select>
+        <button class="btn-sm" style="background:#1a1814;color:#fff;border:none;padding:5px 12px;border-radius:7px;cursor:pointer;font-weight:600;font-size:12px" onclick="commsUnassignedAssign()">Assign</button>
+        <span style="font-size:11.5px;color:#6b6458">${selCount ? `${selCount} selected · ${fmt$(selAmt)}` : 'nothing selected'}</span>
+      </div>
+      <div style="max-height:420px;overflow:auto;border:1px solid var(--line,#e7e1d4);border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr style="text-align:left;color:#6b6458;font-size:10.5px;text-transform:uppercase;background:#faf8f3;position:sticky;top:0">
+            ${['', 'Invoice', 'Customer', 'Service center', 'Amount', 'Past due', 'Why nobody has it'].map(x => `<th style="padding:7px 10px">${x}</th>`).join('')}
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`
+      : '<div style="padding:16px;color:#166534;font-size:12.5px">Nothing past due is unassigned. ✅</div>'}
+    </div>`;
+}
+
+function commsUnassignedPick(rn, on) {
+  if (on) _unassignedSel.add(String(rn)); else _unassignedSel.delete(String(rn));
+  commsRenderUnassignedTotals();
+}
+function commsUnassignedAll(on) {
+  _unassignedSel = on ? new Set(_unassignedRows.map(r => String(r.recordNo))) : new Set();
+  // Full repaint: the tick boxes and the row highlight both have to change.
+  commsRenderUnassigned(commsUnassignedSummary());
+}
+function commsUnassignedSummary() {
+  const rows = _unassignedRows;
+  const house = rows.filter(r => r.houseAccount);
+  return { count: rows.length, amount: rows.reduce((t, r) => t + r.amount, 0),
+    houseCount: house.length, houseAmount: house.reduce((t, r) => t + r.amount, 0) };
+}
+function commsRenderUnassignedTotals() { commsRenderUnassigned(commsUnassignedSummary()); }
+
+async function commsUnassignedAssign() {
+  const sel = document.getElementById('unassigned-collector');
+  const email = sel ? sel.value : '';
+  if (!email) { alert('Pick a collector first.'); return; }
+  if (!_unassignedSel.size) { alert('Select at least one invoice.'); return; }
+  const chosen = _unassignedRows.filter(r => _unassignedSel.has(String(r.recordNo)));
+  const house = chosen.filter(r => r.houseAccount).length;
+  const name = ((_gridMeta.users || []).find(u => u.email.toLowerCase() === email) || {}).name || email;
+  if (!confirm(`Assign ${chosen.length} invoice(s), ${fmt$(chosen.reduce((t, r) => t + r.amount, 0))}, to ${name}?` +
+    (house ? `\n\n${house} of them belong to a house account. That is allowed by hand — this only stops the rules.` : ''))) return;
+  try {
+    await apiFetch('/api/collector/invoice-bulk', { method: 'POST',
+      body: JSON.stringify({ items: chosen.map(r => ({ recordNo: r.recordNo })), collectorEmail: email }) });
+    commsShowUnassigned();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
 
 function commsRuleLocationsText(r, locs) {
   const ids = (r.locationIds && r.locationIds.length) ? r.locationIds : (r.location_id ? [r.location_id] : []);
@@ -2985,10 +3182,44 @@ function commsRuleEdit(id) {
     <input type="checkbox" value="${escHtml(l.locationId)}"${ids.includes(l.locationId) ? ' checked' : ''}> ${escHtml(l.locationName)}</label>`).join('');
   document.getElementById('arm-collector').innerHTML = '<option value="">Collector…</option>' +
     (_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}"${(r.collector_email || '').toLowerCase() === u.email.toLowerCase() ? ' selected' : ''}>${escHtml(u.name || u.email)}</option>`).join('');
+  _armCustPicked = new Set(r.targetCustomers || []);
+  commsRuleSetMode(r.targetMode || r.target_mode || 'all');
+  commsRuleCustFilter('');
   commsRuleTimingPreview();
   document.getElementById('arm-msg').innerHTML = '';
   m.style.display = 'flex';
 }
+
+// Customer picker inside the rule editor. Ticks survive filtering because the
+// checked ids are held here, not read back off the (possibly hidden) inputs.
+let _armCustPicked = new Set();
+
+function commsRuleSetMode(mode) {
+  const r = document.querySelector(`input[name="arm-tmode"][value="${mode || 'all'}"]`);
+  if (r) r.checked = true;
+  commsRuleModeChange();
+}
+function commsRuleModeChange() {
+  const mode = (document.querySelector('input[name="arm-tmode"]:checked') || {}).value || 'all';
+  const wrap = document.getElementById('arm-custwrap');
+  if (wrap) wrap.style.display = mode === 'all' ? 'none' : '';
+}
+function commsRuleCustFilter(q) {
+  const term = String(q || '').trim().toLowerCase();
+  const list = (_arCustomers || []).filter(c =>
+    !term || c.name.toLowerCase().includes(term) || c.id.toLowerCase().includes(term));
+  const el = document.getElementById('arm-custs');
+  if (!el) return;
+  // Anything already ticked stays visible even when it doesn't match the search,
+  // so a selection can't be silently lost behind a filter.
+  const picked = (_arCustomers || []).filter(c => _armCustPicked.has(c.id) && !list.includes(c));
+  el.innerHTML = [...picked, ...list].slice(0, 300).map(c => `
+    <label style="display:block;font-size:12px;cursor:pointer;padding:1px 0">
+      <input type="checkbox" value="${escHtml(c.id)}" ${_armCustPicked.has(c.id) ? 'checked' : ''} onchange="commsRuleCustPick('${escHtml(c.id)}',this.checked)">
+      ${escHtml(c.name)} <span style="color:var(--gray-500)">${escHtml(c.id)}</span></label>`).join('')
+    || '<div style="font-size:12px;color:var(--gray-500);padding:4px">No match.</div>';
+}
+function commsRuleCustPick(id, on) { if (on) _armCustPicked.add(id); else _armCustPicked.delete(id); }
 
 function commsRuleTimingPreview() {
   const min = document.getElementById('arm-min').value;
@@ -3016,10 +3247,15 @@ async function commsRuleSave() {
     max_days_past_due: max === '' ? null : parseInt(max, 10),
     collector_email: document.getElementById('arm-collector').value,
     priority: parseInt(document.getElementById('arm-priority').value, 10) || 1,
+    targetMode: (document.querySelector('input[name="arm-tmode"]:checked') || {}).value || 'all',
+    targetCustomers: [..._armCustPicked],
     active: 1,
   };
   if (!f.name) { msg.innerHTML = '<span style="color:var(--red)">Give the rule a name.</span>'; return; }
   if (!f.collector_email) { msg.innerHTML = '<span style="color:var(--red)">Pick a collector.</span>'; return; }
+  if (f.targetMode !== 'all' && !f.targetCustomers.length) {
+    msg.innerHTML = '<span style="color:var(--red)">Tick at least one customer, or set the rule back to every customer.</span>'; return;
+  }
   if (f.max_days_past_due !== null && f.max_days_past_due < f.min_days_past_due) {
     msg.innerHTML = '<span style="color:var(--red)">The upper bound is earlier than the lower one.</span>'; return;
   }
@@ -3043,6 +3279,9 @@ function commsRuleNew() {
     <input type="checkbox" value="${escHtml(l.locationId)}"> ${escHtml(l.locationName)}</label>`).join('');
   document.getElementById('arm-collector').innerHTML = '<option value="">Collector…</option>' +
     (_gridMeta.users || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}">${escHtml(u.name || u.email)}</option>`).join('');
+  _armCustPicked = new Set();
+  commsRuleSetMode('all');
+  commsRuleCustFilter('');
   commsRuleTimingPreview();
   document.getElementById('arm-msg').innerHTML = '';
   m.style.display = 'flex';
@@ -3059,6 +3298,17 @@ function commsRuleNew() {
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Service centers</label>
     <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">Tick any number. None ticked means every location.</div>
     <div id="arm-locs" style="margin-bottom:10px;max-height:160px;overflow-y:auto"></div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Customers</label>
+    <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">House accounts are excluded from every rule regardless — this is for narrowing a rule further, or holding it off one customer.</div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;font-size:12px">
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="arm-tmode" value="all" onchange="commsRuleModeChange()"> Every customer</label>
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="arm-tmode" value="only" onchange="commsRuleModeChange()"> Only these</label>
+      <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="arm-tmode" value="except" onchange="commsRuleModeChange()"> Everyone except these</label>
+    </div>
+    <div id="arm-custwrap" style="display:none;margin-bottom:10px">
+      <input id="arm-custsearch" placeholder="Filter by name or customer number…" oninput="commsRuleCustFilter(this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;margin-bottom:5px">
+      <div id="arm-custs" style="max-height:150px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:6px;padding:6px"></div>
+    </div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:3px">Timing, in days from the due date</label>
     <div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">Negative is before the invoice falls due. So −5 to −1 assigns during the five days leading up to the due date.</div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
