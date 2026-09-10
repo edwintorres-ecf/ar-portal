@@ -92,13 +92,14 @@ function ruleImpact(f) {
   }
   const custAccounts = {};
   for (const a of db.getAllCustomerAccounts()) custAccounts[a.customer_id] = a;
-  const out = { customers: 0, invoices: 0, totalDue: 0, reachable: 0, amazon: 0, stopService: 0, noContact: 0 };
+  const out = { customers: 0, invoices: 0, totalDue: 0, reachable: 0, amazon: 0, stopService: 0, noContact: 0, dunningHold: 0 };
   for (const [customerId, invs] of byCustomer) {
     out.customers++;
     out.invoices += invs.length;
     out.totalDue += invs.reduce((s, i) => s + i.totalDue, 0);
     if (AMAZON_CUSTOMERS.has(customerId)) { out.amazon++; continue; }
     const acct = custAccounts[customerId];
+    if (acct && acct.dunning_hold) { out.dunningHold++; continue; }
     if (acct && acct.stop_service) { out.stopService++; continue; }
     if (!dunningContacts(customerId).length) { out.noContact++; continue; }
     out.reachable++;
@@ -170,6 +171,21 @@ function generate({ triggeredBy } = {}) {
       if (AMAZON_CUSTOMERS.has(customerId)) {
         const anyMatch = custInvoices.some(i => rules.some(r => i.daysOverdue >= r.trigger_days_past_due));
         if (anyMatch) skip(customerId, null, custInvoices.map(i => i.recordNo), 'amazon');
+        continue;
+      }
+
+      // A customer-level dunning hold outranks every rule: it is checked before
+      // the rule search so the hold cannot be defeated by adding a new rule, and
+      // it is RECORDED as a skip so "why didn't this customer get dunned" has an
+      // answer on the run (Edwin 2026-09-10, JLL - CyrusOne).
+      const held = custAccounts[customerId];
+      if (held && held.dunning_hold) {
+        const wouldMatch = custInvoices.filter(i => rules.some(r =>
+          ruleTargetsCustomer(r, customerId) &&
+          i.daysOverdue >= r.trigger_days_past_due &&
+          i.totalDue >= (r.min_invoice_balance || 0) &&
+          (r.billing_stream === 'all' || streamOf(i.invoiceId) === r.billing_stream)));
+        if (wouldMatch.length) skip(customerId, null, wouldMatch.map(i => i.recordNo), 'dunning_hold');
         continue;
       }
 
@@ -253,6 +269,9 @@ async function execute(runId, { actorEmail } = {}) {
         db.updateDunningAction(action.id, { status: 'skipped', skip_reason: 'amazon' }); result.reskipped++; continue;
       }
       const acct = custAccounts[action.customer_id];
+      if (acct && acct.dunning_hold) {
+        db.updateDunningAction(action.id, { status: 'skipped', skip_reason: 'dunning_hold' }); result.reskipped++; continue;
+      }
       if (acct && acct.stop_service) {
         db.updateDunningAction(action.id, { status: 'skipped', skip_reason: 'stop_service' }); result.reskipped++; continue;
       }

@@ -1051,6 +1051,8 @@ async function commsLoadAutoAssign() {
             <div>
               <div style="font-size:12.5px;font-weight:700">${escHtml(h.customerName)} <span style="font-weight:400;color:#6b6458">${escHtml(h.customerId)}</span></div>
               <div style="font-size:10.5px;color:#6b6458">${escHtml(h.label)} · ${h.openCount} open · ${fmt$(h.openAmount)}</div>
+              <label style="font-size:10.5px;color:#6b6458;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-top:2px" title="Dunning is a separate switch: being a house account does not by itself stop email chasing">
+                <input type="checkbox" ${h.dunningHold ? 'checked' : ''} onchange="commsSetDunningHold('${escHtml(h.customerId)}',this.checked)"> hold from dunning</label>
             </div>
             <span style="cursor:pointer;color:#b91c1c;font-weight:700" title="Stop treating this as a house account" onclick="commsHouseRemove('${escHtml(h.customerId)}','${escHtml(h.customerName)}')">✕</span>
           </div>`).join('')}</div>
@@ -2452,6 +2454,7 @@ async function commsDunningOpenRun(runId) {
     const sendable = actions.filter(a => ['preview', 'approved'].includes(a.status));
     const reasonLabel = {
       amazon: 'Amazon — EDI collections', stop_service: 'Stop service', open_ptp: 'Open promise to pay',
+      dunning_hold: 'Held back from dunning',
       no_contact: 'No dunning-approved contact', recent_send: 'Emailed within gap window', idempotent: 'Already sent this step', manual: 'Manually skipped',
     };
     el.innerHTML = `
@@ -3025,6 +3028,14 @@ async function commsHouseAdd() {
     await apiFetch('/api/house-accounts', { method: 'POST', body: JSON.stringify({ customerId: id, on: true, label: label || 'Managed at the office' }) });
     commsLoadAutoAssign();
   } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function commsSetDunningHold(id, on) {
+  try {
+    await apiFetch('/api/customer-account/' + encodeURIComponent(id), { method: 'PATCH',
+      body: JSON.stringify({ dunning_hold: on ? 1 : 0, dunning_hold_reason: on ? 'Held at the office' : null }) });
+    commsLoadAutoAssign();
+  } catch (e) { alert('Failed: ' + e.message); commsLoadAutoAssign(); }
 }
 
 async function commsHouseRemove(id, name) {

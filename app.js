@@ -2934,6 +2934,8 @@ app.patch('/api/customer-account/:id', requireAuth, requirePerm('customers.manag
     if (notes !== undefined)        fields.notes        = notes;
     if (house_account !== undefined) fields.house_account = house_account ? 1 : 0;
     if (house_account_label !== undefined) fields.house_account_label = house_account_label;
+    if (req.body.dunning_hold !== undefined) fields.dunning_hold = req.body.dunning_hold ? 1 : 0;
+    if (req.body.dunning_hold_reason !== undefined) fields.dunning_hold_reason = req.body.dunning_hold_reason;
     const acct = db.upsertCustomerAccount(req.params.id, customer_name || req.params.id, fields, user.email);
     const action = stop_service !== undefined ? (stop_service ? 'stop_service' : 'resume_service') : 'update_customer';
     db.auditLog(user.email, action, req.params.id, JSON.stringify(fields));
@@ -2958,6 +2960,8 @@ app.get('/api/house-accounts', requireAuth, (req, res) => {
       customerId: r.customer_id,
       customerName: r.customer_name || r.customer_id,
       label: r.house_account_label || 'Managed at the office',
+      dunningHold: !!r.dunning_hold,
+      dunningHoldReason: r.dunning_hold_reason || null,
       openCount: (stats[r.customer_id] || {}).openCount || 0,
       openAmount: (stats[r.customer_id] || {}).openAmount || 0,
     })).sort((a, b) => b.openAmount - a.openAmount));

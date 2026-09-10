@@ -441,6 +441,13 @@ function initSchema() {
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN house_account INTEGER DEFAULT 0"); } catch(e) {}
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN house_account_label TEXT DEFAULT NULL"); } catch(e) {}
 
+  // Dunning hold is SEPARATE from house_account on purpose: being collected at
+  // the office does not by itself mean a customer should never be chased by
+  // email, and conflating the two would have silently changed behaviour for
+  // accounts nobody asked about (Edwin 2026-09-10).
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold_reason TEXT DEFAULT NULL"); } catch(e) {}
+
   // Manual site assignment for POs whose documents/invoices don't reveal one
   try { db.exec("ALTER TABLE purchase_orders ADD COLUMN site_code TEXT DEFAULT NULL"); } catch(e) {}
 
@@ -2158,6 +2165,8 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
     if (fields.stop_service_issued_by !== undefined) { sets.push('stop_service_issued_by=?'); vals.push(fields.stop_service_issued_by); }
     if (fields.stop_service_at !== undefined) { sets.push('stop_service_at=?'); vals.push(fields.stop_service_at); }
     if (fields.house_account !== undefined) { sets.push('house_account=?'); vals.push(fields.house_account ? 1 : 0); }
+    if (fields.dunning_hold !== undefined) { sets.push('dunning_hold=?'); vals.push(fields.dunning_hold ? 1 : 0); }
+    if (fields.dunning_hold_reason !== undefined) { sets.push('dunning_hold_reason=?'); vals.push(fields.dunning_hold_reason || null); }
     if (fields.house_account_label !== undefined) { sets.push('house_account_label=?'); vals.push(fields.house_account_label || null); }
     if (fields.notes !== undefined)        { sets.push('notes=?');        vals.push(fields.notes); }
     if (fields.customer_name || customerName) { sets.push('customer_name=?'); vals.push(fields.customer_name || customerName); }
@@ -2177,8 +2186,16 @@ function getAllCustomerAccounts() {
 // so it stays a plain Set lookup rather than a per-invoice query.
 function getHouseAccounts() {
   try {
-    return db.prepare('SELECT customer_id, customer_name, house_account_label FROM customer_accounts WHERE house_account=1').all();
+    return db.prepare('SELECT customer_id, customer_name, house_account_label, dunning_hold, dunning_hold_reason FROM customer_accounts WHERE house_account=1').all();
   } catch (e) { return []; }   // column absent until the migration has run
+}
+
+// Customers held back from dunning. Independent of house_account — a customer
+// can be either, both, or neither.
+function getDunningHolds() {
+  try {
+    return db.prepare('SELECT customer_id, customer_name, dunning_hold_reason FROM customer_accounts WHERE dunning_hold=1').all();
+  } catch (e) { return []; }
 }
 function getHouseAccountIds() {
   return new Set(getHouseAccounts().map(r => r.customer_id));
@@ -2627,6 +2644,7 @@ module.exports = {
   getAllCustomerAccounts,
   getHouseAccounts,
   getHouseAccountIds,
+  getDunningHolds,
   getWatchlist,
   addToWatchlist,
   removeFromWatchlist,
