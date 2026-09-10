@@ -4619,7 +4619,7 @@ function exportOrphansCsv() {
 // told, nobody owned it, and nothing recorded that it had been dealt with. Each
 // one is now routed to an internal owner and stays on this list until somebody
 // resolves it (Edwin 2026-09-10).
-let _poRejections = { rows: [], summary: {} }, _poRejShowResolved = false;
+let _poRejections = { rows: [], summary: {} }, _poRejShowResolved = false, _rejSel = new Set();
 
 async function loadPoRejections() {
   const el = document.getElementById('po-rejections-content');
@@ -4654,6 +4654,12 @@ function renderPoRejections() {
       <button class="btn" style="font-size:11.5px;padding:4px 10px" onclick="poRejSweep(this)">↻ Check now</button>
       <button class="btn" style="font-size:11.5px;padding:4px 10px" title="Reads each rejection's reason off its Payee Central page — takes a minute" onclick="poRejReasons(this)">🔍 Get reasons</button>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px">
+      <button class="btn" style="font-size:11.5px;padding:4px 10px" onclick="rejSelectAll(true)">Select all</button>
+      <button class="btn" style="font-size:11.5px;padding:4px 10px" onclick="rejSelectAll(false)">Clear</button>
+      <button class="btn" style="font-size:12px;padding:4px 12px;${_rejSel.size ? 'background:var(--navy);color:#fff;border-color:var(--navy)' : ''}" onclick="rejNotify()">✉️ Send notice${_rejSel.size ? ' (' + _rejSel.size + ')' : ''}</button>
+      <span style="font-size:11.5px;color:var(--gray-500)">Goes to the site's internal owner, copying the AR manager.</span>
+    </div>
     ${sweep ? `<div style="font-size:11px;color:var(--gray-500);margin-bottom:10px">Last checked ${escHtml(String(sweep.at).slice(0, 16).replace('T', ' '))} UTC — ${sweep.scanned} rejected in the feed, ${sweep.autoResolved} already resubmitted${sweep.unrouted ? `, <span style="color:#b45309">${sweep.unrouted} with nobody to route to</span>` : ''}</div>` : ''}`;
 
   if (!rows.length) {
@@ -4667,7 +4673,8 @@ function renderPoRejections() {
   const body = rows.map(r => {
     const resolved = !!r.resolved_at;
     const age = r.first_seen ? Math.floor((Date.now() - Date.parse(String(r.first_seen).replace(' ', 'T') + 'Z')) / 86400000) : null;
-    return `<tr style="border-bottom:1px solid var(--gray-100);${resolved ? 'opacity:.55' : ''}">
+    return `<tr style="border-bottom:1px solid var(--gray-100);${resolved ? 'opacity:.55' : ''}${_rejSel.has(r.payee_id) ? 'background:#fffbeb;' : ''}">
+      <td style="padding:9px 12px"><input type="checkbox" ${_rejSel.has(r.payee_id) ? 'checked' : ''} onchange="rejPick('${escHtml(r.payee_id)}', this.checked)"></td>
       <td style="padding:9px 12px">
         <div style="font-weight:600;color:var(--navy);cursor:pointer" onclick="${r.record_no ? `openDrawer('${r.record_no}')` : ''}">${escHtml(r.invoice_id || r.payee_id)}</div>
         <div style="font-size:11px;color:var(--gray-500)">${escHtml(r.po_number || 'no PO')}${r.entry_date ? ' · entered ' + escHtml(r.entry_date) : ''}</div>
@@ -4703,6 +4710,7 @@ function renderPoRejections() {
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
+          <th style="padding:9px 12px;width:30px"></th>
           ${sortTh([
             ['Invoice', 'invoice_id'], ['Why Amazon rejected it', 'reason'], ['Site / BU', 'siteCode'],
             ['Amount', 'amount', 'right'], ['Age', 'first_seen', 'right'], ['Routed to', 'routed_to'], ['', null, 'right'],
@@ -4722,6 +4730,39 @@ async function poRejSweep(btn) {
   } catch (e) { showToast('Check failed: ' + e.message, 'error'); }
   btn.disabled = false; btn.textContent = '↻ Check now';
 }
+function rejPick(id, on) { if (on) _rejSel.add(id); else _rejSel.delete(id); renderPoRejections(); }
+function rejSelectAll(on) {
+  const rows = poFilterRows((_poRejections.rows || []).filter(r => !r.resolved_at)
+    .map(r => ({ ...r, siteCode: r.site_code, businessUnit: r.business_unit })));
+  _rejSel = on ? new Set(rows.map(r => r.payee_id)) : new Set();
+  renderPoRejections();
+}
+
+async function rejNotify() {
+  if (!_rejSel.size) { showToast('Select the rejections to notify about', 'error'); return; }
+  const ids = [...(_rejSel)];
+  const chosen = (_poRejections.rows || []).filter(r => _rejSel.has(r.payee_id));
+  // Show exactly who will receive what BEFORE sending — this is real mail to
+  // real colleagues, so it should never be a surprise.
+  let managers = [];
+  try { managers = (await apiFetch('/api/settings/ar-managers')).emails || []; } catch (e) {}
+  const noOwner = chosen.filter(r => !r.routed_to);
+  const detail = chosen.map(r => `  ${r.invoice_id || r.payee_id} (${r.site_code || 'no site'}) → ${r.routed_to || 'no owner'}`).join('\n');
+  if (!confirm(`Send ${ids.length} rejection notice${ids.length === 1 ? '' : 's'}?\n\n${detail}\n\n`
+    + (managers.length ? `Copied on all of them: ${managers.join(', ')}\n\n` : 'No AR manager is configured to copy.\n\n')
+    + (noOwner.length ? `${noOwner.length} have no site owner — they will go to the AR manager only.\n\n` : '')
+    + 'This sends email now.')) return;
+  try {
+    const r = await apiFetch('/api/amazon/rejections/notify', { method: 'POST', body: JSON.stringify({ payeeIds: ids }) });
+    const who = [...new Set(r.sent.flatMap(x => x.to))];
+    showToast(`${r.sent.length} notice${r.sent.length === 1 ? '' : 's'} sent to ${who.join(', ')}`
+      + (r.skipped.length ? ` · ${r.skipped.length} skipped` : ''), 'success');
+    if (r.skipped.length) alert('Skipped:\n' + r.skipped.map(x => `${x.id}: ${x.why}`).join('\n'));
+    _rejSel.clear();
+    loadPoRejections();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
 async function poRejReasons(btn) {
   btn.disabled = true; btn.textContent = '🔍 Reading…';
   try {

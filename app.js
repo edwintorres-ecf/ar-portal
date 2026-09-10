@@ -1189,6 +1189,91 @@ app.post('/api/amazon/rejections/reasons', requireAuth, requirePerm('po.edit'), 
   })();
 });
 
+// ─── Rejection notices ──────────────────────────────────────────────────────
+// Sent to whoever owns the site, with the AR manager copied as a standing rule
+// so nothing sits unseen because one person is away. Explicitly triggered —
+// the hourly sweep only auto-notifies rejections it has never notified before.
+function rejectionNoticeBody(r, siteContact) {
+  const money = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
+  const lines = [];
+  lines.push(`Amazon has REJECTED invoice ${r.invoice_id || r.payee_id}.`);
+  lines.push('');
+  lines.push(`  Amount:        ${money(r.amount)}`);
+  if (r.site_code) lines.push(`  Site:          ${r.site_code}${r.business_unit ? ' (' + r.business_unit + ')' : ''}`);
+  if (r.po_number) lines.push(`  PO:            ${r.po_number}`);
+  lines.push(`  Reason given:  ${r.reason || 'not stated on the Payee Central record'}`);
+  if (r.rejected_by) lines.push(`  Rejected by:   ${r.rejected_by}`);
+  if (r.entry_date) lines.push(`  Submitted:     ${r.entry_date}`);
+  const amazonContact = r.amazon_contact || (siteContact && siteContact.amazon_email) || null;
+  if (amazonContact) lines.push(`  Amazon contact for this site: ${amazonContact}`);
+  lines.push('');
+  // Say what to do about it. A notice that only reports a fact gets filed.
+  const REMEDY = {
+    'Wrong PO Invoiced': 'Reassign the invoice to the correct PO and resubmit under a new invoice number (Amazon rejects a reused one).',
+    'Incorrect Approver': 'The approver on the PO is not the person who can approve this. Confirm the right approver with the Amazon contact, then resubmit.',
+    'Incorrect billing by payee': 'Amazon disputes what was billed. Check the rate and quantity against the PO before resubmitting.',
+    'Work Order Number was not provided in invoice description field': 'Add the work order number to the invoice description and resubmit.',
+  };
+  const remedy = REMEDY[r.reason];
+  if (remedy) { lines.push(`What is needed: ${remedy}`); lines.push(''); }
+  lines.push(`It is on the Rejections tab of the Amazon PO Manager: ${portalBaseUrl()}`);
+  lines.push('');
+  lines.push('—ECF AR Portal');
+  return lines.join('\n');
+}
+
+app.post('/api/amazon/rejections/notify', requireAuth, requirePerm('po.edit'), async (req, res) => {
+  try {
+    const { payeeIds, extraTo, includeManager } = req.body || {};
+    if (!Array.isArray(payeeIds) || !payeeIds.length) return res.status(400).json({ error: 'payeeIds required' });
+    // The AR manager is copied by default; the caller can add anyone else.
+    const managers = includeManager === false ? [] : db.getSettingList('ar_manager_emails');
+    const extras = (Array.isArray(extraTo) ? extraTo : String(extraTo || '').split(','))
+      .map(x => String(x).trim().toLowerCase()).filter(Boolean);
+
+    const sent = [], skipped = [];
+    for (const id of payeeIds) {
+      const r = db.listRejections({ includeResolved: true }).find(x => x.payee_id === id);
+      if (!r) { skipped.push({ id, why: 'not found' }); continue; }
+      const siteContact = r.site_code ? db.getSiteContact(r.site_code) : null;
+      const owner = r.routed_to || (siteContact && siteContact.internal_email) || null;
+      const to = [...new Set([owner, ...extras, ...managers].filter(Boolean))];
+      if (!to.length) { skipped.push({ id, why: 'nobody to send to — set an internal owner for the site' }); continue; }
+
+      const subject = `[ECF] Amazon rejected ${r.invoice_id || r.payee_id}`
+        + (r.site_code ? ` — ${r.site_code}` : '')
+        + (r.reason ? ` — ${r.reason}` : '');
+      const body = rejectionNoticeBody(r, siteContact);
+      // Sent one message per recipient: notifyUser honours each person's own
+      // notification preferences, which a single multi-recipient send cannot.
+      for (const addr of to) {
+        await sendGraphMail(addr, subject, body).catch(e => {
+          console.error('[rejections] notify', id, addr, e.message);
+        });
+      }
+      if (owner && !r.routed_to) db.setRejectionRoute(id, owner);
+      db.markRejectionNotified(id);
+      sent.push({ id, invoiceId: r.invoice_id, to });
+    }
+    db.auditLog(req.session.user.email, 'rejection_notify', null,
+      `${sent.length} notice(s): ${sent.map(x => x.invoiceId + '->' + x.to.join('/')).join('; ')}${skipped.length ? ` · skipped ${skipped.length}` : ''}`);
+    res.json({ ok: true, sent, skipped, managers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/settings/ar-managers', requireAuth, (req, res) => {
+  res.json({ emails: db.getSettingList('ar_manager_emails') });
+});
+app.post('/api/settings/ar-managers', requireAuth, requirePerm('users.admin'), (req, res) => {
+  try {
+    const list = (Array.isArray(req.body.emails) ? req.body.emails : String(req.body.emails || '').split(','))
+      .map(x => String(x).trim().toLowerCase()).filter(Boolean);
+    db.setSetting('ar_manager_emails', list.join(','), req.session.user.email);
+    db.auditLog(req.session.user.email, 'settings_ar_managers', null, list.join(', '));
+    res.json({ emails: list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/amazon/rejections/:payeeId/ack', requireAuth, requirePerm('po.edit'), (req, res) => {
   try {
     db.acknowledgeRejection(req.params.payeeId, req.session.user.email);

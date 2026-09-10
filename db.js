@@ -559,6 +559,18 @@ function initSchema() {
     );
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_rejections_open ON invoice_rejections(resolved_at, site_code)');
+
+  // Small key/value store for settings that are policy, not code — e.g. who is
+  // copied on every rejection notice. Hard-coding an address means a change of
+  // role needs a deploy (Edwin 2026-09-10).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_by TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
   // Read off the invoice's own Payee Central detail page — the Excel export
   // carries neither the reason nor the Amazon contact (2026-09-10).
   try { db.exec('ALTER TABLE invoice_rejections ADD COLUMN rejected_by TEXT'); } catch (e) {}
@@ -2485,6 +2497,24 @@ function rejectionSummary() {
   } catch (e) { return {}; }
 }
 
+// ─── Settings ───────────────────────────────────────────────────────────────
+function getSetting(key, fallback) {
+  try {
+    const r = getDb().prepare('SELECT value FROM app_settings WHERE key=?').get(key);
+    return r && r.value !== null && r.value !== undefined ? r.value : (fallback ?? null);
+  } catch (e) { return fallback ?? null; }
+}
+function setSetting(key, value, by) {
+  getDb().prepare(`INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?,?,?,datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, updated_at=datetime('now')`)
+    .run(key, value === null || value === undefined ? null : String(value), by || null);
+  return getSetting(key);
+}
+// Comma-separated address list settings, normalised.
+function getSettingList(key) {
+  return String(getSetting(key, '') || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+}
+
 // ─── Report jobs ────────────────────────────────────────────────────────────
 function createReportJob({ userEmail, kind, label, params, totalCount, expiresDays }) {
   const d = getDb();
@@ -3020,6 +3050,9 @@ module.exports = {
   setSiteContact,
   getSiteContact,
   getSiteContactMap,
+  getSetting,
+  setSetting,
+  getSettingList,
   upsertRejection,
   updateRejectionDetail,
   setRejectionRoute,
