@@ -3670,7 +3670,6 @@ app.get('/api/assignments/unassigned', requireAuth, requirePerm('collectors.assi
       const d = daysRelativeToDue(inv);
       if (d === null || d < minDays) continue;
       const isHouse = houseAccounts.has(inv.customerId);
-      if (isHouse && !includeHouse) continue;
       rows.push({
         recordNo: inv.recordNo, invoiceId: inv.invoiceId,
         customerId: inv.customerId, customerName: inv.customerName,
@@ -3683,12 +3682,30 @@ app.get('/api/assignments/unassigned', requireAuth, requirePerm('collectors.assi
       });
     }
     rows.sort((a, b) => b.daysPastDue - a.daysPastDue || b.amount - a.amount);
+    // Totals are computed over EVERYTHING before the house filter is applied to
+    // the rows, so hiding house accounts hides rows without quietly shrinking
+    // the numbers in the header.
+    const houseRows = rows.filter(r => r.houseAccount);
+    const shown = includeHouse ? rows : rows.filter(r => !r.houseAccount);
+    // Service-centre rollup answers the real question the list raises: where is
+    // work going unchased? Computed on the shown set, which is the actionable one.
+    const byLocation = {};
+    for (const r of shown) {
+      const k = r.locationName || r.locationId || '(no service center)';
+      const b = byLocation[k] = byLocation[k] || { location: k, count: 0, amount: 0, covered: 0 };
+      b.count++; b.amount += r.amount; if (r.ruleWouldCover) b.covered++;
+    }
+    const CAP = 1500;
     res.json({
-      count: rows.length,
-      amount: rows.reduce((s, r) => s + r.amount, 0),
-      houseCount: rows.filter(r => r.houseAccount).length,
-      houseAmount: rows.filter(r => r.houseAccount).reduce((s, r) => s + r.amount, 0),
-      minDays, rows,
+      count: shown.length,
+      amount: shown.reduce((s, r) => s + r.amount, 0),
+      totalCount: rows.length,
+      houseCount: houseRows.length,
+      houseAmount: houseRows.reduce((s, r) => s + r.amount, 0),
+      uncoveredCount: shown.filter(r => !r.houseAccount && !r.ruleWouldCover).length,
+      byLocation: Object.values(byLocation).sort((a, b) => b.amount - a.amount),
+      truncated: shown.length > CAP,
+      minDays, rows: shown.slice(0, CAP),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

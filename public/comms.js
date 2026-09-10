@@ -3053,7 +3053,10 @@ async function commsReleaseHouse() {
 }
 
 // ─── Past due and nobody chasing it ─────────────────────────────────────────
-let _unassignedRows = [], _unassignedSel = new Set(), _unassignedMinDays = 1, _unassignedHouse = true;
+// House accounts default to HIDDEN: Amazon alone has ~2,270 past-due invoices
+// with nobody assigned, which is its normal resting state, and showing them
+// first buries the ~200 that genuinely have nobody chasing them.
+let _unassignedRows = [], _unassignedSel = new Set(), _unassignedMinDays = 1, _unassignedHouse = false, _unassignedMeta = null;
 
 async function commsShowUnassigned() {
   const el = document.getElementById('unassigned-panel');
@@ -3063,6 +3066,7 @@ async function commsShowUnassigned() {
     const d = await apiFetch(`/api/assignments/unassigned?minDays=${_unassignedMinDays}&house=${_unassignedHouse ? 1 : 0}`);
     _unassignedRows = d.rows || [];
     _unassignedSel = new Set();
+    _unassignedMeta = d;
     commsRenderUnassigned(d);
   } catch (e) { el.innerHTML = `<div style="padding:20px;color:var(--red)">${escHtml(e.message)}</div>`; }
 }
@@ -3094,12 +3098,20 @@ function commsRenderUnassigned(d) {
     <div style="background:#fff;border:1px solid var(--line,#e7e1d4);border-radius:14px;padding:12px 16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
         <div style="font-size:12px;font-weight:700;color:#6b6458">🔎 PAST DUE, NOBODY ASSIGNED</div>
-        <div style="font-size:12.5px"><b>${d.count}</b> invoice${d.count === 1 ? '' : 's'} · <b>${fmt$(d.amount)}</b>${d.houseCount ? ` · of which ${d.houseCount} house (${fmt$(d.houseAmount)})` : ''}</div>
+        <div style="font-size:12.5px"><b>${d.count}</b> invoice${d.count === 1 ? '' : 's'} · <b>${fmt$(d.amount)}</b>${d.uncoveredCount ? ` · <span style="color:#b91c1c">${d.uncoveredCount} that no rule covers</span>` : ''}${d.houseCount ? ` · plus ${d.houseCount} house account (${fmt$(d.houseAmount)})${_unassignedHouse ? '' : ', hidden'}` : ''}</div>
         <span style="margin-left:auto"></span>
         ${pill('1+ days', 1)}${pill('15+', 15)}${pill('30+', 30)}${pill('60+', 60)}
         <label style="font-size:11.5px;color:#6b6458;display:inline-flex;align-items:center;gap:4px;cursor:pointer">
           <input type="checkbox" ${_unassignedHouse ? 'checked' : ''} onchange="commsToggleUnassignedHouse()"> show house accounts</label>
       </div>
+      ${(d.byLocation || []).length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px">
+        ${d.byLocation.map(b => `<div style="background:#f6f4ee;border:1px solid var(--line,#e7e1d4);border-radius:8px;padding:5px 10px;min-width:120px">
+          <div style="font-size:10.5px;font-weight:700;color:#6b6458">${escHtml(b.location)}</div>
+          <div style="font-size:13px;font-weight:700">${fmt$(b.amount)}</div>
+          <div style="font-size:10.5px;color:#6b6458">${b.count} invoice${b.count === 1 ? '' : 's'}${b.covered ? ` · ${b.covered} a rule covers` : ''}</div>
+        </div>`).join('')}
+      </div>` : ''}
+      ${d.truncated ? `<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 10px;margin-bottom:8px">Showing the oldest ${rows.length}. The counts above are the full figure — narrow with the day filter to work through the rest.</div>` : ''}
       ${rows.length ? `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <button class="btn-sm" style="background:#fff;color:#1a1814;border:1px solid var(--line,#e7e1d4);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="commsUnassignedAll(true)">Select all ${rows.length}</button>
@@ -3130,15 +3142,9 @@ function commsUnassignedPick(rn, on) {
 function commsUnassignedAll(on) {
   _unassignedSel = on ? new Set(_unassignedRows.map(r => String(r.recordNo))) : new Set();
   // Full repaint: the tick boxes and the row highlight both have to change.
-  commsRenderUnassigned(commsUnassignedSummary());
+  commsRenderUnassigned(_unassignedMeta || {});
 }
-function commsUnassignedSummary() {
-  const rows = _unassignedRows;
-  const house = rows.filter(r => r.houseAccount);
-  return { count: rows.length, amount: rows.reduce((t, r) => t + r.amount, 0),
-    houseCount: house.length, houseAmount: house.reduce((t, r) => t + r.amount, 0) };
-}
-function commsRenderUnassignedTotals() { commsRenderUnassigned(commsUnassignedSummary()); }
+function commsRenderUnassignedTotals() { commsRenderUnassigned(_unassignedMeta || {}); }
 
 async function commsUnassignedAssign() {
   const sel = document.getElementById('unassigned-collector');
