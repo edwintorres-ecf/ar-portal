@@ -924,10 +924,8 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
     <div id="po-funds-freshness" style="font-size:11px;color:var(--gray-500);margin-bottom:10px;">Loading data freshness…</div>
     <!-- Business unit + site code, applied to every tab below. -->
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-      <select id="po-filter-bu" onchange="poSetBu(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;background:var(--white);min-width:190px">
-        <option value="">All business units</option>
-      </select>
-      <input id="po-filter-site" placeholder="Site code (e.g. AVP3)" oninput="poSetSite(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;width:190px;text-transform:uppercase">
+      <span id="po-filter-bu-wrap"></span>
+      <input id="po-filter-site" placeholder="Site codes (AVP3 PIT2 …)" title="One or more site codes, separated by a space or comma" oninput="poSetSite(this.value)" style="padding:6px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;width:210px;text-transform:uppercase">
       <div id="po-filter-summary" style="font-size:11.5px;"></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
@@ -3931,30 +3929,139 @@ let _poMismatches = [];
 let _poResubmissions = [];
 let _poFundsSubtab = 'ledger';
 
+// ─── Multi-select dropdown, shared by the PO Manager and the Amazon drill-down ─
+// A plain <select> forces one value per filter, so "NACF and ATS" or "these four
+// sites" could not be asked at all — you had to run the view once per value and
+// add the numbers up yourself (Edwin 2026-09-10). Every filter on both screens
+// now takes any number of values.
+//
+// The owning screen re-renders wholesale on each pick, so the registry is
+// rebuilt every render and the open picker (plus its search text and scroll) is
+// restored afterwards — otherwise ticking one box would slam the list shut.
+const _msReg = {};
+let _msOpenId = null;
+
+function msPickerHtml(id, label, options, selected, applyFn) {
+  const sel = new Set((selected || []).map(String));
+  const opts = (options || []).map(String);
+  const prev = _msReg[id] || {};
+  _msReg[id] = { label, options: opts, selected: sel, apply: applyFn, search: prev.search || '' };
+  const n = sel.size;
+  const summary = n === 0 ? `${label}: all`
+    : n === 1 ? `${label}: ${[...sel][0]}`
+    : `${label}: ${n} selected`;
+  const open = _msOpenId === id;
+  return `<div class="ms-wrap" data-ms="${escHtml(id)}" style="position:relative;display:inline-block">
+    <button type="button" onclick="msToggle('${escHtml(id)}')" title="${escHtml(n ? [...sel].join(', ') : 'Any ' + label.toLowerCase())}"
+      style="padding:6px 9px;border:1px solid ${n ? 'var(--navy)' : 'var(--gray-300)'};border-radius:6px;font-size:12px;background:${n ? '#eff6ff' : 'var(--white)'};color:${n ? 'var(--navy)' : 'var(--gray-700)'};cursor:pointer;font-weight:${n ? '600' : '400'};max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+      ${escHtml(summary)} <span style="color:var(--gray-400)">▾</span></button>
+    ${open ? msPanelHtml(id) : ''}
+  </div>`;
+}
+
+function msPanelHtml(id) {
+  const r = _msReg[id];
+  if (!r) return '';
+  const q = (r.search || '').trim().toUpperCase();
+  const shown = q ? r.options.filter(o => o.toUpperCase().includes(q)) : r.options;
+  // Ticked values stay listed even when they don't match the search, so a
+  // selection can never be lost behind a filter box.
+  const stuck = r.options.filter(o => r.selected.has(o) && !shown.includes(o));
+  const list = [...stuck, ...shown];
+  return `<div class="ms-panel" onclick="event.stopPropagation()"
+    style="position:absolute;z-index:60;top:calc(100% + 4px);left:0;min-width:230px;max-width:330px;background:var(--white);border:1px solid var(--gray-300);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.16);padding:8px">
+    ${r.options.length > 12 ? `<input id="ms-q-${escHtml(id)}" value="${escHtml(r.search || '')}" placeholder="Filter ${escHtml(r.label.toLowerCase())}…"
+      oninput="msSearch('${escHtml(id)}', this.value)"
+      style="width:100%;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:6px">` : ''}
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button type="button" onclick="msAll('${escHtml(id)}', true)" style="flex:1;padding:3px 6px;border:1px solid var(--gray-300);background:var(--white);border-radius:5px;font-size:11px;cursor:pointer">Select shown</button>
+      <button type="button" onclick="msAll('${escHtml(id)}', false)" style="flex:1;padding:3px 6px;border:1px solid var(--gray-300);background:var(--white);border-radius:5px;font-size:11px;cursor:pointer">Clear</button>
+    </div>
+    <div style="max-height:240px;overflow-y:auto">
+      ${list.length ? list.map(o => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 2px;cursor:pointer">
+        <input type="checkbox" ${r.selected.has(o) ? 'checked' : ''} onchange="msPick('${escHtml(id)}', this.value, this.checked)" value="${escHtml(o)}">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(o)}</span></label>`).join('')
+        : '<div style="font-size:12px;color:var(--gray-500);padding:4px">No match.</div>'}
+    </div>
+  </div>`;
+}
+
+function msToggle(id) {
+  _msOpenId = _msOpenId === id ? null : id;
+  msRepaint(id);
+}
+function msSearch(id, q) {
+  const r = _msReg[id]; if (!r) return;
+  r.search = q;
+  msRepaint(id, true);
+}
+function msPick(id, value, on) {
+  const r = _msReg[id]; if (!r) return;
+  if (on) r.selected.add(String(value)); else r.selected.delete(String(value));
+  r.apply([...r.selected]);          // owner re-renders; open state is restored below
+}
+function msAll(id, on) {
+  const r = _msReg[id]; if (!r) return;
+  const q = (r.search || '').trim().toUpperCase();
+  const shown = q ? r.options.filter(o => o.toUpperCase().includes(q)) : r.options;
+  if (on) shown.forEach(o => r.selected.add(o)); else shown.forEach(o => r.selected.delete(o));
+  r.apply([...r.selected]);
+}
+
+// Repaint just this picker in place — used for opening/closing and searching,
+// where the underlying data has not changed and a full re-render would be waste.
+function msRepaint(id, keepFocus) {
+  const wrap = document.querySelector(`.ms-wrap[data-ms="${CSS.escape(id)}"]`);
+  if (!wrap) return;
+  const existing = wrap.querySelector('.ms-panel');
+  if (_msOpenId !== id) { if (existing) existing.remove(); return; }
+  if (existing) existing.outerHTML = msPanelHtml(id); else wrap.insertAdjacentHTML('beforeend', msPanelHtml(id));
+  if (keepFocus) {
+    const box = document.getElementById('ms-q-' + id);
+    if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  }
+}
+
+// Called by the owning screen right after it re-renders, so ticking a box does
+// not close the list you are still working in.
+function msRestoreOpen() {
+  if (_msOpenId) msRepaint(_msOpenId);
+}
+
+document.addEventListener('click', (e) => {
+  if (!_msOpenId) return;
+  if (e.target.closest && e.target.closest('.ms-wrap')) return;
+  const id = _msOpenId; _msOpenId = null; msRepaint(id);
+});
+
 // ─── Business unit + site code filter, shared by every PO Manager tab ───────
 // Each tab used to read its own array straight from the server, so a filter
 // would have had to be re-implemented ten times and would have drifted. Instead
 // the raw response is kept aside and every tab's array is DERIVED from it, so
 // one predicate governs the whole screen and no tab can disagree with another
 // about what "business unit X" contains (Edwin 2026-09-10).
-let _poFilterBu = '', _poFilterSite = '';
+let _poFilterBu = [], _poFilterSite = '';
 const _poRaw = {};
+let _poBuOptions = [];
 
 function poRowMatches(r) {
   if (!r) return false;
-  if (_poFilterBu) {
+  if (_poFilterBu.length) {
     const bu = r.businessUnit || '';
     // "(none)" is a real answer: sites we bill that aren't in the Amazon master.
-    if (_poFilterBu === '(none)' ? bu !== '' : bu !== _poFilterBu) return false;
+    const hit = _poFilterBu.some(f => f === '(none)' ? bu === '' : bu === f);
+    if (!hit) return false;
   }
   if (_poFilterSite) {
+    // Several codes may be typed at once, separated by space or comma.
     const s = String(r.siteCode || r.site || '').toUpperCase();
-    if (!s.includes(_poFilterSite)) return false;
+    const terms = _poFilterSite.split(/[\s,]+/).filter(Boolean);
+    if (terms.length && !terms.some(t => s.includes(t))) return false;
   }
   return true;
 }
 function poFilterRows(rows) { return (rows || []).filter(poRowMatches); }
-function poFilterActive() { return !!(_poFilterBu || _poFilterSite); }
+function poFilterActive() { return !!(_poFilterBu.length || _poFilterSite); }
 
 // Aging and Exceptions are objects, not arrays; their totals have to be
 // recomputed or the header would keep quoting the unfiltered book.
@@ -3995,6 +4102,7 @@ function poApplyFilter() {
   _poOrphans       = poFilterRows(_poRaw.orphans);
   _poAging         = poFilterAging(_poRaw.aging);
   _poExceptions    = poFilterExceptions(_poRaw.exceptions) || { exceptions: [], duplicates: [], graceHours: 72 };
+  poRenderFilterBar();
   poRenderFilterSummary();
   try { renderPoLedger(); } catch (e) {}
   try { renderPoUploaded(); } catch (e) {}
@@ -4007,6 +4115,7 @@ function poApplyFilter() {
   if (_poFundsSubtab === 'sites') { try { renderPoSiteReport(); } catch (e) {} }
   if (_poFundsSubtab === 'pending-site') { try { renderPendingBySite(); } catch (e) {} }
   poUpdateBadges();
+  msRestoreOpen();
 }
 
 function poUpdateBadges() {
@@ -4042,19 +4151,27 @@ function poJumpSite(code) {
   poApplyFilter();
 }
 
+// Called by the multi-select. Replaces the whole selection.
+function poSetBuList(list) { _poFilterBu = (list || []).filter(Boolean); poApplyFilter(); }
+
+// Called by the BU rollup cards on Pending by Site: clicking a card TOGGLES that
+// unit in the selection, so several can be stacked up by clicking each one.
 function poSetBu(v) {
-  // Clicking the BU chip that's already on clears it — otherwise the only way
-  // back out of a rollup card is the select, which is easy to miss.
-  _poFilterBu = (_poFilterBu === v) ? '' : (v || '');
-  const b = document.getElementById('po-filter-bu'); if (b) b.value = _poFilterBu;
+  if (!v) { _poFilterBu = []; poApplyFilter(); return; }
+  _poFilterBu = _poFilterBu.includes(v) ? _poFilterBu.filter(x => x !== v) : [..._poFilterBu, v];
   poApplyFilter();
 }
 function poSetSite(v) { _poFilterSite = String(v || '').trim().toUpperCase(); poApplyFilter(); }
 function poClearFilter() {
-  _poFilterBu = ''; _poFilterSite = '';
-  const b = document.getElementById('po-filter-bu'); if (b) b.value = '';
+  _poFilterBu = []; _poFilterSite = '';
   const s = document.getElementById('po-filter-site'); if (s) s.value = '';
   poApplyFilter();
+}
+
+function poRenderFilterBar() {
+  const el = document.getElementById('po-filter-bu-wrap');
+  if (!el) return;
+  el.innerHTML = msPickerHtml('po-bu', 'Business unit', _poBuOptions, _poFilterBu, poSetBuList);
 }
 
 function poRenderFilterSummary() {
@@ -4067,24 +4184,20 @@ function poRenderFilterSummary() {
   const shownPending = (_poNeedsUpload || []).reduce((t, r) => t + (r.amount || 0), 0);
   const sites = new Set((_poLedger || []).map(r => r.siteCode).filter(Boolean));
   const parts = [];
-  if (_poFilterBu) parts.push(`business unit <b>${escHtml(_poFilterBu)}</b>`);
-  if (_poFilterSite) parts.push(`site containing <b>${escHtml(_poFilterSite)}</b>`);
+  if (_poFilterBu.length) parts.push(`business unit${_poFilterBu.length > 1 ? 's' : ''} <b>${_poFilterBu.map(escHtml).join(', ')}</b>`);
+  if (_poFilterSite) parts.push(`site matching <b>${escHtml(_poFilterSite)}</b>`);
   el.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:999px;padding:4px 12px;font-size:11.5px">
     Filtered to ${parts.join(' · ')} — ${sites.size} site${sites.size === 1 ? '' : 's'}, ${(_poLedger || []).length} PO${(_poLedger || []).length === 1 ? '' : 's'}, ${fmt$(shownPending)} pending upload${hiddenLedger > 0 ? ` · ${hiddenLedger} PO${hiddenLedger === 1 ? '' : 's'} hidden` : ''}
     <span style="cursor:pointer;font-weight:700" onclick="poClearFilter()" title="Clear the filter">✕</span></span>`;
 }
 
 function poPopulateBuFilter(units) {
-  const sel = document.getElementById('po-filter-bu');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">All business units</option>' +
-    (units || []).map(u => `<option value="${escHtml(u)}">${escHtml(u)}</option>`).join('') +
-    '<option value="(none)">— not in the Amazon master —</option>';
-  sel.value = cur;
+  _poBuOptions = [...(units || []), '(none)'];
+  poRenderFilterBar();
 }
 
 async function loadPoFunds() {
+  poRenderFilterBar();          // draw the picker even if the meta call is slow or fails
   const canEditPo = currentUser && ['admin', 'manager'].includes(currentUser.role);
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = canEditPo ? '' : 'none';
@@ -4578,7 +4691,7 @@ function exportPendingBySiteXlsx() {
   // silently widens back out to the whole book is worse than no export.
   window.location.href = '/api/po/pending-by-site.xlsx?mode=' + encodeURIComponent(_pbsMode)
     + (_pbsSnowOnly ? '&snow=1' : '')
-    + (_poFilterBu ? '&bu=' + encodeURIComponent(_poFilterBu) : '')
+    + _poFilterBu.map(v => '&bu=' + encodeURIComponent(v)).join('')
     + (_poFilterSite ? '&site=' + encodeURIComponent(_poFilterSite) : '')
     + '&t=' + Date.now();
 }
@@ -4793,7 +4906,7 @@ function renderPendingBySite() {
   const buStrip = buList.length > 1 ? `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:stretch">
       ${buList.map(b => `<div onclick="poSetBu('${escHtml(b.bu === '(none)' ? '(none)' : b.bu)}')" title="Narrow every PO Manager tab to ${escHtml(b.bu)}"
-        style="cursor:pointer;background:var(--white);border:1px solid ${_poFilterBu === b.bu ? '#5b21b6' : 'var(--gray-200)'};border-radius:9px;padding:7px 12px;min-width:140px">
+        style="cursor:pointer;border:1px solid ${_poFilterBu.includes(b.bu) ? '#5b21b6' : 'var(--gray-200)'};background:${_poFilterBu.includes(b.bu) ? '#faf5ff' : 'var(--white)'};border-radius:9px;padding:7px 12px;min-width:140px">
         <div style="font-size:10.5px;font-weight:700;color:#5b21b6;text-transform:uppercase;letter-spacing:.3px">${escHtml(b.bu === '(none)' ? 'Not in master' : b.bu)}</div>
         <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px" class="amount">${c$(b.pending)}<span style="font-size:10px;font-weight:500;color:var(--gray-500)"> pending</span></div>
         <div style="font-size:10.5px;color:var(--gray-500)">${b.sites} site${b.sites === 1 ? '' : 's'} · ${b.count} inv · ${c$(b.available)} remaining</div>
@@ -6260,7 +6373,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260910d"></script>
-<script src="/amazon.js?v=20260910a"></script>
+<script src="/comms.js?v=20260910e"></script>
+<script src="/amazon.js?v=20260910e"></script>
 </body>
 </html>

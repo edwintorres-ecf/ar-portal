@@ -58,25 +58,33 @@ async function amazonLoad() {
 // ─── filtering ───────────────────────────────────────────────────────────────
 // Applied to every row BEFORE the drill groups anything, which is what lets a
 // filter work at any depth and in any order.
+// Every dropdown filter holds an ARRAY of chosen values; empty means "any".
+// One value behaves exactly as the old single select did.
+function amzSel(v) { return Array.isArray(v) ? v : (v ? [v] : []); }
+function amzHas(f, value) { const l = amzSel(f); return !l.length || l.includes(String(value == null ? '' : value)); }
+
 function amzFiltered() {
   const f = _amzFilters;
   const q = (f.q || '').trim().toUpperCase();
   return (_amzRows || []).filter(r => {
-    if (f.deptGroup && r.deptGroup !== f.deptGroup) return false;
-    if (f.department && r.deptId !== f.department) return false;
-    if (f.businessUnit && r.businessUnit !== f.businessUnit) return false;
-    if (f.siteType && r.siteType !== f.siteType) return false;
-    if (f.region && r.region !== f.region) return false;
-    if (f.bucket && r.bucket !== f.bucket) return false;
-    if (f.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== f.payeeStatus) return false;
-    if (f.poStatus && (r.poStatus || '') !== f.poStatus) return false;
+    if (!amzHas(f.deptGroup, r.deptGroup)) return false;
+    if (!amzHas(f.department, r.deptId)) return false;
+    if (!amzHas(f.businessUnit, r.businessUnit)) return false;
+    if (!amzHas(f.siteType, r.siteType)) return false;
+    if (!amzHas(f.region, r.region)) return false;
+    if (!amzHas(f.bucket, r.bucket)) return false;
+    if (!amzHas(f.payeeStatus, r.payeeStatus || '(not in Payee feed)')) return false;
+    if (!amzHas(f.poStatus, r.poStatus || '')) return false;
     if (f.needsCashApplication && !r.needsCashApplication) return false;
-    if (f.collector) {
+    const collSel = amzSel(f.collector);
+    if (collSel.length) {
       const c = (_amzSiteCollectors[r.site] || {}).email || '';
-      if (f.collector === '(unassigned)' ? !!c : c !== f.collector) return false;
+      // "(unassigned)" is a value in its own right, so it can be combined with
+      // named collectors — "mine, plus anything nobody owns".
+      if (!collSel.some(x => x === '(unassigned)' ? !c : x === c)) return false;
     }
-    if (f.site && r.site !== f.site) return false;
-    if (f.serviceCenter && r.serviceCenter !== f.serviceCenter) return false;
+    if (!amzHas(f.site, r.site)) return false;
+    if (!amzHas(f.serviceCenter, r.serviceCenter)) return false;
     // One switch for both gaps the header warns about: no site at all, or a
     // site the location master carries no business unit for.
     if (f.unattributed && r.site && r.businessUnit) return false;
@@ -115,6 +123,9 @@ function amazonRender() {
     ${amzCrumbHtml()}
     ${level ? amzGroupTableHtml(rows, level) : amzInvoiceTableHtml(rows)}
   `;
+  // The whole view is rebuilt on every pick, so put the open dropdown back —
+  // otherwise ticking one box would close the list you are still working in.
+  if (typeof msRestoreOpen === 'function') msRestoreOpen();
 }
 
 function amzHeaderHtml(rows, total) {
@@ -153,9 +164,7 @@ function amzTile(label, value) {
 }
 
 function amzSelect(key, label, options, current) {
-  const opts = ['<option value="">' + escHtml(label) + ': all</option>']
-    .concat(options.map(o => `<option value="${escHtml(o)}"${current === o ? ' selected' : ''}>${escHtml(o)}</option>`));
-  return `<select onchange="amazonSetFilter('${key}', this.value)" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;background:var(--white);">${opts.join('')}</select>`;
+  return msPickerHtml('amz-' + key, label, options, amzSel(current), (list) => amazonSetFilter(key, list));
 }
 
 function amzFilterBarHtml() {
@@ -166,7 +175,8 @@ function amzFilterBarHtml() {
   const scs = [...new Set((_amzRows || []).map(r => r.serviceCenter).filter(Boolean))].sort();
   // Underscore keys are UI state (the jump box text), not filters, so they must
   // not show up in the "Clear N filters" count.
-  const active = Object.entries(_amzFilters).filter(([k, val]) => val && !k.startsWith('_')).length;
+  const active = Object.entries(_amzFilters)
+    .filter(([k, val]) => !k.startsWith('_') && (Array.isArray(val) ? val.length : !!val)).length;
   return `
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       ${amzSelect('deptGroup', 'Department', groups, _amzFilters.deptGroup)}
@@ -308,7 +318,9 @@ function amazonSetFilter(key, value) {
   _amzFilters[key] = value;
   // Descending past a level and then filtering it to something else would show
   // an empty table with no obvious cause, so drop crumbs the filter contradicts.
-  _amzPath = _amzPath.filter(step => !(step.key === key && value && step.value !== value));
+  // With several values chosen, a crumb survives if it is one of them.
+  const sel = amzSel(value);
+  _amzPath = _amzPath.filter(step => !(step.key === key && sel.length && !sel.includes(step.value)));
   amazonRender();
 }
 function amazonClearFilters() { _amzFilters = {}; amazonRender(); }
@@ -503,7 +515,9 @@ let _amzShowReport = false;
 function amzExportParams() {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(_amzFilters)) {
-    if (!v || k.startsWith('_')) continue;
+    if (k.startsWith('_')) continue;
+    if (Array.isArray(v)) { for (const x of v) if (x !== '') p.append(k, x); continue; }
+    if (!v) continue;
     p.set(k, v === true ? '1' : v);
   }
   for (const step of _amzPath) p.set(step.key, step.value);

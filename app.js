@@ -2309,7 +2309,11 @@ function amazonAccrualSummary(req) {
 // the SAME filters the screen uses and applies them to the same row builder.
 // An export that quietly differs from the screen is worse than no export.
 function amazonFilterRows(rows, q) {
-  const eq = (v, f) => !f || String(v || '') === String(f);
+  // Every filter accepts any number of values (the query string repeats the
+  // key), so an export always matches a multi-select screen rather than
+  // silently collapsing to the first value.
+  const listOf = (f) => f == null ? [] : [].concat(f).map(x => String(x)).filter(x => x !== '');
+  const eq = (v, f) => { const l = listOf(f); return !l.length || l.includes(String(v || '')); };
   const text = (q.q || '').trim().toUpperCase();
   return rows.filter(r => {
     if (!eq(r.deptGroup, q.deptGroup)) return false;
@@ -2321,8 +2325,8 @@ function amazonFilterRows(rows, q) {
     if (!eq(r.po, q.po)) return false;
     if (!eq(r.serviceCenter, q.serviceCenter)) return false;
     if (!eq(r.bucket, q.bucket)) return false;
-    if (q.payeeStatus && (r.payeeStatus || '(not in Payee feed)') !== q.payeeStatus) return false;
-    if (q.poStatus && (r.poStatus || '') !== q.poStatus) return false;
+    if (!eq(r.payeeStatus || '(not in Payee feed)', q.payeeStatus)) return false;
+    if (!eq(r.poStatus || '', q.poStatus)) return false;
     if (q.needsCashApplication === '1' && !r.needsCashApplication) return false;
     if (q.unattributed === '1' && r.site && r.businessUnit) return false;
     if (text && !`${r.invoiceId} ${r.po} ${r.site} ${r.deptName} ${r.businessUnit}`.toUpperCase().includes(text)) return false;
@@ -2554,10 +2558,12 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     let list = poLedger.getPendingBySite(invoices, { snowOnly });
     // Same business-unit / site-code narrowing the screen applies, so the
     // workbook matches what the person was looking at when they clicked.
-    const buFilter = (req.query.bu || '').trim();
-    const siteFilter = (req.query.site || '').trim().toUpperCase();
-    if (buFilter) list = list.filter(s => buFilter === '(none)' ? !s.businessUnit : s.businessUnit === buFilter);
-    if (siteFilter) list = list.filter(s => String(s.site || '').toUpperCase().includes(siteFilter));
+    // bu may repeat in the query string; site may hold several codes.
+    const buFilter = (req.query.bu == null ? [] : [].concat(req.query.bu)).map(x => String(x).trim()).filter(Boolean);
+    const siteRaw = (req.query.site || '').trim().toUpperCase();
+    const siteTerms = siteRaw.split(/[\s,]+/).filter(Boolean);
+    if (buFilter.length) list = list.filter(s => buFilter.some(f => f === '(none)' ? !s.businessUnit : s.businessUnit === f));
+    if (siteTerms.length) list = list.filter(s => siteTerms.some(t => String(s.site || '').toUpperCase().includes(t)));
     if (mode === 'pending') list = list.filter(s => s.pending > 0);
     else if (mode === 'spare') list = list.filter(s => s.available != null && s.available > 0);
     else if (mode === 'unassigned') {
@@ -2583,7 +2589,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     // Title + generated stamp
     ws.mergeCells('A1:L1');
     const title = ws.getCell('A1');
-    title.value = `ECF — Amazon PO Funds by Site (${mode}${snowOnly ? ' · snow only' : ''}${buFilter ? ' · BU ' + buFilter : ''}${siteFilter ? ' · site ' + siteFilter : ''}) — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
+    title.value = `ECF — Amazon PO Funds by Site (${mode}${snowOnly ? ' · snow only' : ''}${buFilter.length ? ' · BU ' + buFilter.join('+') : ''}${siteRaw ? ' · site ' + siteRaw : ''}) — generated ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`;
     title.font = { bold: true, size: 12, color: { argb: NAVY } };
     ws.getRow(1).height = 20;
 
@@ -2662,7 +2668,7 @@ app.get('/api/po/pending-by-site.xlsx', requireAuth, async (req, res) => {
     [6, 7, 8, 9, 11, 12].forEach(ci => { trow.getCell(ci).numFmt = money; });
     trow.getCell(12).font = { bold: true, size: 10, color: { argb: tot.available < 0 ? 'FFDC2626' : 'FF16A34A' } };
 
-    db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''}${buFilter ? ' bu=' + buFilter : ''}${siteFilter ? ' site=' + siteFilter : ''} — ${list.length} sites`);
+    db.auditLog(req.session.user.email, 'export_pending_by_site_xlsx', null, `${mode}${snowOnly ? ' snow' : ''}${buFilter.length ? ' bu=' + buFilter.join('+') : ''}${siteRaw ? ' site=' + siteRaw : ''} — ${list.length} sites`);
     // Cloudflare caches .xlsx URLs at the edge BY DEFAULT — without no-store,
     // every download re-serves the first generated file (observed 2026-08-05:
     // stale exports with no origin hit / no audit row). Belt: no-store here;
