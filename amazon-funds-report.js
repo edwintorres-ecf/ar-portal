@@ -23,10 +23,42 @@ const STARVED_MIN_PENDING = 50000;
 const SURPLUS_MIN_AVAILABLE = 100000;
 const COVER_RATIO = 0.25;
 
-function analyse(invoices, { snowOnly = true } = {}) {
+// A snow season runs July to June. Counting a PO raised for NEXT season as
+// "money sitting unused" would be flatly wrong — the work has not happened yet —
+// and it is the first thing Amazon would catch. $10.9M of the available balance
+// sat on 2026-27 POs (Edwin 2026-09-10).
+const SEASONS = {
+  '2025-26': { start: Date.parse('2025-07-01'), end: Date.parse('2026-07-01'), label: '2025\u201326 snow season' },
+  '2026-27': { start: Date.parse('2026-07-01'), end: Date.parse('2027-07-01'), label: '2026\u201327 snow season' },
+};
+
+function poInSeason(r, season) {
+  if (!season) return true;
+  const t = Date.parse(String(r.orderDate || r.docDate || ''));
+  // An undated PO is kept rather than dropped: excluding it would understate
+  // the funds actually on hand, and undated POs are a handful.
+  if (isNaN(t)) return true;
+  return t >= season.start && t < season.end;
+}
+
+function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
+  const season = seasonKey ? SEASONS[seasonKey] : null;
   const sites = poLedger.getPendingBySite(invoices, { snowOnly });
   const ledger = poLedger.getPoLedger(invoices);
-  const rows = snowOnly ? ledger.filter(r => r.serviceType === 'snow') : ledger;
+  let rows = snowOnly ? ledger.filter(r => r.serviceType === 'snow') : ledger;
+
+  if (season) {
+    // Re-derive each site's funds from THIS season's POs only. Pending is left
+    // alone: every invoice waiting is for work already done this season.
+    for (const s of sites) {
+      const keep = (s.poRows || []).filter(r => poInSeason(r, season));
+      s.available = keep.length ? keep.reduce((t, r) => t + (r.available || 0), 0) : 0;
+      s.ceiling = keep.reduce((t, r) => t + (r.ceilingAmount || 0), 0);
+      s.consumed = keep.reduce((t, r) => t + (r.consumed || 0), 0);
+      s.poRows = keep.length ? keep : s.poRows;
+    }
+    rows = rows.filter(r => poInSeason(r, season));
+  }
 
   const byBu = {};
   for (const s of sites) {
@@ -95,8 +127,12 @@ function analyse(invoices, { snowOnly = true } = {}) {
     neverUsedFunds: neverUsed.reduce((t, r) => t + (r.available || 0), 0),
   };
 
+  // What reallocation inside the business units genuinely cannot reach. This is
+  // the number that has to be asked for, not glossed over.
+  totals.gap = Math.max(0, totals.shortfall - totals.coverable);
+
   const buList = Object.values(byBu).sort((a, b) => b.pending - a.pending);
-  return { sites, buList, closedWithFunds, neverUsed, totals, snowOnly };
+  return { sites, buList, closedWithFunds, neverUsed, totals, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
