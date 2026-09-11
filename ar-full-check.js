@@ -145,9 +145,9 @@ async function run() {
   if (sageT.n !== live.total) console.log(`   WARNING: gateway reported totalcount=${live.total} but ${sageT.n} rows came back`);
 
   const cached = sage.getCachedInvoices() || [];
-  const ageMs = sage.getCacheAge ? sage.getCacheAge() : null;
+  const age = sage.getCacheAge ? sage.getCacheAge() : null;
   const portalT = tally(cached, 'invoiceId', 'totalDue');
-  const ageTxt = ageMs == null ? 'unknown' : Math.round(ageMs / 60000) + ' min old';
+  const ageTxt = age && age.ageMs != null ? Math.round(age.ageMs / 60000) + ' min old' : 'age unknown';
   console.log(`PORTAL (cached set, ${ageTxt})   : ${portalT.n} invoices  ${M(portalT.amt)}`);
 
   const states = {};
