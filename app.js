@@ -3350,12 +3350,35 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
     const list = poLedger.getPendingBySite(invoices, { snowOnly: req.query.snow === '1' });
-    res.json(list.map(s => ({
+    const sites = list.map(s => ({
       site: s.site, businessUnit: s.businessUnit || '',
       pending: s.pending, available: s.available, count: s.count,
       fundsHold: s.fundsHold || 0, fundsHoldCount: s.fundsHoldCount || 0,
       goodsReceipt: s.goodsReceipt || 0, goodsReceiptCount: s.goodsReceiptCount || 0,
-    })));
+    }));
+
+    // Open Amazon AR by Payee Central status, so the screen can state where the
+    // whole book stands rather than only the part with PO funds behind it.
+    const statusTotals = {};
+    const bump = (key, amt) => {
+      const t = statusTotals[key] = statusTotals[key] || { status: key, count: 0, amount: 0 };
+      t.count++; t.amount += amt || 0;
+    };
+    try {
+      for (const r of siteLedger.buildAmazonRows(invoices, { payee })) {
+        if ((r.amount || 0) <= 0.005) continue;
+        // Settled by Amazon but still open on our books is its own problem —
+        // cash to apply, not collection — so it must not read as outstanding.
+        if (r.amazonSettled) { bump('Paid — needs applying', r.amount); continue; }
+        bump(r.payeeStatus || 'Not submitted', r.amount);
+      }
+    } catch (e) { /* site ledger unavailable */ }
+    res.json({
+      sites,
+      statusTotals: Object.values(statusTotals).sort((a, b) => b.amount - a.amount),
+      openAr: Object.values(statusTotals).reduce((t, x) => t + x.amount, 0),
+      openArCount: Object.values(statusTotals).reduce((t, x) => t + x.count, 0),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

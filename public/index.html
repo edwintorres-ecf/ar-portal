@@ -5409,7 +5409,7 @@ function setPoFundsSubtab(name) {
 // ─── Pending by Site: needs-upload invoices grouped by the invoice's OWN
 // Sage site code (not PO-derived) — "how much is still waiting to go out,
 // per site". Complements the By Site utilization view. ──────────────────────
-let _poPendingSites = [];
+let _poPendingSites = [], _poArStatus = null;
 let _pbsSort = { field: 'pending', asc: false };
 let _pbsList = [];
 let _pbsMode = 'all';   // 'all' (default: full picture) | 'pending' | 'spare'
@@ -5427,7 +5427,7 @@ function togglePbsSnow() {
   // The held totals are grouped server-side and the snow filter applies there
   // too, so they have to be re-read rather than filtered on screen.
   apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
-    .then(list => { _poPendingSites = list || []; renderPendingBySite(); })
+    .then(d => { _poPendingSites = (d && d.sites) || []; _poArStatus = d || null; renderPendingBySite(); })
     .catch(() => {});
 }
 
@@ -5762,7 +5762,40 @@ function renderPendingBySite() {
     return;
   }
 
+  // Where the whole Amazon book stands, by Payee Central status. The table
+  // below is about PO funding; this says what is actually outstanding and why.
+  const arTiles = (() => {
+    const d = _poArStatus;
+    if (!d || !(d.statusTotals || []).length) return '';
+    const COLOUR = {
+      'Scheduled for payment': ['#f1f5f9', '#334155', 'moving normally'],
+      'In Progress': ['#e0f2fe', '#0369a1', 'accepted, not yet scheduled'],
+      'Pending Goods Receipt Hold': ['#fef3c7', '#92400e', 'needs a goods receipt — no money'],
+      'Insufficient PO Funds Hold': ['#fee2e2', '#991b1b', 'needs PO funds'],
+      'Rejected': ['#fee2e2', '#991b1b', 'needs correcting and resubmitting'],
+      'Not submitted': ['#ede9fe', '#5b21b6', 'not yet in Payee Central'],
+      'Paid — needs applying': ['#dcfce7', '#166534', 'cash to apply in Intacct'],
+      'Cancelled': ['#f1f5f9', '#64748b', 'cancelled'],
+    };
+    const tiles = d.statusTotals.map(t => {
+      const [bg, fg, note] = COLOUR[t.status] || ['#f1f5f9', '#334155', ''];
+      return `<div style="background:${bg};border-radius:9px;padding:8px 12px;min-width:150px;flex:1">
+        <div style="font-size:10.5px;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(t.status)}">${escHtml(t.status)}</div>
+        <div style="font-size:16px;font-weight:700;color:${fg};margin-top:2px" class="amount">${c$(t.amount)}</div>
+        <div style="font-size:10px;color:var(--gray-500)">${t.count} invoice${t.count === 1 ? '' : 's'}${note ? ' · ' + note : ''}</div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:700;color:var(--navy)">OPEN AMAZON AR — ${c$(d.openAr)}</span>
+        <span style="font-size:11px;color:var(--gray-500)">${d.openArCount} invoices, by Payee Central status${_pbsSnowOnly ? ' · snow POs only' : ''}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${tiles}</div>
+    </div>`;
+  })();
+
   el.innerHTML = `
+    ${arTiles}
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       ${pills}
       <span style="font-size:12px;color:var(--gray-500);margin-left:6px">${summary}</span>
@@ -6046,7 +6079,7 @@ async function loadPoLedger() {
     // from the ledger, since a held invoice is in neither the ledger nor
     // needs-upload.
     apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
-      .then(list => { _poPendingSites = list || []; if (_poFundsSubtab === 'pending-site') renderPendingBySite(); })
+      .then(d => { _poPendingSites = (d && d.sites) || []; _poArStatus = d || null; if (_poFundsSubtab === 'pending-site') renderPendingBySite(); })
       .catch(() => {});
     renderPoLedger();
     if (_poFundsSubtab === 'pending-site') renderPendingBySite();
