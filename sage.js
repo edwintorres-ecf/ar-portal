@@ -44,6 +44,13 @@ let _cacheTs = 0;
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 // ─── Disk cache ───────────────────────────────────────────────────────────────
+// Every Sage request authenticates AT THE ENTITY, never at the top level.
+// A top-level login returns a different view of the data, so a query that looks
+// identical can come back with a different answer. Not configurable on purpose:
+// making it an env var invites an unset variable turning into a silent
+// top-level login (Edwin 2026-09-11 — ar-full-check.js was doing exactly that).
+const SAGE_ENTITY = 'E-ECF';
+
 const CACHE_DIR  = path.join(__dirname, 'cache');
 const CACHE_FILE = path.join(CACHE_DIR, 'invoices.json');
 const CACHE_TMP  = path.join(CACHE_DIR, '.invoices.json.tmp');
@@ -96,7 +103,7 @@ function buildXml(functionXml) {
         <userid>${escXml(cfg.userId)}</userid>
         <companyid>${escXml(cfg.companyId)}</companyid>
         <password>${escXml(cfg.userPassword)}</password>
-        <locationid>E-ECF</locationid>
+        <locationid>${SAGE_ENTITY}</locationid>
       </login>
     </authentication>
     <content>
@@ -1259,6 +1266,7 @@ async function getEciInvoiceLines(invoiceId) {
 }
 
 module.exports = {
+  SAGE_ENTITY,
   getInvoices,
   enrichLocations,
   enrichDepartments,
