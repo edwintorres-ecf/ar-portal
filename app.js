@@ -3349,7 +3349,8 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
-    const list = poLedger.getPendingBySite(invoices, { snowOnly: req.query.snow === '1' });
+    const snowOnly = req.query.snow === '1';
+    const list = poLedger.getPendingBySite(invoices, { snowOnly });
     const sites = list.map(s => ({
       site: s.site, businessUnit: s.businessUnit || '',
       pending: s.pending, available: s.available, count: s.count,
@@ -3359,14 +3360,42 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
 
     // Open Amazon AR by Payee Central status, so the screen can state where the
     // whole book stands rather than only the part with PO funds behind it.
+    //
+    // These tiles take the SAME filters as the table under them. They used to be
+    // computed over the entire book while the caption said "snow POs only" and
+    // the banner above said "Filtered to business unit NACF" — so the screen
+    // stated a filter it was not applying, which is worse than not filtering at
+    // all (Edwin 2026-09-11).
+    const buWanted = [].concat(req.query.bu || []).filter(Boolean);
+    const siteTerms = String(req.query.site || '').toUpperCase().split(/[\s,]+/).filter(Boolean);
     const statusTotals = {};
     const bump = (key, amt) => {
       const t = statusTotals[key] = statusTotals[key] || { status: key, count: 0, amount: 0 };
       t.count++; t.amount += amt || 0;
     };
     try {
+      // Snow is a property of the PO, not the invoice — an invoice is snow when
+      // the PO it is assigned to is. Same rule getPendingBySite uses, so the
+      // tiles and the table can never disagree about what "snow" means.
+      let snowPos = null;
+      if (snowOnly) {
+        snowPos = new Set();
+        for (const p of poLedger.getPoLedger(invoices)) {
+          if (p.serviceType === 'snow') snowPos.add(p.poNumber);
+        }
+      }
       for (const r of siteLedger.buildAmazonRows(invoices, { payee })) {
         if ((r.amount || 0) <= 0.005) continue;
+        if (snowPos && !snowPos.has(r.po)) continue;
+        if (buWanted.length) {
+          const bu = r.businessUnit || '';
+          // "(none)" is a real answer: sites we bill that aren't in the master.
+          if (!buWanted.some(f => f === '(none)' ? bu === '' : bu === f)) continue;
+        }
+        if (siteTerms.length) {
+          const s = String(r.site || r.siteCode || '').toUpperCase();
+          if (!siteTerms.some(t => s.includes(t))) continue;
+        }
         // Settled by Amazon but still open on our books is its own problem —
         // cash to apply, not collection — so it must not read as outstanding.
         if (r.amazonSettled) { bump('Paid — needs applying', r.amount); continue; }
@@ -3375,6 +3404,9 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
     } catch (e) { /* site ledger unavailable */ }
     res.json({
       sites,
+      // Echoed back so the screen can label the tiles with what was applied
+      // rather than with what it believes is applied.
+      filter: { snowOnly, bu: buWanted, site: siteTerms.join(' ') },
       statusTotals: Object.values(statusTotals).sort((a, b) => b.amount - a.amount),
       openAr: Object.values(statusTotals).reduce((t, x) => t + x.amount, 0),
       openArCount: Object.values(statusTotals).reduce((t, x) => t + x.count, 0),

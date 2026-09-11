@@ -4420,8 +4420,21 @@ function poApplyFilter() {
   if (_poFundsSubtab === 'contacts') { try { renderSiteContacts(); } catch (e) {} }
   if (_poFundsSubtab === 'sites') { try { renderPoSiteReport(); } catch (e) {} }
   if (_poFundsSubtab === 'pending-site') { try { renderPendingBySite(); } catch (e) {} }
+  // Pending by Site is grouped and totalled on the server, so unlike every tab
+  // above it cannot be re-derived here — the BU/site filter has to go back to
+  // the server or the tiles keep quoting the whole book while the banner claims
+  // a filter is on (Edwin 2026-09-11).
+  poQueuePendingBySiteReload();
   poUpdateBadges();
   msRestoreOpen();
+}
+
+// Debounced: poApplyFilter runs on every keystroke in the site box.
+let _pbsReloadTimer = null;
+function poQueuePendingBySiteReload() {
+  if (typeof loadPendingBySite !== 'function') return;
+  clearTimeout(_pbsReloadTimer);
+  _pbsReloadTimer = setTimeout(() => loadPendingBySite(), 250);
 }
 
 function poUpdateBadges() {
@@ -4510,6 +4523,15 @@ function poPopulateBuFilter(units) {
 
 async function loadPoFunds() {
   poRenderFilterBar();          // draw the picker even if the meta call is slow or fails
+  // The business-unit list arrives with /api/po/meta, and loadPoFreshness is what
+  // fetches it. It used to sit at the BOTTOM of this function, behind
+  // `await loadPoLedger()` — so on real data the picker stayed empty for as long
+  // as the ledger took to load (6s was not enough, 45s was), and anyone who
+  // opened it in that window got "No match." and reasonably concluded the filter
+  // was broken. Worse, if loadPoLedger ever rejected, the picker never populated
+  // at all. The filter that governs the whole screen must not be gated behind the
+  // heaviest query on it (Edwin 2026-09-11).
+  loadPoFreshness();      // async, non-blocking — populates the BU picker
   const canEditPo = currentUser && ['admin', 'manager'].includes(currentUser.role);
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = canEditPo ? '' : 'none';
@@ -4522,7 +4544,6 @@ async function loadPoFunds() {
   loadPoExceptions();     // async, non-blocking
   loadPoAging();          // async, non-blocking
   loadPoRejections();     // async, non-blocking
-  loadPoFreshness();      // async, non-blocking
 }
 
 // ─── Off Radar: open Amazon invoices with no PO, invisible everywhere else ──
@@ -5421,14 +5442,33 @@ function setPbsMode(mode) {
   renderPendingBySite();
 }
 
+// One place that knows how to ask for this screen's data, so the snow toggle and
+// the BU/site filter can never drift apart. Everything here is grouped and
+// totalled server-side, so a filter change is a refetch, not a client-side pass.
+function pbsQuery() {
+  return '?snow=' + (_pbsSnowOnly ? '1' : '0')
+    + _poFilterBu.map(v => '&bu=' + encodeURIComponent(v)).join('')
+    + (_poFilterSite ? '&site=' + encodeURIComponent(_poFilterSite) : '');
+}
+let _pbsReqSeq = 0;
+function loadPendingBySite() {
+  const seq = ++_pbsReqSeq;
+  return apiFetch('/api/po/pending-by-site' + pbsQuery())
+    .then(d => {
+      // Typing in the site box fires several of these; only the newest may land,
+      // or a slow early response overwrites a fast later one.
+      if (seq !== _pbsReqSeq) return;
+      _poPendingSites = (d && d.sites) || [];
+      _poArStatus = d || null;
+      renderPendingBySite();
+    })
+    .catch(() => {});
+}
+
 function togglePbsSnow() {
   _pbsSnowOnly = !_pbsSnowOnly;
   renderPendingBySite();
-  // The held totals are grouped server-side and the snow filter applies there
-  // too, so they have to be re-read rather than filtered on screen.
-  apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
-    .then(d => { _poPendingSites = (d && d.sites) || []; _poArStatus = d || null; renderPendingBySite(); })
-    .catch(() => {});
+  loadPendingBySite();
 }
 
 function sortPendingBySite(field) {
@@ -5762,8 +5802,24 @@ function renderPendingBySite() {
     return;
   }
 
-  // Where the whole Amazon book stands, by Payee Central status. The table
-  // below is about PO funding; this says what is actually outstanding and why.
+  // Where the Amazon book stands, by Payee Central status, under the same
+  // filters as the table below. The table is about PO funding; this says what is
+  // actually outstanding and why.
+  //
+  // The scope label is built from what the SERVER says it applied, not from the
+  // on-screen toggles. If a reload is still in flight the tiles are still the
+  // old numbers, and a label drawn from the toggles would describe a filter the
+  // figures do not yet reflect.
+  const arTileScope = (() => {
+    const f = (_poArStatus || {}).filter;
+    if (!f) return '';
+    const bits = [];
+    if (f.snowOnly) bits.push('snow POs only');
+    if ((f.bu || []).length) bits.push(f.bu.join(', '));
+    if (f.site) bits.push('site ' + f.site);
+    return bits.length ? ' · ' + bits.join(' · ') : '';
+  })();
+
   const arTiles = (() => {
     const d = _poArStatus;
     if (!d || !(d.statusTotals || []).length) return '';
@@ -5788,7 +5844,7 @@ function renderPendingBySite() {
     return `<div style="margin-bottom:12px">
       <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
         <span style="font-size:12px;font-weight:700;color:var(--navy)">OPEN AMAZON AR — ${c$(d.openAr)}</span>
-        <span style="font-size:11px;color:var(--gray-500)">${d.openArCount} invoices, by Payee Central status${_pbsSnowOnly ? ' · snow POs only' : ''}</span>
+        <span style="font-size:11px;color:var(--gray-500)">${d.openArCount} invoices, by Payee Central status${arTileScope}</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">${tiles}</div>
     </div>`;
@@ -6078,9 +6134,7 @@ async function loadPoLedger() {
     // Held-invoice totals per site — needed by Pending by Site and not derivable
     // from the ledger, since a held invoice is in neither the ledger nor
     // needs-upload.
-    apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
-      .then(d => { _poPendingSites = (d && d.sites) || []; _poArStatus = d || null; if (_poFundsSubtab === 'pending-site') renderPendingBySite(); })
-      .catch(() => {});
+    loadPendingBySite();
     renderPoLedger();
     if (_poFundsSubtab === 'pending-site') renderPendingBySite();
   } catch (e) {

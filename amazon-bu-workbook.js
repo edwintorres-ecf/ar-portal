@@ -57,10 +57,24 @@ function poInSeason(r, win) {
 function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const win = seasonWindow(seasonKey);
   const all = siteLedger.buildAmazonRows(invoices, { payee });
-  const rows = all.filter(r => (r.businessUnit || '') === bu);
+  let rows = all.filter(r => (r.businessUnit || '') === bu);
 
-  let ledger = poLedger.getPoLedger(invoices).filter(r => (r.businessUnit || '') === bu);
-  if (snowOnly) ledger = ledger.filter(r => r.serviceType === 'snow');
+  const fullLedger = poLedger.getPoLedger(invoices);
+  let ledger = fullLedger.filter(r => (r.businessUnit || '') === bu);
+  if (snowOnly) {
+    ledger = ledger.filter(r => r.serviceType === 'snow');
+    // snowOnly used to narrow the PO list ONLY. Every stalled-billing figure in
+    // this workbook comes off `rows` — the invoices — so with the toggle on the
+    // summary still counted landscaping work and did not tie to the screen that
+    // produced it (Edwin 2026-09-11).
+    //
+    // Snow is a property of the PO, not the invoice: an invoice is snow when the
+    // PO it is assigned to is. Indexed off the FULL ledger, not the BU-filtered
+    // one, so a blanket PO carrying another unit's site still classifies.
+    const snowPos = new Set();
+    for (const p of fullLedger) if (p.serviceType === 'snow') snowPos.add(p.poNumber);
+    rows = rows.filter(r => snowPos.has(r.po));
+  }
   const seasonPos = ledger.filter(r => poInSeason(r, win));
 
   const isFundsHold = (st) => st === HOLD_FUNDS || st === HOLD_FUNDS_ALT;
@@ -276,6 +290,12 @@ async function buildBuWorkbook(invoices, opts) {
     .getCell(2).font = { size: 11, color: { argb: 'FF334155' } };
   s1.addRow(['', `${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`])
     .getCell(2).font = { size: 9, color: { argb: 'FF94A3B8' } };
+  // This goes to Amazon. If it covers snow only, say so on the face of it —
+  // otherwise the totals read as the whole relationship and understate it.
+  if (a.snowOnly) {
+    s1.addRow(['', 'Scope: snow and ice purchase orders only. Landscaping and other services are excluded.'])
+      .getCell(2).font = { size: 10, italic: true, color: { argb: 'FF475569' } };
+  }
   s1.addRow([]);
   const intro = s1.addRow(['', 'This covers work our crews have completed at your sites that we have not been able to turn '
     + 'into a paid invoice. Everything here is open to date — we are still working through last winter, so no PO has been '
