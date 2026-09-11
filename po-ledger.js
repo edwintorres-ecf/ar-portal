@@ -1071,29 +1071,31 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
     }
     row.pendingUpload += inv.amount || 0; row.pendingUploadInvoiceCount++;
   }
-  // Held invoices, attributed to the site the same way pending is.
+  // Held invoices, attributed exactly as the BU workbook attributes them.
+  // Walk the SAGE invoices and RESOLVE each one's status, rather than walking
+  // the Payee feed and matching back by id: a resubmitted invoice lives in the
+  // feed under a suffixed number (ECI021559A), which an exact-id match misses
+  // entirely. That alone lost $223,233 of EWR9's funds hold (Edwin 2026-09-11).
   try {
     const invSite = invoiceSiteMap();
-    const bySage = {};
-    for (const inv of filterAmazon(invoices)) bySage[payee.toPayeeId(inv.invoiceId)] = inv;
-    for (const [payeeId, item] of Object.entries(payee.getIndex())) {
-      const st = (item.status || '').trim();
+    for (const inv of filterAmazon(invoices)) {
+      if ((inv.totalDue || 0) <= 0.005) continue;
+      const pid = payee.toPayeeId(inv.invoiceId);
+      const resolved = pid ? payee.resolveInvoice(pid) : null;
+      if (!resolved) continue;
+      const st = (resolved.status || '').trim();
       const isFunds = st === 'Insufficient PO Funds Hold' || st === 'Insufficient Amazon PO Manager Hold';
       const isReceipt = st === 'Pending Goods Receipt Hold';
       if (!isFunds && !isReceipt) continue;
-      const inv = bySage[payeeId];
-      if (!inv) continue;                       // settled or not in the open book
       if (snowOnly) {
-        const led = ledgerByPo[(item.po || '').trim()];
+        const led = ledgerByPo[(resolved.po || inv.poNumber || '').trim()];
         if (!(led && led.serviceType === 'snow')) continue;
       }
-      // Site LEDGER first, matching buildAmazonRows and therefore the BU
-      // workbook. Reading raw Sage ship-to first put $223k of NACF's funds hold
-      // on a different site than the report did (Edwin 2026-09-11).
+      // Site ledger first, matching buildAmazonRows.
       const code = invSite[String(inv.recordNo)]
         || (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null);
       const s = ensureSite(code || '(no site)');
-      const amt = parseAmount(item.amount) || 0;
+      const amt = parseAmount(resolved.amount) || 0;
       if (isFunds) { s.fundsHold += amt; s.fundsHoldCount++; }
       else { s.goodsReceipt += amt; s.goodsReceiptCount++; }
     }
