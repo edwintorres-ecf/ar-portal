@@ -3344,15 +3344,56 @@ app.get('/api/amazon/business-units', requireAuth, async (req, res) => {
 // ─── Funds-by-site report + the case study for Amazon ───────────────────────
 // Site rows as the server computes them, including the held-invoice totals the
 // screen cannot derive on its own (they are not in the ledger or in needs-upload).
+// The grouping below costs about 12 seconds of straight CPU, and Node is
+// single-threaded, so while it runs nothing else on the box is served. That was
+// tolerable when the screen loaded it once; now that the BU/site filter refetches
+// it, a few clicks would stall the portal for everyone.
+//
+// Only the BU/site narrowing changes between those clicks, and that part is
+// cheap — so the expensive base is memoised and the narrowing is done per
+// request. Keyed on the DATA, not on a clock: the Sage cache stamp and the Payee
+// feed stamp both change whenever a refresh lands, so a stale entry cannot
+// outlive the data it was built from. The user's own filter is in the key too,
+// or one person's restricted view would be served to the next caller.
+const _pbsCache = new Map();
+const PBS_CACHE_MAX = 8;
+function pbsCacheKey(user, snowOnly) {
+  const age = sage.getCacheAge ? sage.getCacheAge() : null;
+  let feed = '';
+  try { feed = (payee.feedMeta && payee.feedMeta().generatedAt) || ''; } catch (e) {}
+  return [
+    snowOnly ? 'snow' : 'all',
+    (age && age.fetchedAt) || '',
+    feed,
+    poLedger.getDataFreshness ? JSON.stringify(poLedger.getDataFreshness()) : '',
+    user.location_filter || '', user.customer_filter || '', user.role || '',
+  ].join('|');
+}
+
 app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
     const snowOnly = req.query.snow === '1';
-    // Built once and shared with getPendingBySite and the status tiles below.
-    const fullLedger = poLedger.getPoLedger(invoices);
-    const list = poLedger.getPendingBySite(invoices, { snowOnly, ledger: fullLedger });
+
+    const ck = pbsCacheKey(req.session.user, snowOnly);
+    let base = _pbsCache.get(ck);
+    if (!base) {
+      // Built once and shared with getPendingBySite and the status tiles below.
+      const fullLedger = poLedger.getPoLedger(invoices);
+      const list = poLedger.getPendingBySite(invoices, { snowOnly, ledger: fullLedger });
+      let arRows = [];
+      try { arRows = siteLedger.buildAmazonRows(invoices, { payee }); } catch (e) { /* site ledger unavailable */ }
+      const snowPos = snowOnly
+        ? new Set(fullLedger.filter(p => p.serviceType === 'snow').map(p => p.poNumber))
+        : null;
+      base = { list, arRows, snowPos };
+      if (_pbsCache.size >= PBS_CACHE_MAX) _pbsCache.delete(_pbsCache.keys().next().value);
+      _pbsCache.set(ck, base);
+    }
+    const { list, arRows, snowPos } = base;
+
     const sites = list.map(s => ({
       site: s.site, businessUnit: s.businessUnit || '',
       pending: s.pending, available: s.available, count: s.count,
@@ -3375,16 +3416,12 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
       const t = statusTotals[key] = statusTotals[key] || { status: key, count: 0, amount: 0 };
       t.count++; t.amount += amt || 0;
     };
-    try {
+    {
       // Snow is a property of the PO, not the invoice — an invoice is snow when
       // the PO it is assigned to is. Same rule getPendingBySite uses, so the
       // tiles and the table can never disagree about what "snow" means.
-      let snowPos = null;
-      if (snowOnly) {
-        snowPos = new Set();
-        for (const p of fullLedger) if (p.serviceType === 'snow') snowPos.add(p.poNumber);
-      }
-      for (const r of siteLedger.buildAmazonRows(invoices, { payee })) {
+      // `snowPos` and `arRows` both come off the memoised base above.
+      for (const r of arRows) {
         if ((r.amount || 0) <= 0.005) continue;
         if (snowPos && !snowPos.has(r.po)) continue;
         if (buWanted.length) {
@@ -3401,7 +3438,7 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
         if (r.amazonSettled) { bump('Paid — needs applying', r.amount); continue; }
         bump(r.payeeStatus || 'Not submitted', r.amount);
       }
-    } catch (e) { /* site ledger unavailable */ }
+    }
     res.json({
       sites,
       // Echoed back so the screen can label the tiles with what was applied
