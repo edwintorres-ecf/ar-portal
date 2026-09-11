@@ -138,6 +138,9 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const needCoverage = [...buckets.funds, ...needsTopUp, ...unassigned];
   const asks = {
     coverage: { count: needCoverage.length, amount: sum(needCoverage) },
+    // Filled in below, once the per-site netting is known.
+    netCoverage: { amount: 0, sites: 0 },
+    reallocatable: { amount: 0, sites: 0 },
     newPo: { count: noPoAtAll.length, amount: sum(noPoAtAll), sites: [...new Set(noPoAtAll.map(r => r.site).filter(Boolean))] },
     goodsReceipt: { count: buckets.pgr.length, amount: sum(buckets.pgr) },
     ourBacklog: { count: submittable.length, amount: sum(submittable) },
@@ -166,7 +169,14 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
       latestPo: pos.map(p => ({ po: p.poNumber, date: p.orderDate || p.docDate || '' }))
         .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null,
     };
-  }).sort((a, b) => b.amount - a.amount);
+  }).map(c => ({
+    ...c,
+    // A site can be stuck while still holding money — on a DIFFERENT PO of its
+    // own. That is not new funding, it is moving what is already there, so the
+    // ask is the net (MDW5 needs $74,660 and is sitting on $126,640).
+    netNeeded: Math.round(Math.max(0, c.amount - Math.max(0, c.left)) * 100) / 100,
+    fromOwnFunds: Math.round(Math.min(c.amount, Math.max(0, c.left)) * 100) / 100,
+  })).sort((a, b) => b.netNeeded - a.netNeeded || b.amount - a.amount);
 
   // ── Consolidate by SITE ────────────────────────────────────────────────
   // Funds have to be read per site, not per PO: a site commonly has several POs,
@@ -206,6 +216,15 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     s.pos.sort((x, y) => (y.available || 0) - (x.available || 0));
   }
   const siteList = Object.values(bySite).sort((x, y) => (y.needsFunding - y.available) - (x.needsFunding - x.available));
+
+  asks.netCoverage = {
+    amount: Math.round(coverageList.reduce((t, c) => t + c.netNeeded, 0) * 100) / 100,
+    sites: coverageList.filter(c => c.netNeeded > 0).length,
+  };
+  asks.reallocatable = {
+    amount: Math.round(coverageList.reduce((t, c) => t + c.fromOwnFunds, 0) * 100) / 100,
+    sites: coverageList.filter(c => c.fromOwnFunds > 0).length,
+  };
 
   // Excess for the BU is the sum of what its SITES have spare, once each site's
   // own stalled billing is met from its own POs.
@@ -350,9 +369,13 @@ async function buildBuWorkbook(invoices, opts) {
     r.height = 32;
     return r;
   };
-  askRow('1. Additional PO coverage at these sites', a.asks.coverage,
-    `${a.coverageList.length} site(s) have billing with no funded purchase order behind it. Whether that comes as more on the existing PO or as a further PO is your call — `
-    + `the sites are listed below with every PO already issued to them.`,
+  askRow('1. Additional PO coverage at these sites', a.asks.netCoverage.amount !== undefined
+    ? { amount: a.asks.netCoverage.amount, count: a.asks.coverage.count } : a.asks.coverage,
+    `${a.asks.netCoverage.sites} site(s) need funding they do not already hold. Whether that arrives as more on an existing PO or as a further PO is your call — `
+    + `the sites are listed below with every PO already issued to them.`
+    + (a.asks.reallocatable.amount > 0
+      ? ` A further ${M(a.asks.reallocatable.amount)} is stuck only because it sits on the wrong PO within the same site; that needs moving, not funding.`
+      : ''),
     RED, 'FF991B1B');
   askRow('2. A first purchase order', a.asks.newPo,
     a.asks.newPo.count
@@ -379,12 +402,13 @@ async function buildBuWorkbook(invoices, opts) {
   if (a.coverageList.length) {
     section('SITES NEEDING ADDITIONAL PO COVERAGE');
     const noteR = s1.addRow(['', 'Each site below already has purchase orders — most of them fully used. The last two columns show how many '
-      + 'have been issued to that site and how many are now exhausted, which is why the work is stuck.']);
+      + 'have been issued to that site and how many are now exhausted, which is why the work is stuck. Where a site still holds '
+      + 'funds on another of its own POs, that part is shown as movable rather than as new funding.']);
     s1.mergeCells(`B${noteR.number}:G${noteR.number}`);
     noteR.getCell(2).font = { italic: true, size: 9.5, color: { argb: 'FF64748B' } };
     noteR.getCell(2).alignment = { wrapText: true, vertical: 'top' };
     noteR.height = 26;
-    const th = s1.addRow(['', 'Site', 'Coverage needed', 'Invoices', 'Committed so far', 'Left across all its POs', 'POs issued / fully used · most recent']);
+    const th = s1.addRow(['', 'Site', 'New funding needed', 'Movable within the site', 'Invoices', 'Left across all its POs', 'POs issued / fully used · most recent']);
     th.eachCell((c, i) => {
       if (i === 1) return;
       c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -393,16 +417,22 @@ async function buildBuWorkbook(invoices, opts) {
     for (const t of a.coverageList) {
       const hist = `${t.poCount} issued / ${t.exhaustedCount} fully used`
         + (t.latestPo ? ` · latest ${t.latestPo.po}${t.latestPo.date ? ' (' + t.latestPo.date + ')' : ''}` : '');
-      const r = s1.addRow(['', t.site, t.amount, t.count, t.committed, t.left, hist]);
-      [3, 5, 6].forEach(ci => { r.getCell(ci).numFmt = money; });
+      const r = s1.addRow(['', t.site, t.netNeeded || null, t.fromOwnFunds || null, t.count, t.left, hist]);
+      [3, 4, 6].forEach(ci => { r.getCell(ci).numFmt = money; });
       r.getCell(2).font = { bold: true, color: { argb: NAVY } };
-      r.getCell(3).font = { bold: true, color: { argb: 'FF991B1B' } };
-      r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
-      r.getCell(4).alignment = { horizontal: 'center' };
+      if (t.netNeeded > 0) {
+        r.getCell(3).font = { bold: true, color: { argb: 'FF991B1B' } };
+        r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+      }
+      if (t.fromOwnFunds > 0) {
+        r.getCell(4).font = { color: { argb: 'FF166534' } };
+        r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+      }
+      r.getCell(5).alignment = { horizontal: 'center' };
       r.getCell(6).font = { color: { argb: (t.left || 0) < 0 ? 'FF991B1B' : 'FF475569' } };
       r.getCell(7).font = { size: 9.5, color: { argb: 'FF64748B' } };
     }
-    const tf = s1.addRow(['', `${a.coverageList.length} sites`, a.asks.coverage.amount, a.asks.coverage.count, '', '', '']);
+    const tf = s1.addRow(['', `${a.coverageList.length} sites`, a.asks.netCoverage.amount, a.asks.reallocatable.amount, a.asks.coverage.count, '', '']);
     tf.eachCell((c, i) => {
       if (i === 1) return;
       c.font = { bold: true, size: 11 };
@@ -410,7 +440,8 @@ async function buildBuWorkbook(invoices, opts) {
       c.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
     });
     tf.getCell(3).numFmt = money;
-    tf.getCell(4).alignment = { horizontal: 'center' };
+    tf.getCell(4).numFmt = money;
+    tf.getCell(5).alignment = { horizontal: 'center' };
     s1.addRow([]);
     s1.addRow([]);
   }
