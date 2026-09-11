@@ -12,6 +12,10 @@
 
 const db = require('./db');
 const poLedger = require('./po-ledger');
+// Needed to reconcile this report back to total open Amazon AR by Payee Central
+// status — the same source the portal's OPEN AMAZON AR tiles use.
+const siteLedger = require('./site-ledger');
+const payee = require('./payee');
 
 const money = (n) => '$' + Math.round(n || 0).toLocaleString('en-US');
 const money2 = '$#,##0.00';
@@ -132,7 +136,64 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
   totals.gap = Math.max(0, totals.shortfall - totals.coverable);
 
   const buList = Object.values(byBu).sort((a, b) => b.pending - a.pending);
-  return { sites, buList, closedWithFunds, neverUsed, totals, snowOnly, season, seasonKey };
+
+  // ── Reconciliation to total open Amazon AR ────────────────────────────────
+  // This report is about the funding position of work we cannot bill. On its own
+  // that is a slice of the book with no stated denominator, so there is no way
+  // to check it against the AR the business actually carries (Edwin 2026-09-11).
+  //
+  // Start from every open Amazon invoice, show what the snow filter removes, and
+  // break the remainder down by Payee Central status — the same statuses as the
+  // portal's OPEN AMAZON AR tiles, so the two can be laid side by side.
+  const recon = (() => {
+    let allRows = [];
+    try { allRows = siteLedger.buildAmazonRows(invoices, { payee }).filter(r => (r.amount || 0) > 0.005); }
+    catch (e) { return null; }
+
+    // Snow is a property of the PO, not the invoice. Same rule as everywhere else.
+    const snowPos = new Set(ledger.filter(p => p.serviceType === 'snow').map(p => p.poNumber));
+    const inScope = snowOnly ? allRows.filter(r => snowPos.has(r.po)) : allRows;
+    const sum = (list) => Math.round(list.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100;
+
+    const statusOf = (r) => r.amazonSettled ? 'Paid — needs applying' : (r.payeeStatus || 'Not submitted');
+    const tally = (list) => {
+      const out = {};
+      for (const r of list) {
+        const k = statusOf(r);
+        (out[k] = out[k] || { status: k, count: 0, amount: 0 });
+        out[k].count++; out[k].amount += r.amount || 0;
+      }
+      for (const v of Object.values(out)) v.amount = Math.round(v.amount * 100) / 100;
+      return Object.values(out).sort((x, y) => y.amount - x.amount);
+    };
+
+    const byBuStatus = {};
+    for (const r of inScope) {
+      const bu = r.businessUnit || '(not in the Amazon master)';
+      (byBuStatus[bu] = byBuStatus[bu] || []).push(r);
+    }
+    const perBu = {};
+    for (const [bu, list] of Object.entries(byBuStatus)) {
+      perBu[bu] = { total: sum(list), count: list.length, statuses: tally(list) };
+    }
+
+    return {
+      allAr: sum(allRows), allCount: allRows.length,
+      excluded: Math.round((sum(allRows) - sum(inScope)) * 100) / 100,
+      excludedCount: allRows.length - inScope.length,
+      inScope: sum(inScope), inScopeCount: inScope.length,
+      statuses: tally(inScope),
+      perBu,
+      // "Work we cannot bill" here comes from getNeedsUpload, which counts a
+      // REJECTED invoice as waiting — it has to go back in. The status split
+      // lists Rejected separately, so the two differ by exactly that much and
+      // the difference is stated rather than left to be discovered.
+      reportPending: Math.round(totals.pending * 100) / 100,
+      reportPendingCount: totals.invoices,
+    };
+  })();
+
+  return { sites, buList, closedWithFunds, neverUsed, totals, recon, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
@@ -177,6 +238,63 @@ async function buildWorkbook(invoices, opts = {}) {
   s1.getColumn(1).width = 56; s1.getColumn(2).width = 20;
   s1.addRow([]);
 
+  // ── Reconciliation to total open Amazon AR ──
+  // Without a stated denominator the figures above are a slice of the book with
+  // nothing to check them against.
+  if (a.recon) {
+    const R = a.recon;
+    const hdr = s1.addRow(['RECONCILIATION TO TOTAL OPEN AMAZON AR']);
+    hdr.getCell(1).font = { bold: true, size: 11, color: { argb: NAVY } };
+    const line = (k, v, n, note, opts = {}) => {
+      const r = s1.addRow([k, v, n == null ? '' : n, note || '']);
+      r.getCell(1).font = { size: 10.5, bold: !!opts.bold, color: { argb: opts.bold ? NAVY : 'FF334155' } };
+      r.getCell(2).numFmt = money2;
+      r.getCell(2).font = { size: 10.5, bold: !!opts.bold, color: { argb: opts.bold ? NAVY : 'FF334155' } };
+      r.getCell(3).font = { size: 9.5, color: { argb: 'FF64748B' } };
+      r.getCell(3).alignment = { horizontal: 'right' };
+      r.getCell(4).font = { size: 9, color: { argb: 'FF94A3B8' } };
+      if (opts.rule) r.getCell(2).border = { top: { style: 'thin' } };
+      if (opts.fill) { r.getCell(1).fill = r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } }; }
+      return r;
+    };
+    s1.getColumn(3).width = Math.max(s1.getColumn(3).width || 0, 14);
+    s1.getColumn(4).width = Math.max(s1.getColumn(4).width || 0, 62);
+
+    line('Total open Amazon AR (all services)', R.allAr, R.allCount + ' invoices',
+      'Every open Amazon invoice in Sage. Matches the portal’s OPEN AMAZON AR tiles with no filter.', { bold: true });
+    if (a.snowOnly) {
+      line('Less: work not on a snow PO', -R.excluded, '-' + R.excludedCount + ' invoices',
+        'Landscaping and other services. Excluded because this report covers snow only.');
+      line('Open Amazon AR on snow POs — scope of this report', R.inScope, R.inScopeCount + ' invoices',
+        'Matches the portal with the snow filter on.', { bold: true, rule: true });
+    }
+
+    s1.addRow([]);
+    const sh = s1.addRow(['Where that sits, by Payee Central status', '', '', '']);
+    sh.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+    const NOTE = {
+      'Scheduled for payment': 'Accepted and queued to pay — moving normally.',
+      'In Progress': 'Accepted, not yet scheduled.',
+      'Pending Goods Receipt Hold': 'Waiting on a goods receipt. No money required.',
+      'Insufficient PO Funds Hold': 'The PO has run out. Needs funding.',
+      'Rejected': 'Has to be corrected and resubmitted — counted as waiting below.',
+      'Not submitted': 'Not yet in Payee Central. This is the work this report is about.',
+      'Paid — needs applying': 'Amazon has paid it; the cash needs applying in Intacct.',
+      'Cancelled': 'Cancelled.',
+    };
+    for (const st of R.statuses) {
+      line('    ' + st.status, st.amount, st.count + ' invoices', NOTE[st.status] || '',
+        { fill: /Insufficient|Not submitted/.test(st.status) ? AMBER : null });
+    }
+    line('    Total', R.inScope, R.inScopeCount + ' invoices', '', { bold: true, rule: true });
+
+    s1.addRow([]);
+    line('“Work we have done but cannot bill” in this report', R.reportPending, R.reportPendingCount + ' invoices',
+      'Not submitted plus Rejected: a rejected invoice still has to go back in, so both are work waiting to be billed.',
+      { bold: true });
+    s1.addRow([]);
+  }
+
   s1.addRow(['Short by = what the waiting work still needs.   Spare = money at sites with no work waiting.   Could be freed = whichever is smaller, i.e. what this business unit could sort out from its own budget without asking for anything new.']);
   s1.lastRow.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
   s1.addRow([]);
@@ -201,6 +319,34 @@ async function buildWorkbook(invoices, opts = {}) {
       + (b.coverable > 0 ? ` · ${money(b.coverable)} of it could be sorted out from spare funds inside this business unit alone` : '');
     ws.getCell('A2').font = { size: 10, color: { argb: 'FF64748B' } };
     ws.addRow([]);
+
+    // Same reconciliation as the Summary, for this business unit alone, so a BU
+    // sheet can be sent on its own and still tie to the AR the BU carries.
+    const RB = a.recon && a.recon.perBu ? a.recon.perBu[b.bu] : null;
+    if (RB) {
+      const rh = ws.addRow([`Open Amazon AR for ${b.bu}${a.snowOnly ? ' on snow POs' : ''}`, '', '', RB.total, '', '', '', '', `${RB.count} invoices`]);
+      rh.getCell(1).font = { bold: true, size: 10.5, color: { argb: NAVY } };
+      rh.getCell(4).numFmt = money2;
+      rh.getCell(4).font = { bold: true, size: 10.5, color: { argb: NAVY } };
+      rh.getCell(9).font = { size: 9, color: { argb: 'FF64748B' } };
+      for (const st of RB.statuses) {
+        const r = ws.addRow(['    ' + st.status, '', '', st.amount, '', '', '', '', st.count + ' invoices']);
+        r.getCell(1).font = { size: 10, color: { argb: 'FF475569' } };
+        r.getCell(4).numFmt = money2;
+        r.getCell(4).font = { size: 10, color: { argb: 'FF475569' } };
+        r.getCell(9).font = { size: 9, color: { argb: 'FF94A3B8' } };
+        if (/Insufficient|Not submitted/.test(st.status)) {
+          r.getCell(1).fill = r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
+        }
+      }
+      const rt = ws.addRow([`    Of which waiting to be billed (this sheet)`, '', '', b.pending, '', '', '', '', b.invoices + ' invoices']);
+      rt.getCell(1).font = { bold: true, size: 10, color: { argb: NAVY } };
+      rt.getCell(4).numFmt = money2;
+      rt.getCell(4).font = { bold: true, size: 10, color: { argb: NAVY } };
+      rt.getCell(4).border = { top: { style: 'thin' } };
+      rt.getCell(9).font = { size: 9, color: { argb: 'FF64748B' } };
+      ws.addRow([]);
+    }
 
     const hh = ws.addRow(['Site', 'City', 'State', 'Invoices held', 'Work we cannot bill', 'PO value', 'Billed so far', 'Left on the PO', 'Where it stands']);
     hh.eachCell(c => { c.font = { bold: true, size: 10 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } }; });
