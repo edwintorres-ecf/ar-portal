@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-11T13:56:47.376Z",
+  "generatedAt": "2026-09-11T15:02:56.121Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1219,
+  "openTotal": 1220,
   "scraped": 1,
   "ok": 1,
   "failed": 0,
@@ -55562,6 +55562,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-10T21:25:52.925Z",
+      "stale": false
+    },
+    "2D-22621201": {
+      "available": 9379.8,
+      "poAmount": 9379.8,
+      "status": "Open",
+      "site": "BDL4",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-11T15:02:56.121Z",
       "stale": false
     }
   }

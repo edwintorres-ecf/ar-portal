@@ -12,7 +12,11 @@ const SAGE_USER_ID    = process.env.SAGE_USER_ID;
 const SAGE_USER_PW    = process.env.SAGE_USER_PW;
 const SAGE_SENDER_ID  = process.env.SAGE_SENDER_ID;
 const SAGE_SENDER_PW  = process.env.SAGE_SENDER_PW;
-const SAGE_ENTITY_ID  = process.env.SAGE_ENTITY_ID || '';
+// Always query at the entity. An unset SAGE_ENTITY_ID used to fall through to a
+// TOP-LEVEL login, which returns a different view of the data — so this
+// diagnostic could disagree with the portal precisely when someone was running
+// it to find out why they disagreed (Edwin 2026-09-11).
+const SAGE_ENTITY_ID  = process.env.SAGE_ENTITY_ID || 'E-ECF';
 
 if (!SAGE_COMPANY_ID) { console.error('No SAGE_COMPANY_ID in env'); process.exit(1); }
 
