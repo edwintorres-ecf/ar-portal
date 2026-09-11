@@ -36,7 +36,7 @@ const M = (n) => '$' + Math.round(n || 0).toLocaleString('en-US');
   console.log(`ledger loaded after    : ${ledgerAt} ms   ${readyAt !== null && ledgerAt !== null && readyAt < ledgerAt ? '← picker is ready FIRST' : '← STILL GATED'}`);
 
   await p.evaluate(() => setPoFundsSubtab('pending-site'));
-  await p.waitForTimeout(9000);
+  await p.waitForTimeout(22000);
   const read = () => p.evaluate(() => {
     const d = _poArStatus || {};
     return { openAr: d.openAr, n: d.openArCount, filter: d.filter,
@@ -46,18 +46,18 @@ const M = (n) => '$' + Math.round(n || 0).toLocaleString('en-US');
   console.log(`\nno filter        : ${M(base.openAr)}  ${base.n} invoices   filter=${JSON.stringify(base.filter)}`);
 
   await p.evaluate(() => togglePbsSnow());
-  await p.waitForTimeout(9000);
+  await p.waitForTimeout(22000);
   const snow = await read();
   console.log(`snow only        : ${M(snow.openAr)}  ${snow.n} invoices   filter=${JSON.stringify(snow.filter)}`);
 
   await p.evaluate(() => poSetBuList(['NACF']));
-  await p.waitForTimeout(9000);
+  await p.waitForTimeout(22000);
   const nacf = await read();
   console.log(`snow + NACF      : ${M(nacf.openAr)}  ${nacf.n} invoices   filter=${JSON.stringify(nacf.filter)}`);
   console.log(`caption          : ${JSON.stringify(nacf.caption)}`);
 
   await p.evaluate(() => poSetBuList(['Logistics']));
-  await p.waitForTimeout(9000);
+  await p.waitForTimeout(22000);
   const log = await read();
   console.log(`snow + Logistics : ${M(log.openAr)}  ${log.n} invoices   filter=${JSON.stringify(log.filter)}`);
 
