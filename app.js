@@ -3350,7 +3350,9 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
     const snowOnly = req.query.snow === '1';
-    const list = poLedger.getPendingBySite(invoices, { snowOnly });
+    // Built once and shared with getPendingBySite and the status tiles below.
+    const fullLedger = poLedger.getPoLedger(invoices);
+    const list = poLedger.getPendingBySite(invoices, { snowOnly, ledger: fullLedger });
     const sites = list.map(s => ({
       site: s.site, businessUnit: s.businessUnit || '',
       pending: s.pending, available: s.available, count: s.count,
@@ -3380,9 +3382,7 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
       let snowPos = null;
       if (snowOnly) {
         snowPos = new Set();
-        for (const p of poLedger.getPoLedger(invoices)) {
-          if (p.serviceType === 'snow') snowPos.add(p.poNumber);
-        }
+        for (const p of fullLedger) if (p.serviceType === 'snow') snowPos.add(p.poNumber);
       }
       for (const r of siteLedger.buildAmazonRows(invoices, { payee })) {
         if ((r.amount || 0) <= 0.005) continue;

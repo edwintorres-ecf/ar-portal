@@ -1033,8 +1033,12 @@ function getOrphanInvoices(invoices) {
  * snowOnly filters ledger rows by serviceType==='snow' and pending invoices by
  * their PO's serviceType — same rule as the screen toggle.
  */
-function getPendingBySite(invoices, { snowOnly = false } = {}) {
-  const ledgerAll = getPoLedger(invoices);
+// `ledger` lets a caller that has ALREADY built the PO ledger hand it in.
+// Building it is the expensive part of this call, and the route also needs it to
+// decide which invoices are snow — without this the endpoint built it twice and
+// took 14 seconds (Edwin 2026-09-11).
+function getPendingBySite(invoices, { snowOnly = false, ledger = null } = {}) {
+  const ledgerAll = ledger || getPoLedger(invoices);
   const needsUpload = getNeedsUpload(invoices);
   const ledgerRows = snowOnly ? ledgerAll.filter(r => r.serviceType === 'snow') : ledgerAll;
   const ledgerByPo = {};

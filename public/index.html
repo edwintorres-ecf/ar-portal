@@ -5817,7 +5817,15 @@ function renderPendingBySite() {
     if (f.snowOnly) bits.push('snow POs only');
     if ((f.bu || []).length) bits.push(f.bu.join(', '));
     if (f.site) bits.push('site ' + f.site);
-    return bits.length ? ' · ' + bits.join(' · ') : '';
+    let out = bits.length ? ' · ' + bits.join(' · ') : '';
+    // Regrouping takes a few seconds. Say so rather than showing the previous
+    // filter's numbers under the new filter's banner without comment.
+    const want = _poFilterBu.slice().sort().join(',');
+    const got = (f.bu || []).slice().sort().join(',');
+    if (want !== got || f.snowOnly !== _pbsSnowOnly || (f.site || '') !== (_poFilterSite || '')) {
+      out += ' · <span style="color:#d97706">updating…</span>';
+    }
+    return out;
   })();
 
   const arTiles = (() => {
