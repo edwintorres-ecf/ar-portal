@@ -23,12 +23,12 @@ const HOLD_FUNDS = 'Insufficient PO Funds Hold';
 const HOLD_FUNDS_ALT = 'Insufficient Amazon PO Manager Hold';
 
 const EXPLAIN = {
-  pgr: 'Submitted to Payee Central, but Amazon has not recorded a goods receipt against the PO. '
-     + 'Nothing moves until the site confirms the work was received.',
-  funds: 'Submitted to Payee Central and rejected for funding: the purchase order does not have '
-       + 'enough left on it to cover the invoice.',
-  undeliverable: 'Never submitted. Either no purchase order covers the work, or the PO it belongs to '
-       + 'has nothing left on it, so the invoice cannot be raised in Payee Central at all.',
+  pgr: 'Submitted to Payee Central and already drawn against the PO, but Amazon has not recorded a goods '
+     + 'receipt. NO ADDITIONAL FUNDS ARE NEEDED — this clears when the site confirms the work was received.',
+  funds: 'Submitted to Payee Central and held for funding: the purchase order does not have enough left '
+       + 'on it to cover the invoice. NEEDS ADDITIONAL FUNDS on the PO.',
+  undeliverable: 'Never submitted. Either no purchase order covers the work, or the PO it belongs to has '
+       + 'nothing left on it, so the invoice cannot be raised in Payee Central at all. NEEDS A PO, OR FUNDS ON ONE.',
 };
 
 // A snow season runs July to June; a PO raised for next season is not spare
@@ -75,6 +75,17 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     count: stalled.pgr.count + stalled.funds.count + stalled.undeliverable.count,
     amount: Math.round((stalled.pgr.amount + stalled.funds.amount + stalled.undeliverable.amount) * 100) / 100,
   };
+  // NOT every stalled invoice needs money. A Pending Goods Receipt Hold has
+  // already been accepted against the PO — Amazon has drawn it down, so it sits
+  // inside `available` already. It needs a goods receipt, not funding. Counting
+  // it in the funding requirement overstates the ask and, for a business unit
+  // like Logistics where it is 96% of the problem, points at entirely the wrong
+  // fix (Edwin 2026-09-11).
+  stalled.needsFunding = {
+    count: stalled.funds.count + stalled.undeliverable.count,
+    amount: Math.round((stalled.funds.amount + stalled.undeliverable.amount) * 100) / 100,
+  };
+  stalled.noFundingNeeded = { count: stalled.pgr.count, amount: stalled.pgr.amount };
 
   // ── Consolidate by SITE ────────────────────────────────────────────────
   // Funds have to be read per site, not per PO: a site commonly has several POs,
@@ -86,10 +97,13 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const bySite = {};
   const touchSite = (code) => (bySite[code] = bySite[code] || {
     site: code, stalled: 0, invoices: 0, available: 0, poCount: 0, pos: [],
+    needsFunding: 0, awaitingReceipt: 0,
   });
   for (const r of stalledRows) {
     const s = touchSite(r.site || '(no site)');
     s.stalled += r.amount || 0; s.invoices++;
+    if (r.payeeStatus === HOLD_PGR) s.awaitingReceipt += r.amount || 0;
+    else s.needsFunding += r.amount || 0;
   }
   for (const p of seasonPos) {
     const s = touchSite(p.siteCode || '(no site)');
@@ -102,11 +116,15 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   for (const s of Object.values(bySite)) {
     s.available = Math.round(s.available * 100) / 100;
     s.stalled = Math.round(s.stalled * 100) / 100;
-    s.spare = Math.max(0, s.available - s.stalled);
-    s.short = Math.max(0, s.stalled - Math.max(0, s.available));
+    s.needsFunding = Math.round(s.needsFunding * 100) / 100;
+    s.awaitingReceipt = Math.round(s.awaitingReceipt * 100) / 100;
+    // Measured against what actually needs funding, not against everything
+    // stalled at the site.
+    s.spare = Math.max(0, s.available - s.needsFunding);
+    s.short = Math.max(0, s.needsFunding - Math.max(0, s.available));
     s.pos.sort((x, y) => (y.available || 0) - (x.available || 0));
   }
-  const siteList = Object.values(bySite).sort((x, y) => (y.stalled - y.available) - (x.stalled - x.available));
+  const siteList = Object.values(bySite).sort((x, y) => (y.needsFunding - y.available) - (x.needsFunding - x.available));
 
   // Excess for the BU is the sum of what its SITES have spare, once each site's
   // own stalled billing is met from its own POs.
@@ -200,6 +218,27 @@ async function buildBuWorkbook(invoices, opts) {
   line('Insufficient PO Funds Hold', a.stalled.funds, RED);
   line('Invoice cannot be delivered', a.stalled.undeliverable, RED);
 
+  const sub1 = s1.addRow(['', '— requiring additional PO funds', a.stalled.needsFunding.amount, a.stalled.needsFunding.count, '', '',
+    'The two rows above that need money: the funding hold, and the work we cannot raise an invoice for at all. This is what the variance below is measured against.']);
+  sub1.getCell(2).font = { bold: true, size: 10.5, color: { argb: 'FF991B1B' } };
+  sub1.getCell(3).numFmt = money;
+  sub1.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF991B1B' } };
+  sub1.getCell(4).alignment = { horizontal: 'center' };
+  sub1.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+  sub1.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+  sub1.height = 28;
+
+  const sub2 = s1.addRow(['', '— requiring no additional funds, only a goods receipt', a.stalled.noFundingNeeded.amount, a.stalled.noFundingNeeded.count, '', '',
+    'Already funded and drawn against the PO. These release as soon as the receipt is recorded.']);
+  sub2.getCell(2).font = { bold: true, size: 10.5, color: { argb: 'FF92400E' } };
+  sub2.getCell(3).numFmt = money;
+  sub2.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF92400E' } };
+  sub2.getCell(4).alignment = { horizontal: 'center' };
+  sub2.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+  sub2.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+  sub2.height = 28;
+  s1.addRow([]);
+
   const tot = s1.addRow(['', `Total stalled billing for ${a.bu}`, a.stalled.total.amount, a.stalled.total.count, '', '', '']);
   tot.getCell(2).font = { bold: true, size: 12, color: { argb: NAVY } };
   tot.getCell(3).numFmt = money;
@@ -211,7 +250,7 @@ async function buildBuWorkbook(invoices, opts) {
 
   section('FUNDING');
   const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessSites.length, '', '',
-    'Every PO at each site added together first, then measured against what is stalled there. This is what is left over at the sites that can already cover themselves.']);
+    'Every PO at each site added together first, then measured against what that site needs FUNDED. This is what is left over at the sites that can already cover themselves.']);
   ex.getCell(2).font = { bold: true, size: 11 };
   ex.getCell(3).numFmt = money;
   ex.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF166534' } };
@@ -238,19 +277,24 @@ async function buildBuWorkbook(invoices, opts) {
 
   section('ANALYSIS');
   const pct = a.totalShort > 0 ? Math.round((a.coverable / a.totalShort) * 100) : 0;
+  const receiptNote = a.stalled.noFundingNeeded.amount > 0
+    ? ` Separately, ${M(a.stalled.noFundingNeeded.amount)} across ${a.stalled.noFundingNeeded.count} invoices is already funded `
+      + `and simply waiting on a goods receipt — that needs no money, only confirmation from the sites.`
+    : '';
   const analysis = a.variance > 0
-    ? `${a.bu} has ${M(a.stalled.total.amount)} of stalled billing across ${a.siteList.filter(s => s.stalled > 0).length} sites. `
-      + `${a.shortSites.length} of those sites cannot cover what is stalled there, short by ${M(a.totalShort)} between them. `
-      + `Another ${a.excessSites.length} sites hold ${M(a.excess)} they do not need. Moving that across covers ${pct}% of the gap; `
-      + `the remaining ${M(a.variance)} has to be newly funded.`
+    ? `${a.bu} has ${M(a.stalled.needsFunding.amount)} of billing that needs funding, across `
+      + `${a.siteList.filter(s => s.needsFunding > 0).length} sites. ${a.shortSites.length} of those sites cannot cover it from `
+      + `their own POs, short by ${M(a.totalShort)} between them. Another ${a.excessSites.length} sites hold ${M(a.excess)} they `
+      + `do not need. Moving that across covers ${pct}% of the gap; the remaining ${M(a.variance)} has to be newly funded.`
+      + receiptNote
     : `${a.bu} needs no new funding. The ${a.excessSites.length} sites holding ${M(a.excess)} spare more than cover the `
-      + `${M(a.totalShort)} that the ${a.shortSites.length} short sites are missing — it only needs moving.`;
+      + `${M(a.totalShort)} that the ${a.shortSites.length} short sites are missing — it only needs moving.` + receiptNote;
   const analysisFull = analysis;
   const an = s1.addRow(['', analysisFull]);
   s1.mergeCells(`B${an.number}:G${an.number}`);
   an.getCell(2).font = { size: 12, color: { argb: NAVY } };
   an.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-  an.height = 62;
+  an.height = 78;
 
   // Every site in the business unit, with ALL its POs consolidated into one
   // funding position. A site's POs mean nothing individually — what matters is
@@ -259,14 +303,15 @@ async function buildBuWorkbook(invoices, opts) {
   s1.addRow([]);
   section('FUNDS BY SITE — ALL POs CONSOLIDATED');
   const noteRow = s1.addRow(['', 'A site usually has several purchase orders, and what matters is the site as a whole — so every '
-    + 'PO at the site is added together here. Where that total is negative, we have already invoiced past what the POs were '
-    + 'written for.']);
+    + 'PO at the site is added together here, and compared with what that site NEEDS FUNDED. Invoices awaiting a goods receipt are '
+    + 'shown alongside but are not part of that comparison: they are already drawn against the PO. Where available is negative, we '
+    + 'have already invoiced past what the POs were written for.']);
   s1.mergeCells(`B${noteRow.number}:G${noteRow.number}`);
   noteRow.getCell(2).font = { italic: true, size: 9.5, color: { argb: 'FF64748B' } };
   noteRow.getCell(2).alignment = { wrapText: true, vertical: 'top' };
   noteRow.height = 30;
   s1.addRow([]);
-  const sh = s1.addRow(['', 'Site', 'Stalled billing', 'POs', 'Available across all its POs']);
+  const sh = s1.addRow(['', 'Site', 'Needs funding', 'Awaiting goods receipt', 'POs', 'Available across all its POs']);
   sh.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
@@ -275,21 +320,23 @@ async function buildBuWorkbook(invoices, opts) {
   // Worst position first — the sites that cannot pay their own way.
   for (const st of a.siteList) {
     if (st.stalled === 0 && st.available === 0) continue;
-    const r = s1.addRow(['', st.site, st.stalled, st.poCount, st.available]);
+    const r = s1.addRow(['', st.site, st.needsFunding, st.awaitingReceipt || null, st.poCount, st.available]);
     r.getCell(2).font = { bold: true, size: 10.5 };
     r.getCell(3).numFmt = money;
-    r.getCell(4).alignment = { horizontal: 'center' };
-    r.getCell(5).numFmt = money;
+    r.getCell(4).numFmt = money;
+    r.getCell(4).font = { size: 10, color: { argb: 'FF92400E' } };
+    r.getCell(5).alignment = { horizontal: 'center' };
+    r.getCell(6).numFmt = money;
     if (st.short > 0) {
       r.getCell(3).font = { bold: true, color: { argb: 'FF991B1B' } };
-      r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+      r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
     } else if (st.spare > 0) {
-      r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
-      r.getCell(5).font = { color: { argb: 'FF166534' } };
+      r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+      r.getCell(6).font = { color: { argb: 'FF166534' } };
     }
   }
-  const sf = s1.addRow(['', `${a.bu} total`, a.stalled.total.amount, a.seasonPos.length,
-    Math.round(a.seasonPos.reduce((t, p) => t + (p.available || 0), 0) * 100) / 100]);
+  const sf = s1.addRow(['', `${a.bu} total`, a.stalled.needsFunding.amount, a.stalled.noFundingNeeded.amount || null,
+    a.seasonPos.length, Math.round(a.seasonPos.reduce((t, p) => t + (p.available || 0), 0) * 100) / 100]);
   sf.eachCell((c, i) => {
     if (i === 1) return;
     c.font = { bold: true, size: 11 };
@@ -297,8 +344,9 @@ async function buildBuWorkbook(invoices, opts) {
     c.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
   });
   sf.getCell(3).numFmt = money;
-  sf.getCell(4).alignment = { horizontal: 'center' };
-  sf.getCell(5).numFmt = money;
+  sf.getCell(4).numFmt = money;
+  sf.getCell(5).alignment = { horizontal: 'center' };
+  sf.getCell(6).numFmt = money;
 
   // ── Sheet 2: Detail by PO ──
   const s2 = wb.addWorksheet('Detail by PO', { views: [{ state: 'frozen', ySplit: 2 }] });
