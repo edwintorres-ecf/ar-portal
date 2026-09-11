@@ -243,6 +243,29 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   // Excess for the BU is the sum of what its SITES have spare, once each site's
   // own stalled billing is met from its own POs.
   const excess = Math.round(siteList.reduce((t, s) => t + s.spare, 0) * 100) / 100;
+
+  // This number is deliberately NOT the portal's "available" tile, and the gap
+  // needs stating or the report looks wrong next to the screen it came from
+  // (Edwin 2026-09-11 — NACF snow read $4,696,943 here against $4,472,209 there).
+  //
+  // The tile is a raw sum, so an OVERDRAWN PO is netted off against funded ones.
+  // For NACF that is BDL4 at -$588k: Amazon accepted $1,875,894 against a
+  // $1,287,899 PO. That overdraw is a real problem, but it is not negative money
+  // we could move somewhere else — it is a funding need, and it is already
+  // counted as one in the Insufficient PO Funds Hold bucket. Netting it against
+  // headroom would count it twice and understate what is genuinely reallocatable.
+  const availableRaw = Math.round(siteList.reduce((t, s) => t + (s.available || 0), 0) * 100) / 100;
+  const overdrawn = Math.round(siteList.reduce((t, s) => t + Math.min(0, s.available || 0), 0) * 100) / 100;
+  const headroom = Math.round(siteList.reduce((t, s) => t + Math.max(0, s.available || 0), 0) * 100) / 100;
+  const reconcile = {
+    availableRaw,                                  // ties to the portal's BU tile
+    overdrawn,                                     // negative
+    overdrawnSites: siteList.filter(s => (s.available || 0) < 0)
+      .sort((x, y) => (x.available || 0) - (y.available || 0)),
+    headroom,                                      // negatives excluded
+    usedByOwnSite: Math.round((headroom - excess) * 100) / 100,
+    excess,
+  };
   const excessSites = siteList.filter(s => s.spare > 0).sort((x, y) => y.spare - x.spare);
   const shortSites = siteList.filter(s => s.short > 0).sort((x, y) => y.short - x.short);
   const totalShort = Math.round(shortSites.reduce((t, s) => t + s.short, 0) * 100) / 100;
@@ -256,7 +279,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     bu, seasonKey, snowOnly,
     rows, buckets, stalled, stalledRows, asks, coverageList,
     bySite, siteList, excessSites, shortSites,
-    excess, totalShort, coverable, variance,
+    excess, totalShort, coverable, variance, reconcile,
     ledger, seasonPos,
     generatedAt: new Date().toISOString(),
   };
@@ -477,6 +500,43 @@ async function buildBuWorkbook(invoices, opts) {
   ex.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
   ex.getCell(7).alignment = { wrapText: true, vertical: 'top' };
   ex.height = 30;
+
+  // Tie the figure above back to the AR portal, line by line. Anyone comparing
+  // the two will spot the difference immediately; far better that the report
+  // explains it than that Amazon asks.
+  const R = a.reconcile;
+  if (R) {
+    const recon = [
+      [`Available on ${a.bu} POs, as shown in the AR portal`, R.availableRaw,
+        'The portal totals every PO at face value, so an overdrawn PO is netted off against the funded ones.'],
+      ['Add back: POs already overdrawn', -R.overdrawn,
+        (R.overdrawnSites.length
+          ? R.overdrawnSites.slice(0, 3).map(s => `${s.site} ${M(s.available)}`).join(', ')
+            + (R.overdrawnSites.length > 3 ? ` and ${R.overdrawnSites.length - 3} more` : '') + '. '
+          : '')
+        + 'Accepted beyond the PO’s value. Real, and counted as a funding need under Insufficient PO Funds Hold — but not money that can be moved, so it is not netted off the headroom.'],
+      ['Headroom on POs that still have funds', R.headroom,
+        'What is genuinely left to spend across the sites that have any.'],
+      ['Less: needed by the site already holding it', -R.usedByOwnSite,
+        'Each site covers its own stalled billing first.'],
+      [`Excess available to move elsewhere in ${a.bu}`, R.excess, 'The figure above.'],
+    ];
+    s1.addRow([]);
+    const rh = s1.addRow(['', 'How this reconciles to the AR portal']);
+    rh.getCell(2).font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+    for (const [label, amount, note] of recon) {
+      const r = s1.addRow(['', label, amount, '', '', '', note]);
+      const last = label.startsWith('Excess available');
+      r.getCell(2).font = { size: 10, bold: last, color: { argb: last ? NAVY : 'FF475569' } };
+      r.getCell(3).numFmt = money;
+      r.getCell(3).font = { size: 10, bold: last, color: { argb: last ? 'FF166534' : 'FF475569' } };
+      if (last) r.getCell(3).border = { top: { style: 'thin' } };
+      r.getCell(7).font = { size: 9, color: { argb: 'FF94A3B8' } };
+      r.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+      r.height = 24;
+    }
+    s1.addRow([]);
+  }
 
   const shortfall = a.variance > 0 ? a.variance : 0;
   const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length, '', '',
