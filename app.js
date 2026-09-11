@@ -3342,6 +3342,23 @@ app.get('/api/amazon/business-units', requireAuth, async (req, res) => {
 });
 
 // ─── Funds-by-site report + the case study for Amazon ───────────────────────
+// Site rows as the server computes them, including the held-invoice totals the
+// screen cannot derive on its own (they are not in the ledger or in needs-upload).
+app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const list = poLedger.getPendingBySite(invoices, { snowOnly: req.query.snow === '1' });
+    res.json(list.map(s => ({
+      site: s.site, businessUnit: s.businessUnit || '',
+      pending: s.pending, available: s.available, count: s.count,
+      fundsHold: s.fundsHold || 0, fundsHoldCount: s.fundsHoldCount || 0,
+      goodsReceipt: s.goodsReceipt || 0, goodsReceiptCount: s.goodsReceiptCount || 0,
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
   try {
     const snowOnly = req.query.snow !== '0';

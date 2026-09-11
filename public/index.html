@@ -5409,6 +5409,7 @@ function setPoFundsSubtab(name) {
 // ─── Pending by Site: needs-upload invoices grouped by the invoice's OWN
 // Sage site code (not PO-derived) — "how much is still waiting to go out,
 // per site". Complements the By Site utilization view. ──────────────────────
+let _poPendingSites = [];
 let _pbsSort = { field: 'pending', asc: false };
 let _pbsList = [];
 let _pbsMode = 'all';   // 'all' (default: full picture) | 'pending' | 'spare'
@@ -5423,6 +5424,11 @@ function setPbsMode(mode) {
 function togglePbsSnow() {
   _pbsSnowOnly = !_pbsSnowOnly;
   renderPendingBySite();
+  // The held totals are grouped server-side and the snow filter applies there
+  // too, so they have to be re-read rather than filtered on screen.
+  apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
+    .then(list => { _poPendingSites = list || []; renderPendingBySite(); })
+    .catch(() => {});
 }
 
 function sortPendingBySite(field) {
@@ -5657,6 +5663,16 @@ function renderPendingBySite() {
         <div style="font-weight:700;color:${isNoSite ? 'var(--gray-500)' : 'var(--navy)'};white-space:nowrap">${isNoSite ? '❓ Unknown' : escHtml(s.site)}</div>
         ${s.businessUnit ? `<div style="font-size:9.5px;color:#5b21b6;background:#ede9fe;border-radius:5px;padding:0 5px;display:inline-block;margin-top:2px;white-space:nowrap" title="Amazon business unit">${escHtml(s.businessUnit)}</div>` : (isNoSite ? '' : '<div style="font-size:9.5px;color:var(--gray-400);white-space:nowrap" title="Site code is not in the Amazon location master">no BU</div>')}
         <div style="font-size:10px;color:var(--gray-500);white-space:nowrap">${s.count} inv</div>
+        ${(() => {
+          const h = heldBySite[s.site];
+          if (!h) return '';
+          const bits = [];
+          // Held by Amazon, so absent from "pending", but just as stuck. Funds
+          // hold needs money; goods receipt does not — never merge the two.
+          if (h.fundsHold > 0) bits.push(`<div style="font-size:9.5px;color:#991b1b;white-space:nowrap" title="${h.fundsHoldCount} invoice(s) Amazon is holding for insufficient PO funds — these need money">⛔ ${c$(h.fundsHold)} funds hold</div>`);
+          if (h.goodsReceipt > 0) bits.push(`<div style="font-size:9.5px;color:#92400e;white-space:nowrap" title="${h.goodsReceiptCount} invoice(s) waiting on a goods receipt — already drawn against the PO, no extra funding needed">⏳ ${c$(h.goodsReceipt)} receipt</div>`);
+          return bits.join('');
+        })()}
       </td>`;
     const sitePendingCell = `<td rowspan="${n}" style="padding:8px 8px;text-align:right;${mergedStyle}border-left:1px solid var(--gray-100)" class="amount"><strong>${c$(s.pending)}</strong></td>`;
     const siteAvailCell = `<td rowspan="${n}" style="padding:8px 8px;text-align:right;${mergedStyle}" class="amount">
@@ -6021,6 +6037,12 @@ async function loadPoLedger() {
   try {
     _poRaw.ledger = await apiFetch('/api/po/ledger');
     _poLedger = poFilterRows(_poRaw.ledger);
+    // Held-invoice totals per site — needed by Pending by Site and not derivable
+    // from the ledger, since a held invoice is in neither the ledger nor
+    // needs-upload.
+    apiFetch('/api/po/pending-by-site' + (_pbsSnowOnly ? '?snow=1' : ''))
+      .then(list => { _poPendingSites = list || []; if (_poFundsSubtab === 'pending-site') renderPendingBySite(); })
+      .catch(() => {});
     renderPoLedger();
     if (_poFundsSubtab === 'pending-site') renderPendingBySite();
   } catch (e) {

@@ -1041,7 +1041,12 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
   for (const r of ledgerAll) ledgerByPo[r.poNumber] = r;
 
   const sites = {};
-  const ensureSite = (k) => (sites[k] = sites[k] || { site: k, count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [], poIndex: {} });
+  const ensureSite = (k) => (sites[k] = sites[k] || { site: k, count: 0, pending: 0, ceiling: 0, consumed: 0, available: null, anyCeiling: false, poRows: [], poIndex: {},
+    // Money stuck at this site that is NOT in `pending`. "Pending" only ever
+    // meant invoices we have not submitted; an invoice held by Amazon is just
+    // as stuck and was invisible here, understating a site by roughly half
+    // (Edwin 2026-09-11).
+    fundsHold: 0, fundsHoldCount: 0, goodsReceipt: 0, goodsReceiptCount: 0 });
 
   for (const r of ledgerRows) {
     const s = ensureSite(r.siteCode || '(no site)');
@@ -1066,6 +1071,31 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
     }
     row.pendingUpload += inv.amount || 0; row.pendingUploadInvoiceCount++;
   }
+  // Held invoices, attributed to the site the same way pending is.
+  try {
+    const invSite = invoiceSiteMap();
+    const bySage = {};
+    for (const inv of filterAmazon(invoices)) bySage[payee.toPayeeId(inv.invoiceId)] = inv;
+    for (const [payeeId, item] of Object.entries(payee.getIndex())) {
+      const st = (item.status || '').trim();
+      const isFunds = st === 'Insufficient PO Funds Hold' || st === 'Insufficient Amazon PO Manager Hold';
+      const isReceipt = st === 'Pending Goods Receipt Hold';
+      if (!isFunds && !isReceipt) continue;
+      const inv = bySage[payeeId];
+      if (!inv) continue;                       // settled or not in the open book
+      if (snowOnly) {
+        const led = ledgerByPo[(item.po || '').trim()];
+        if (!(led && led.serviceType === 'snow')) continue;
+      }
+      const code = (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null)
+        || invSite[String(inv.recordNo)] || null;
+      const s = ensureSite(code || '(no site)');
+      const amt = parseAmount(item.amount) || 0;
+      if (isFunds) { s.fundsHold += amt; s.fundsHoldCount++; }
+      else { s.goodsReceipt += amt; s.goodsReceiptCount++; }
+    }
+  } catch (e) { /* payee feed unavailable — the held columns stay at zero */ }
+
   for (const s of Object.values(sites)) delete s.poIndex;
   // Every site row gets its business unit, and so does every PO row under it,
   // so "all the pending money for one BU" is a filter rather than an export.
