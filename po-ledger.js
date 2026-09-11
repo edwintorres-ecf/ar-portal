@@ -1087,8 +1087,11 @@ function getPendingBySite(invoices, { snowOnly = false } = {}) {
         const led = ledgerByPo[(item.po || '').trim()];
         if (!(led && led.serviceType === 'snow')) continue;
       }
-      const code = (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null)
-        || invSite[String(inv.recordNo)] || null;
+      // Site LEDGER first, matching buildAmazonRows and therefore the BU
+      // workbook. Reading raw Sage ship-to first put $223k of NACF's funds hold
+      // on a different site than the report did (Edwin 2026-09-11).
+      const code = invSite[String(inv.recordNo)]
+        || (isValidSite(inv.siteCode) ? normalizeSite(inv.siteCode) : null);
       const s = ensureSite(code || '(no site)');
       const amt = parseAmount(item.amount) || 0;
       if (isFunds) { s.fundsHold += amt; s.fundsHoldCount++; }
