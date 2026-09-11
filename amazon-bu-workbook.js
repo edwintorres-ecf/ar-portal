@@ -22,6 +22,10 @@ const HOLD_PGR = 'Pending Goods Receipt Hold';
 const HOLD_FUNDS = 'Insufficient PO Funds Hold';
 const HOLD_FUNDS_ALT = 'Insufficient Amazon PO Manager Hold';
 
+// "NEEDED KRB5" and similar are not purchase orders — they are a note that one
+// has to be raised.
+const isPlaceholderPo = (po) => !po || /needed|tbd|pending|none|n\/a/i.test(String(po));
+
 const EXPLAIN = {
   pgr: 'Submitted to Payee Central and already drawn against the PO, but Amazon has not recorded a goods '
      + 'receipt. NO ADDITIONAL FUNDS ARE NEEDED — this clears when the site confirms the work was received.',
@@ -60,11 +64,39 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
   const seasonPos = ledger.filter(r => poInSeason(r, win));
 
   const isFundsHold = (st) => st === HOLD_FUNDS || st === HOLD_FUNDS_ALT;
+  const poIndex = {};
+  for (const p of ledger) poIndex[p.poNumber] = p;
+
+  // Work that was never submitted splits three ways, and the three carry
+  // completely different asks (Edwin 2026-09-11):
+  //   - no PO at all            -> Amazon must RAISE one
+  //   - a PO with no room       -> Amazon must TOP IT UP
+  //   - a PO with room          -> nothing to ask; we can submit it today
+  const notSubmitted = rows.filter(r => !r.payeeStatus && (r.amount || 0) > 0.005);
+  const noPo = [], needsTopUp = [], submittable = [];
+  const unsubByPo = {};
+  for (const r of notSubmitted) {
+    if (isPlaceholderPo(r.po) || !poIndex[r.po]) { noPo.push(r); continue; }
+    (unsubByPo[r.po] = unsubByPo[r.po] || []).push(r);
+  }
+  for (const [po, list] of Object.entries(unsubByPo)) {
+    const avail = Math.max(0, poIndex[po].available || 0);
+    // Biggest first, so the headroom is attributed to what it can actually cover
+    // rather than being spread thinly and leaving everything half-funded.
+    list.sort((x, y) => (y.amount || 0) - (x.amount || 0));
+    let room = avail;
+    for (const r of list) {
+      if (room >= (r.amount || 0)) { room -= (r.amount || 0); submittable.push(r); }
+      else needsTopUp.push(r);
+    }
+  }
+
   const buckets = {
     pgr: rows.filter(r => r.payeeStatus === HOLD_PGR),
     funds: rows.filter(r => isFundsHold(r.payeeStatus)),
-    // Not in the feed at all, and still owed to us.
-    undeliverable: rows.filter(r => !r.payeeStatus && (r.amount || 0) > 0.005),
+    noPo, needsTopUp, submittable,
+    // Kept for the detail sheets: everything never submitted.
+    undeliverable: notSubmitted,
   };
   const sum = (list) => Math.round(list.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100;
 
@@ -88,6 +120,32 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
     amount: Math.round((stalled.funds.amount + stalled.undeliverable.amount) * 100) / 100,
   };
   stalled.noFundingNeeded = { count: stalled.pgr.count, amount: stalled.pgr.amount };
+
+  // The three asks, plus the part that is ours to fix.
+  const asks = {
+    addFunds: { count: buckets.funds.length + needsTopUp.length, amount: sum([...buckets.funds, ...needsTopUp]) },
+    newPo: { count: noPo.length, amount: sum(noPo), sites: [...new Set(noPo.map(r => r.site).filter(Boolean))] },
+    goodsReceipt: { count: buckets.pgr.length, amount: sum(buckets.pgr) },
+    ourBacklog: { count: submittable.length, amount: sum(submittable) },
+  };
+
+  // Which POs need topping up, and by how much beyond what is on them.
+  const topUpByPo = {};
+  for (const r of [...buckets.funds, ...needsTopUp]) {
+    const po = r.po || '(no PO)';
+    const t = topUpByPo[po] = topUpByPo[po] || { po, site: r.site || '', held: 0, count: 0 };
+    t.held += r.amount || 0; t.count++;
+  }
+  const topUpList = Object.values(topUpByPo).map(t => {
+    const p = poIndex[t.po];
+    return {
+      ...t,
+      poValue: p ? p.ceilingAmount : null,
+      billed: p ? p.consumed : null,
+      available: p ? p.available : null,
+      held: Math.round(t.held * 100) / 100,
+    };
+  }).sort((a, b) => b.held - a.held);
 
   // ── Consolidate by SITE ────────────────────────────────────────────────
   // Funds have to be read per site, not per PO: a site commonly has several POs,
@@ -142,7 +200,7 @@ function analyseBu(invoices, { bu, seasonKey = null, snowOnly = false } = {}) {
 
   return {
     bu, seasonKey, snowOnly,
-    rows, buckets, stalled, stalledRows,
+    rows, buckets, stalled, stalledRows, asks, topUpList,
     bySite, siteList, excessSites, shortSites,
     excess, totalShort, coverable, variance,
     ledger, seasonPos,
@@ -250,6 +308,78 @@ async function buildBuWorkbook(invoices, opts) {
   for (let i = 2; i <= 4; i++) tot.getCell(i).border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
   s1.addRow([]);
   s1.addRow([]);
+
+  // ── What we are actually asking Amazon to do ──
+  section('WHAT WE ARE ASKING FOR');
+  const ah = s1.addRow(['', 'Action', 'Value', 'Invoices', '', '', 'Detail']);
+  ah.eachCell((c, i) => {
+    if (i === 1) return;
+    c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+  });
+  const askRow = (label, v, detail, fill, colour) => {
+    const r = s1.addRow(['', label, v.amount, v.count, '', '', detail]);
+    r.getCell(2).font = { bold: true, size: 11 };
+    r.getCell(3).numFmt = money;
+    r.getCell(3).font = { bold: true, size: 11.5, color: { argb: colour } };
+    r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+    r.getCell(4).alignment = { horizontal: 'center' };
+    r.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+    r.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+    r.height = 32;
+    return r;
+  };
+  askRow('1. Add funds to existing purchase orders', a.asks.addFunds,
+    `${a.topUpList.length} purchase order(s) need more on them. Each one is listed below with its value, what has been billed against it and what is left.`,
+    RED, 'FF991B1B');
+  askRow('2. Issue new purchase orders', a.asks.newPo,
+    a.asks.newPo.count
+      ? `Work at ${a.asks.newPo.sites.length} site(s) has no purchase order at all: ${a.asks.newPo.sites.join(', ')}. We cannot raise an invoice until one exists.`
+      : 'None — every invoice we are holding has a purchase order to go against.',
+    a.asks.newPo.count ? AMBER : GREEN, a.asks.newPo.count ? 'FF92400E' : 'FF166534');
+  askRow('3. Record goods receipts', a.asks.goodsReceipt,
+    'Already submitted and already drawn against the PO. No money needed — these release as soon as the site confirms the work was received.',
+    AMBER, 'FF92400E');
+  s1.addRow([]);
+  const ob = s1.addRow(['', 'For our side: ready to submit, no action needed from Amazon', a.asks.ourBacklog.amount, a.asks.ourBacklog.count, '', '',
+    'These have a purchase order with room on it. We are submitting them — they are listed here only so the totals reconcile.']);
+  ob.getCell(2).font = { italic: true, size: 10.5, color: { argb: 'FF64748B' } };
+  ob.getCell(3).numFmt = money;
+  ob.getCell(3).font = { size: 10.5, color: { argb: 'FF64748B' } };
+  ob.getCell(4).alignment = { horizontal: 'center' };
+  ob.getCell(7).font = { size: 9.5, color: { argb: 'FF475569' } };
+  ob.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+  ob.height = 28;
+  s1.addRow([]);
+
+  // The actionable list: every PO that needs topping up.
+  if (a.topUpList.length) {
+    section('PURCHASE ORDERS THAT NEED MORE FUNDS');
+    const th = s1.addRow(['', 'PO', 'Site', 'PO value', 'Billed against it', 'Left on it', 'Value we cannot bill against it']);
+    th.eachCell((c, i) => {
+      if (i === 1) return;
+      c.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+    });
+    for (const t of a.topUpList) {
+      const r = s1.addRow(['', t.po, t.site, t.poValue, t.billed, t.available, t.held]);
+      [4, 5, 6, 7].forEach(ci => { r.getCell(ci).numFmt = money; });
+      r.getCell(2).font = { bold: true, color: { argb: NAVY } };
+      r.getCell(6).font = { color: { argb: (t.available || 0) < 0 ? 'FF991B1B' : 'FF475569' } };
+      r.getCell(7).font = { bold: true, color: { argb: 'FF991B1B' } };
+      r.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED } };
+    }
+    const tf = s1.addRow(['', `${a.topUpList.length} purchase orders`, '', '', '', '', a.asks.addFunds.amount]);
+    tf.eachCell((c, i) => {
+      if (i === 1) return;
+      c.font = { bold: true, size: 11 };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GRAY } };
+      c.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
+    });
+    tf.getCell(7).numFmt = money;
+    s1.addRow([]);
+    s1.addRow([]);
+  }
 
   section('FUNDING');
   const ex = s1.addRow(['', `Excess funding available in ${a.bu}`, a.excess, a.excessSites.length, '', '',
