@@ -7,7 +7,7 @@ const R = {
   '/api/mentions': { mentions: [], unseenCount: 0 },
 };
 (async () => {
-  const b = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] });
+  const b = await chromium.launch(require('./browser-path').launchOptions({ headless: true, args: ['--disable-gpu'] }));
   const p = await (await b.newContext({ viewport: { width: 1400, height: 900 }, ignoreHTTPSErrors: true })).newPage();
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));

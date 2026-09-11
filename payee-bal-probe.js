@@ -6,7 +6,7 @@ const SESSION_PATH = '/home/ecf-admin/ar-portal/cache/payee-session.json';
 const TEST_PO = process.argv[2] || '2D-19170701';
 
 (async () => {
-  const b = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] });
+  const b = await chromium.launch(require('./browser-path').launchOptions({ headless: true, args: ['--disable-gpu'] }));
   const p = await (await b.newContext({ storageState: SESSION_PATH })).newPage();
   const apis = [];
   p.on('response', async (r) => {

@@ -18,7 +18,7 @@ const MAX_PAGES = 25;
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium-browser', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await chromium.launch(require('./browser-path').launchOptions());
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 
   // ── Login (the one permitted POST) ──

@@ -20,7 +20,8 @@ const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 
-const CHROMIUM_PATH = '/usr/bin/chromium-browser';
+// Resolved per host rather than hard-coded — see browser-path.js.
+const browserPath = require('./browser-path');
 const LOGIN_URL = 'https://www.amazon.com/ap/signin?openid.pape.max_auth_age=3600&openid.return_to=https%3A%2F%2Fpayeecentral.amazon.com%2FInvoices&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_hz_payee_central_us&openid.mode=checkid_setup&language=en_US&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
 const INVOICES_URL = 'https://payeecentral.amazon.com/Invoices';
 const CREATE_INVOICE_URL = 'https://payeecentral.amazon.com/Invoices/CreateInvoice';
@@ -32,11 +33,10 @@ const OPEN_POS_PATH = path.join(__dirname, 'payee-open-pos.json');
 const KEEP_GOING_SEL = '#pc-invoice-search-results-table-fetch-next-batch';
 
 function launchBrowser() {
-  return chromium.launch({
-    executablePath: CHROMIUM_PATH,
+  return chromium.launch(browserPath.launchOptions({
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
+    args: ['--disable-gpu'],
+  }));
 }
 
 async function login(context) {

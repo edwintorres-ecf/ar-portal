@@ -273,10 +273,10 @@ ${autoPrint ? '<script>window.onload = function() { window.print(); }</script>' 
 // payee scrapers). pageNumbers adds "Page X of Y" footers (statements).
 async function htmlToPdf(html, opts = {}) {
   const { chromium } = require('playwright-core');
-  const browser = await chromium.launch({
-    executablePath: '/usr/bin/chromium-browser',
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
+  // Resolved per host rather than hard-coded — see browser-path.js. This exact
+  // line is what returned 500 on every invoice PDF during the 2026-09-08
+  // failover: the path is Linux-only and the standby is a Mac.
+  const browser = await chromium.launch(require('./browser-path').launchOptions());
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load' });

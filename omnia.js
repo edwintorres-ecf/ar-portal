@@ -13,7 +13,10 @@ const path = require('path');
 const { chromium } = require('./node_modules/playwright-core');
 
 const OMNIA_BASE     = 'https://ecf.omnia-sds.com';
-const CHROMIUM_PATH  = '/usr/bin/chromium-browser';
+// Resolved per host rather than hard-coded — see browser-path.js. The literal
+// '/usr/bin/chromium-browser' is a Linux path and silently breaks this module on
+// the iMac standby (Edwin 2026-09-11).
+const browserPath    = require('./browser-path');
 const OMNIA_PREFIXES = /^(S|SPI|AST|ASTM|SS|STM)-/i;
 
 // Token cache
@@ -34,11 +37,10 @@ async function ensureBrowser() {
     } catch {}
   }
   log('Launching Chromium...');
-  _browser = await chromium.launch({
-    executablePath: CHROMIUM_PATH,
+  _browser = await chromium.launch(browserPath.launchOptions({
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
+    args: ['--disable-gpu'],
+  }));
   return _browser;
 }
 
