@@ -5574,6 +5574,11 @@ function renderPendingBySite() {
     if (!s.businessUnit && bu) s.businessUnit = bu;
     return s;
   };
+  // Invoices Amazon is HOLDING never appear in "pending" (which only counts what
+  // we have not submitted) nor in the ledger, so a site could look nearly clear
+  // while half its money was stuck. Grouped server-side; read here by site.
+  const heldBySite = {};
+  for (const h of (_poPendingSites || [])) heldBySite[h.site] = h;
 
   // (1) Capacity from the ledger — ceiling / consumed / available per PO. Pending
   // is ZEROED here and recomputed from invoices below (see why in step 2).
