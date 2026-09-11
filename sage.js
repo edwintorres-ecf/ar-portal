@@ -1267,6 +1267,11 @@ async function getEciInvoiceLines(invoiceId) {
 
 module.exports = {
   SAGE_ENTITY,
+  // Exported so diagnostics build their login the same way the portal does.
+  // ar-full-check.js used to read SAGE_SENDER_PW / SAGE_USER_PW, names that are
+  // not in .env, so it authenticated with blank passwords and returned nothing
+  // (Edwin 2026-09-11).
+  getSageConfig,
   getInvoices,
   enrichLocations,
   enrichDepartments,
