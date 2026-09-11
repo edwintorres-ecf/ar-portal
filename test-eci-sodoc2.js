@@ -1,4 +1,8 @@
 'use strict';
+// DIAGNOSTIC ONLY. This script deliberately queries at BOTH E-ECF and the top
+// level so the two can be compared -- it is the evidence for the rule, not an
+// example of it. Real code always logs in at E-ECF (see sage.js SAGE_ENTITY).
+// Do not copy the ['E-ECF', ''] loop below into anything that feeds the portal.
 require('dotenv').config({ path: '/home/ecf-admin/ar-portal/.env' });
 
 const https = require('https');
