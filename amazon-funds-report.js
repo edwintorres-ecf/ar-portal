@@ -205,6 +205,7 @@ async function buildWorkbook(invoices, opts = {}) {
 
   const NAVY = 'FF1E3A5F', GRAY = 'FFF1F5F9', RED = 'FFFEE2E2', GREEN = 'FFDCFCE7', AMBER = 'FFFEF3C7';
   const label = a.snowOnly ? 'Snow' : 'All services';
+  const inv = (n) => n + (n === 1 ? ' invoice' : ' invoices');
 
   // ── Summary ──
   const s1 = wb.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 3 }] });
@@ -260,12 +261,12 @@ async function buildWorkbook(invoices, opts = {}) {
     s1.getColumn(3).width = Math.max(s1.getColumn(3).width || 0, 14);
     s1.getColumn(4).width = Math.max(s1.getColumn(4).width || 0, 62);
 
-    line('Total open Amazon AR (all services)', R.allAr, R.allCount + ' invoices',
+    line('Total open Amazon AR (all services)', R.allAr, inv(R.allCount),
       'Every open Amazon invoice in Sage. Matches the portal’s OPEN AMAZON AR tiles with no filter.', { bold: true });
     if (a.snowOnly) {
-      line('Less: work not on a snow PO', -R.excluded, '-' + R.excludedCount + ' invoices',
+      line('Less: work not on a snow PO', -R.excluded, '-' + inv(R.excludedCount),
         'Landscaping and other services. Excluded because this report covers snow only.');
-      line('Open Amazon AR on snow POs — scope of this report', R.inScope, R.inScopeCount + ' invoices',
+      line('Open Amazon AR on snow POs — scope of this report', R.inScope, inv(R.inScopeCount),
         'Matches the portal with the snow filter on.', { bold: true, rule: true });
     }
 
@@ -283,13 +284,13 @@ async function buildWorkbook(invoices, opts = {}) {
       'Cancelled': 'Cancelled.',
     };
     for (const st of R.statuses) {
-      line('    ' + st.status, st.amount, st.count + ' invoices', NOTE[st.status] || '',
+      line('    ' + st.status, st.amount, inv(st.count), NOTE[st.status] || '',
         { fill: /Insufficient|Not submitted/.test(st.status) ? AMBER : null });
     }
-    line('    Total', R.inScope, R.inScopeCount + ' invoices', '', { bold: true, rule: true });
+    line('    Total', R.inScope, inv(R.inScopeCount), '', { bold: true, rule: true });
 
     s1.addRow([]);
-    line('“Work we have done but cannot bill” in this report', R.reportPending, R.reportPendingCount + ' invoices',
+    line('“Work we have done but cannot bill” in this report', R.reportPending, inv(R.reportPendingCount),
       'Not submitted plus Rejected: a rejected invoice still has to go back in, so both are work waiting to be billed.',
       { bold: true });
     s1.addRow([]);
@@ -324,13 +325,13 @@ async function buildWorkbook(invoices, opts = {}) {
     // sheet can be sent on its own and still tie to the AR the BU carries.
     const RB = a.recon && a.recon.perBu ? a.recon.perBu[b.bu] : null;
     if (RB) {
-      const rh = ws.addRow([`Open Amazon AR for ${b.bu}${a.snowOnly ? ' on snow POs' : ''}`, '', '', RB.total, '', '', '', '', `${RB.count} invoices`]);
+      const rh = ws.addRow([`Open Amazon AR for ${b.bu}${a.snowOnly ? ' on snow POs' : ''}`, '', '', RB.total, '', '', '', '', inv(RB.count)]);
       rh.getCell(1).font = { bold: true, size: 10.5, color: { argb: NAVY } };
       rh.getCell(4).numFmt = money2;
       rh.getCell(4).font = { bold: true, size: 10.5, color: { argb: NAVY } };
       rh.getCell(9).font = { size: 9, color: { argb: 'FF64748B' } };
       for (const st of RB.statuses) {
-        const r = ws.addRow(['    ' + st.status, '', '', st.amount, '', '', '', '', st.count + ' invoices']);
+        const r = ws.addRow(['    ' + st.status, '', '', st.amount, '', '', '', '', inv(st.count)]);
         r.getCell(1).font = { size: 10, color: { argb: 'FF475569' } };
         r.getCell(4).numFmt = money2;
         r.getCell(4).font = { size: 10, color: { argb: 'FF475569' } };
@@ -339,7 +340,7 @@ async function buildWorkbook(invoices, opts = {}) {
           r.getCell(1).fill = r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBER } };
         }
       }
-      const rt = ws.addRow([`    Of which waiting to be billed (this sheet)`, '', '', b.pending, '', '', '', '', b.invoices + ' invoices']);
+      const rt = ws.addRow([`    Of which waiting to be billed (this sheet)`, '', '', b.pending, '', '', '', '', inv(b.invoices)]);
       rt.getCell(1).font = { bold: true, size: 10, color: { argb: NAVY } };
       rt.getCell(4).numFmt = money2;
       rt.getCell(4).font = { bold: true, size: 10, color: { argb: NAVY } };
