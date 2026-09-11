@@ -575,6 +575,36 @@ async function getInvoices(forceRefresh = false) {
     return da.localeCompare(db2);
   });
 
+  // NEVER replace a healthy cache with nothing. A Sage pull that comes back
+  // empty — auth blip, timeout, a partial response — used to overwrite both
+  // memory and disk, and the whole portal then reported zero AR: no invoices,
+  // no pending, every badge blank. Degrade to STALE, never to WRONG, which is
+  // the posture the scrapers already take (2026-09-11).
+  const prevCount = Array.isArray(_cache) ? _cache.length : 0;
+  if (invoices.length === 0 && prevCount > 0) {
+    console.error(`[sage] REFUSING to cache an empty result — keeping the previous ${prevCount} invoices`);
+    try {
+      require('./ops-alerts').raise('sage-empty-fetch',
+        'Sage returned no invoices',
+        `A refresh came back with 0 invoices while ${prevCount} were cached. The cache was NOT overwritten, so the portal is showing the last good data. Check Sage connectivity.`,
+        { minIntervalHours: 2 });
+    } catch (e) { /* alerting unavailable */ }
+    return _cache;
+  }
+  // A large drop is not necessarily wrong (a big payment run), so it is flagged
+  // rather than blocked.
+  if (prevCount > 100 && invoices.length < prevCount * 0.5) {
+    console.warn(`[sage] invoice count fell from ${prevCount} to ${invoices.length} in one refresh`);
+    try {
+      require('./ops-alerts').raise('sage-count-drop',
+        `Open invoices fell from ${prevCount} to ${invoices.length}`,
+        'More than half the open invoices disappeared in a single refresh. Accepted, but worth confirming against Sage.',
+        { minIntervalHours: 6 });
+    } catch (e) { /* alerting unavailable */ }
+  } else if (invoices.length > 0) {
+    try { require('./ops-alerts').ok('sage-empty-fetch', `${invoices.length} invoices cached`); } catch (e) {}
+  }
+
   _cache = invoices;
   _cacheTs = now;
   console.log('[sage] Cached ' + invoices.length + ' total open invoices at ' + new Date().toISOString());
