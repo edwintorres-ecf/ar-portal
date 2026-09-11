@@ -26,7 +26,9 @@ const EXPLAIN = {
   pgr: 'Submitted to Payee Central and already drawn against the PO, but Amazon has not recorded a goods '
      + 'receipt. NO ADDITIONAL FUNDS ARE NEEDED — this clears when the site confirms the work was received.',
   funds: 'Submitted to Payee Central and held for funding: the purchase order does not have enough left '
-       + 'on it to cover the invoice. NEEDS ADDITIONAL FUNDS on the PO.',
+       + 'on it to cover the invoice. The value shown is the FULL value of those invoices — what we are owed '
+       + 'and cannot collect. How far each PO has to be raised is shown per PO on sheet 2, where the PO value, '
+       + 'what has been billed against it and what is left all sit alongside the held invoices.',
   undeliverable: 'Never submitted. Either no purchase order covers the work, or the PO it belongs to has '
        + 'nothing left on it, so the invoice cannot be raised in Payee Central at all. NEEDS A PO, OR FUNDS ON ONE.',
 };
@@ -219,7 +221,8 @@ async function buildBuWorkbook(invoices, opts) {
   line('Invoice cannot be delivered', a.stalled.undeliverable, RED);
 
   const sub1 = s1.addRow(['', '— requiring additional PO funds', a.stalled.needsFunding.amount, a.stalled.needsFunding.count, '', '',
-    'The two rows above that need money: the funding hold, and the work we cannot raise an invoice for at all. This is what the variance below is measured against.']);
+    'The two rows above that need money: the funding hold, and the work we cannot raise an invoice for at all. '
+    + 'Both are shown at full invoice value — the amount we are owed — not at the amount by which each PO falls short.']);
   sub1.getCell(2).font = { bold: true, size: 10.5, color: { argb: 'FF991B1B' } };
   sub1.getCell(3).numFmt = money;
   sub1.getCell(3).font = { bold: true, size: 11, color: { argb: 'FF991B1B' } };
@@ -262,9 +265,10 @@ async function buildBuWorkbook(invoices, opts) {
 
   const shortfall = a.variance > 0 ? a.variance : 0;
   const va = s1.addRow(['', 'Variance of funding needed', shortfall, a.shortSites.length, '', '',
-    a.variance > 0
-      ? `New funding still required after moving every spare dollar from the ${a.excessSites.length} site(s) that have some, into the ${a.shortSites.length} that are short.`
-      : 'None — the sites with spare funds hold enough to cover every site that is short.']);
+    (a.variance > 0
+      ? `New funding still required after moving every spare dollar from the ${a.excessSites.length} site(s) that have some, into the ${a.shortSites.length} that are short. `
+      : 'None — the sites with spare funds hold enough to cover every site that is short. ')
+    + 'Calculated as the full value of what needs funding at each site, less the funds already on that site’s POs.']);
   va.getCell(2).font = { bold: true, size: 11 };
   va.getCell(3).numFmt = money;
   va.getCell(3).font = { bold: true, size: 12, color: { argb: a.variance > 0 ? 'FF991B1B' : 'FF166534' } };
