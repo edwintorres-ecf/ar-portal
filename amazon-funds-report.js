@@ -780,7 +780,7 @@ function buildDeck(analysis) {
   // 5 — held for lack of funds, on a PO that already has the funds.
   if (showRelease) {
     const lead = U.releaseSites[0];
-    slide(5, 'Nothing to approve here', 'Some of it is held against money you have already put on the PO');
+    slide(5, 'Nothing to approve here', 'Held against money already on the PO');
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
       .text('These invoices are sitting in "Insufficient PO Funds Hold". The purchase order they were billed'
         + ' to is not short — your own PO page shows the money on it. The hold was never lifted after the'
