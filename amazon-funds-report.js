@@ -193,7 +193,40 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
     };
   })();
 
-  return { sites, buList, closedWithFunds, neverUsed, totals, recon, snowOnly, season, seasonKey };
+  // ── POs that already cover more than one site ─────────────────────────────
+  // The obvious answer to "move the money" is "purchase orders are per site,
+  // that is how it works". They are not always. Amazon has issued blanket POs
+  // that carry invoices from several sites, so a consolidated PO is something
+  // that has already been done rather than something new we are asking for
+  // (Edwin 2026-09-14, pointing at 2D-20105615).
+  //
+  // Counted from OPEN invoices only, because a paid invoice drops out of the
+  // Sage cache. That makes every site count here a FLOOR, never a total —
+  // 2D-20105615 reads as 2 sites and Edwin knows it covers 4.
+  const multiSitePos = (() => {
+    let rows2 = [];
+    try { rows2 = siteLedger.buildAmazonRows(invoices, { payee }); } catch (e) { return []; }
+    const byPo = {}; for (const p of ledger) byPo[p.poNumber] = p;
+    const seen = {};
+    for (const r of rows2) {
+      if (!r.po || !r.site) continue;
+      if (snowOnly && !(byPo[r.po] && byPo[r.po].serviceType === 'snow')) continue;
+      (seen[r.po] = seen[r.po] || new Set()).add(r.site);
+    }
+    return Object.entries(seen)
+      .filter(([, s]) => s.size > 1)
+      .map(([po, s]) => {
+        const L = byPo[po] || {};
+        return {
+          poNumber: po, sites: [...s].sort(), siteCount: s.size,
+          value: L.ceilingAmount || 0, available: L.available || 0,
+          labelledSite: L.siteCode || null, businessUnit: L.businessUnit || '',
+        };
+      })
+      .sort((x, y) => y.siteCount - x.siteCount || y.value - x.value);
+  })();
+
+  return { sites, buList, closedWithFunds, neverUsed, totals, recon, multiSitePos, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
@@ -425,12 +458,17 @@ function buildDeck(analysis) {
   const NAVY = '#1e3a5f', RED = '#b91c1c', GREEN = '#166534', GREY = '#64748b', AMBER = '#b45309';
   const W = 792, H = 612;
 
+  // The multi-site slide only earns its place if there are real examples, so the
+  // deck length is not fixed — the footer counts what is actually being shown.
+  const showMultiSite = (a.multiSitePos || []).length > 0;
+  const TOTAL_SLIDES = showMultiSite ? 6 : 5;
+
   const slide = (n, kicker, title) => {
     if (n > 1) doc.addPage({ size: [792, 612], margin: 0 });
     doc.rect(0, 0, W, 8).fill(NAVY);
     doc.fillColor(GREY).fontSize(10).font('Helvetica-Bold').text(String(kicker).toUpperCase(), 56, 44, { characterSpacing: 1.2 });
     doc.fillColor(NAVY).fontSize(26).font('Helvetica-Bold').text(title, 56, 62, { width: W - 112 });
-    doc.fillColor('#94a3b8').fontSize(9).font('Helvetica').text(`East Coast Facilities · ${n} of 5`, 56, H - 38);
+    doc.fillColor('#94a3b8').fontSize(9).font('Helvetica').text(`East Coast Facilities · ${n} of ${TOTAL_SLIDES}`, 56, H - 38);
   };
   const stat = (x, y, value, caption, color) => {
     doc.fillColor(color || NAVY).fontSize(30).font('Helvetica-Bold').text(value, x, y, { width: 220 });
@@ -552,8 +590,48 @@ function buildDeck(analysis) {
     y += 32;
   }
 
-  // 5 — the ask
-  slide(5, 'What we\u2019re asking', 'Three things, and we can close the season out clean');
+  // 5 — a PO can already cover several sites. This pre-empts the one objection
+  // that would sink the whole ask: "POs are per site, that is how it works."
+  if (showMultiSite) {
+    const ms = a.multiSitePos;
+    const lead = ms[0];
+    slide(5, 'It has already been done', 'A purchase order can cover more than one site');
+    doc.fillColor(GREY).fontSize(12).font('Helvetica')
+      .text('We are not asking for a new kind of purchase order. Some of the POs already open on our account'
+        + ' carry invoices from several different sites. These are the ones we can see.', 56, 118, { width: W - 112, lineGap: 3 });
+
+    let yy = 176;
+    doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
+    doc.text('PURCHASE ORDER', 56, yy); doc.text('SITES IT COVERS', 200, yy);
+    doc.text('WHAT IT WAS FOR', 500, yy, { width: 118, align: 'right' });
+    doc.text('LEFT ON IT', 640, yy, { width: 96, align: 'right' });
+    yy += 18;
+    doc.moveTo(56, yy).lineTo(W - 56, yy).lineWidth(0.8).stroke('#cbd5e1');
+    yy += 12;
+    for (const p of ms.slice(0, 5)) {
+      doc.fillColor(NAVY).fontSize(12.5).font('Helvetica-Bold').text(p.poNumber, 56, yy);
+      doc.fillColor('#1f2937').fontSize(12.5).font('Helvetica')
+        .text(p.sites.join(' \u00b7 ') + '  (' + p.siteCount + '+)', 200, yy, { width: 290 });
+      doc.fillColor('#1f2937').text(money(p.value), 500, yy, { width: 118, align: 'right' });
+      doc.fillColor(p.available > 0 ? GREEN : GREY).text(money(p.available), 640, yy, { width: 96, align: 'right' });
+      yy += 30;
+    }
+
+    doc.roundedRect(56, 400, W - 112, 140, 8).fill('#f0fdf4');
+    doc.fillColor(GREEN).fontSize(17).font('Helvetica-Bold')
+      .text('So the fix is something your team already knows how to do.', 80, 428);
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
+      .text(lead.poNumber + ' alone spans several of our sites on a single ' + money(lead.value)
+        + ' order. One PO covering a group of sites in the same business unit would let the money follow the storms,'
+        + ' instead of being committed to a single site months before anyone knows where the snow will fall.',
+        80, 458, { width: W - 160, lineGap: 4 });
+    doc.fillColor('#94a3b8').fontSize(8.5).font('Helvetica')
+      .text('Site counts are what we can still see from invoices open on our side, so a PO may cover more sites than are listed.',
+        56, H - 52, { width: W - 112 });
+  }
+
+  // 6 — the ask
+  slide(showMultiSite ? 6 : 5, 'What we\u2019re asking', 'Three things, and we can close the season out clean');
   bullet(155, `Move the money to where the snow was. ${money(a.totals.coverable)} of what we can\u2019t bill is already sitting`
     + ` unused in the same business unit. You don\u2019t need to approve anything new — it just needs to be on the right PO.`, RED);
   bullet(245, `Top up the sites that have nothing left. These are the ones our invoices sit on longest, and they\u2019re the`
