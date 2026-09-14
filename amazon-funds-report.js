@@ -211,10 +211,15 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
     for (const p of ledger) {
       if (!p.siteCode) continue;
       if (snowOnly && p.serviceType !== 'snow') continue;
-      const foreign = rows2.filter(r => r.po === p.poNumber && r.site && r.site !== p.siteCode);
+      // Compare against EVERY site the PO document names, not just the first.
+      // 2D-20105615 covers DBL1, DJR5, DPP1 and DYY8 — its DJR5 and DPP1
+      // invoices are correctly billed, and reading only `siteCode` reported 20
+      // of them as mis-billed (Edwin 2026-09-14).
+      const own = new Set((p.lineSites && p.lineSites.length ? p.lineSites : [p.siteCode]));
+      const foreign = rows2.filter(r => r.po === p.poNumber && r.site && !own.has(r.site));
       if (!foreign.length) continue;
       out.push({
-        poNumber: p.poNumber, poSite: p.siteCode, businessUnit: p.businessUnit || '',
+        poNumber: p.poNumber, poSite: p.siteCode, poSites: [...own], businessUnit: p.businessUnit || '',
         value: p.ceilingAmount || 0, available: p.available || 0,
         amount: Math.round(foreign.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100,
         count: foreign.length,
@@ -224,7 +229,20 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
     return out.sort((x, y) => y.amount - x.amount);
   })();
 
-  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, snowOnly, season, seasonKey };
+  // POs the DOCUMENT shows covering more than one site. Read off the PO's line
+  // items via poLedger.poLineSites — never inferred from what we billed against
+  // it, which is the mistake that produced a slide Edwin's PO documents
+  // disproved on 2026-09-14.
+  const multiSitePos = ledger
+    .filter(p => p.multiSite && (!snowOnly || p.serviceType === 'snow'))
+    .map(p => ({
+      poNumber: p.poNumber, sites: p.lineSites, siteCount: p.lineSites.length,
+      value: p.ceilingAmount || 0, available: p.available || 0,
+      businessUnit: p.businessUnit || '', shipTo: p.docSiteCode || null,
+    }))
+    .sort((x, y) => y.siteCount - x.siteCount || y.value - x.value);
+
+  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, multiSitePos, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
@@ -456,13 +474,14 @@ function buildDeck(analysis) {
   const NAVY = '#1e3a5f', RED = '#b91c1c', GREEN = '#166534', GREY = '#64748b', AMBER = '#b45309';
   const W = 792, H = 612;
 
-  // Five slides. A sixth was added on 2026-09-14 claiming Amazon already issues
-  // POs spanning several sites, inferred from POs carrying invoices from more
-  // than one site. The PO documents disproved it — those are our own
-  // mis-billings — and it was removed before the deck went anywhere. Do not
-  // reintroduce a claim about a PO's SCOPE from invoice data; only the PO
-  // document establishes scope.
-  const TOTAL_SLIDES = 5;
+  // The multi-site slide is DOCUMENT-backed. An earlier version inferred it from
+  // POs carrying invoices with more than one site code; Edwin's PO documents
+  // showed those were single-site POs and the extra codes were our own
+  // mis-billing, so it was pulled. It is back only because `multiSitePos` now
+  // reads the PO's LINE ITEMS. Never reintroduce a claim about a PO's scope
+  // from invoice data (2026-09-14).
+  const showMultiSite = (a.multiSitePos || []).length > 0;
+  const TOTAL_SLIDES = showMultiSite ? 6 : 5;
 
   const slide = (n, kicker, title) => {
     if (n > 1) doc.addPage({ size: [792, 612], margin: 0 });
@@ -591,8 +610,40 @@ function buildDeck(analysis) {
     y += 32;
   }
 
-  // 5 — the ask
-  slide(5, 'What we\u2019re asking', 'Three things, and we can close the season out clean');
+  // 5 — a PO can cover several sites, and one of Amazon's already does.
+  if (showMultiSite) {
+    const ms = a.multiSitePos;
+    const lead = ms[0];
+    slide(5, 'It has already been done', 'One purchase order can cover several sites');
+    doc.fillColor(GREY).fontSize(12).font('Helvetica')
+      .text('We are not asking for a new kind of purchase order. One you have already issued covers'
+        + ` ${lead.siteCount} of our sites on a single order — each site its own line.`, 56, 118, { width: W - 112, lineGap: 3 });
+
+    doc.roundedRect(56, 168, W - 112, 150, 8).fill('#f8fafc');
+    doc.fillColor(NAVY).fontSize(20).font('Helvetica-Bold').text(lead.poNumber, 80, 192);
+    doc.fillColor(GREY).fontSize(10.5).font('Helvetica')
+      .text(`${money(lead.value)} · ${money(lead.available)} still available` + (lead.shipTo ? ` · ships to ${lead.shipTo}` : ''), 80, 218);
+    let xx = 80;
+    for (const site of lead.sites) {
+      doc.roundedRect(xx, 246, 104, 50, 6).fill('#e0f2fe');
+      doc.fillColor('#0369a1').fontSize(17).font('Helvetica-Bold').text(site, xx, 262, { width: 104, align: 'center' });
+      xx += 116;
+    }
+
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
+      .text('That is exactly the shape we are asking for. One order covering a group of sites in the same'
+        + ' business unit lets the money follow the storms, instead of being committed to a single site'
+        + ' months before anyone knows where the snow will fall.', 56, 346, { width: W - 112, lineGap: 4 });
+
+    doc.roundedRect(56, 424, W - 112, 116, 8).fill('#f0fdf4');
+    doc.fillColor(GREEN).fontSize(16).font('Helvetica-Bold').text('Nothing new to approve, and nothing new to build.', 80, 450);
+    doc.fillColor('#1f2937').fontSize(13).font('Helvetica')
+      .text('The money is already committed. Grouping it the way this order is already grouped is the whole fix.',
+        80, 478, { width: W - 160, lineGap: 4 });
+  }
+
+  // 6 — the ask
+  slide(showMultiSite ? 6 : 5, 'What we\u2019re asking', 'Three things, and we can close the season out clean');
   bullet(155, `Move the money to where the snow was. ${money(a.totals.coverable)} of what we can\u2019t bill is already sitting`
     + ` unused in the same business unit. You don\u2019t need to approve anything new — it just needs to be on the right PO.`, RED);
   bullet(245, `Top up the sites that have nothing left. These are the ones our invoices sit on longest, and they\u2019re the`
