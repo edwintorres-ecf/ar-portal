@@ -3475,17 +3475,21 @@ app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
 app.get('/api/po/funds-case-study.pdf', requireAuth, async (req, res) => {
   try {
     const snowOnly = req.query.snow !== '0';
+    // ?bu=NACF narrows the whole deck to one business unit, so it can go to the
+    // team that owns it without showing another unit's numbers.
+    const bu = String(req.query.bu || '').trim() || null;
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
     const mod = require('./amazon-funds-report');
-    const analysis = mod.analyse(invoices, { snowOnly });
-    db.auditLog(req.session.user.email, 'export_case_study', null,
+    const analysis = mod.analyse(invoices, { snowOnly, bu });
+    if (bu && !analysis.sites.length) return res.status(404).json({ error: `No ${snowOnly ? 'snow ' : ''}sites for business unit ${bu}` });
+    db.auditLog(req.session.user.email, 'export_case_study', bu,
       `${snowOnly ? 'snow' : 'all'} — pending ${Math.round(analysis.totals.pending)}`);
     res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
     res.setHeader('CDN-Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-po-funding-case-study${snowOnly ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-case-study${bu ? '-' + bu.replace(/[^A-Za-z0-9]+/g, '-') : ''}${snowOnly ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.pdf"`);
     mod.buildDeck(analysis).pipe(res);
   } catch (e) {
     console.error('[api] case-study error:', e.message);

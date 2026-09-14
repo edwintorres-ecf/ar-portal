@@ -5527,8 +5527,15 @@ async function assignInvoiceSite(recordNo, invoiceId, currentSite) {
 function exportFundsReport() {
   window.location = `/api/po/funds-report.xlsx?snow=${_pbsSnowOnly ? 1 : 0}&t=${Date.now()}`;
 }
+// Uses the BU already picked in the filter bar when there is exactly one, so a
+// single-unit deck is one click. With no BU picked you get the combined deck.
 function exportCaseStudy() {
-  window.location = `/api/po/funds-case-study.pdf?snow=${_pbsSnowOnly ? 1 : 0}&t=${Date.now()}`;
+  let bu = _poFilterBu.length === 1 ? _poFilterBu[0] : null;
+  if (bu === '(none)') bu = '(not in the Amazon master)';
+  window.location = `/api/po/funds-case-study.pdf?snow=${_pbsSnowOnly ? 1 : 0}`
+    + (bu ? '&bu=' + encodeURIComponent(bu) : '')
+    + `&t=${Date.now()}`;
+  showToast(bu ? `Building the ${bu} case study…` : 'Building the combined case study…', 'info');
 }
 
 // One workbook per business unit — summary, detail by PO, detail by site code.
@@ -5866,7 +5873,7 @@ function renderPendingBySite() {
       <span style="margin-left:auto"></span>
       <button class="btn" style="font-size:11px;padding:4px 10px" onclick="exportPendingBySiteXlsx()">⬇ Export Excel</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="Summary sheet plus one sheet per business unit, showing where funds are short and where they are sitting unused" onclick="exportFundsReport()">📊 Funds report by BU</button>
-      <button class="btn" style="font-size:11px;padding:4px 10px" title="Five-slide case study for Amazon, built from this data" onclick="exportCaseStudy()">📑 Case study (PDF)</button>
+      <button class="btn" style="font-size:11px;padding:4px 10px" title="Case study deck for Amazon, built from this data. Pick a single business unit in the filter bar above for a deck scoped to it." onclick="exportCaseStudy()">📑 Case study (PDF)</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="One workbook per business unit: summary of stalled billing, detail by PO, detail by site code" onclick="exportBuWorkbook()">📘 BU workbook</button>
     </div>
     ${buStrip}
