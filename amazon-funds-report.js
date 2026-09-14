@@ -518,9 +518,9 @@ function buildDeck(analysis) {
   const svc = a.snowOnly ? 'snow removal' : 'all services';
 
   // 1 — the headline
-  slide(1, 'Where we are', `We've done the work. We can't send you the bill.`);
+  slide(1, a.bu ? `Where we are \u00b7 ${a.bu}` : 'Where we are', `We've done the work. We can't send you the bill.`);
   doc.fillColor(GREY).fontSize(12).font('Helvetica')
-    .text(`Our crews have cleared ${a.totals.sites} of your sites this season. The work is finished and your teams have`
+    .text(`Our crews have cleared ${a.totals.sites} of your ${a.bu ? a.bu + ' ' : ''}sites this season. The work is finished and your teams have`
       + ` signed off on it. We still can't invoice ${money(a.totals.pending)} of it, because the purchase order at those`
       + ` sites has nothing left on it to bill against.`, 56, 118, { width: W - 112, lineGap: 3 });
   stat(56, 214, money(a.totals.pending), 'of finished work we cannot bill', RED);
@@ -571,14 +571,20 @@ function buildDeck(analysis) {
         + ` and the sites that got hit can't be billed. ${worstBu.bu} is holding ${money(worstBu.surplus)} it hasn't used,`
         + ` against ${money(worstBu.shortfall)} of work we can't invoice.`, 56, 396, { width: W - 112, lineGap: 4 });
     doc.fillColor(AMBER).fontSize(14).font('Helvetica-Bold')
-      .text(`It looks like this in every business unit. The next page shows each one against its own budget.`, 56, 462, { width: W - 112, lineGap: 4 });
+      .text(a.bu
+        ? `It looks like this across ${a.bu}. The next page shows every site against its own budget.`
+        : 'It looks like this in every business unit. The next page shows each one against its own budget.',
+        56, 462, { width: W - 112, lineGap: 4 });
   }
 
+  // `y` is shared with slide 4 below, so it is declared out here rather than
+  // inside either branch of slide 3.
+  let y;
   // 3 — scale. For a single-BU deck the business-unit table is one row, which
   // says nothing; the useful breakdown there is SITE by SITE.
   if (a.bu) {
     slide(3, 'The whole picture', `Where ${a.bu} stands, site by site`);
-    let y = 150;
+    y = 150;
     const shortSites = a.sites.filter(s => Math.max(0, (s.pending || 0) - Math.max(0, s.available || 0)) > 0)
       .sort((x, y2) => (Math.max(0, (y2.pending || 0) - Math.max(0, y2.available || 0))) - (Math.max(0, (x.pending || 0) - Math.max(0, x.available || 0))));
     const spareSites = a.sites.filter(s => Math.max(0, (s.available || 0) - (s.pending || 0)) > 0)
@@ -617,7 +623,7 @@ function buildDeck(analysis) {
       .text(`${money(b0.coverable)} of the shortfall is already sitting inside ${a.bu}. It does not need approving, only moving.`,
         56, y + 52, { width: W - 112, lineGap: 3 });
   } else {
-  let y = 150;
+    y = 150;
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
       .text('Each row stands on its own budget. We are not asking any business unit to fund another.', 56, 118, { width: W - 112 });
     doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
@@ -649,7 +655,7 @@ function buildDeck(analysis) {
   }
 
   // 4 — closed POs
-  slide(4, 'One more thing worth fixing', 'Some POs get closed with money still on them');
+  slide(4, 'One more thing worth fixing', a.bu ? `${a.bu} POs closed with money still on them` : 'Some POs get closed with money still on them');
   doc.fillColor(GREY).fontSize(12).font('Helvetica')
     .text(`Once a purchase order is closed, we can\u2019t bill against it at all. ${a.totals.closedCount} have been closed`
       + ` with ${money(a.totals.closedFunds)} still on them`
