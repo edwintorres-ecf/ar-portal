@@ -545,9 +545,20 @@ function buildDeck(analysis) {
     : a.buList
       .filter(b => b.coverable > 0 && b.starved.length && b.surplusSites.length)
       .sort((x, y) => y.coverable - x.coverable)[0];
-  slide(2, 'How it happens', 'The money and the snow end up in different places');
-  if (worstBu) {
-    const st = worstBu.starved[0], su = worstBu.surplusSites.slice(0, 2);
+  // A single-BU deck may have no site that clears the "starved" threshold, or
+  // none with spare funds. Fall back to the biggest shortfall and the biggest
+  // surplus at ANY of its sites; if even that is empty, say so plainly rather
+  // than rendering a panel with no site in it (it used to throw on GSF).
+  const shortOf = (x) => Math.max(0, (x.pending || 0) - Math.max(0, x.available || 0));
+  const spareOf = (x) => Math.max(0, (x.available || 0) - (x.pending || 0));
+  const st = worstBu && (worstBu.starved[0]
+    || [...worstBu.sites].filter(x => shortOf(x) > 0).sort((p, q) => shortOf(q) - shortOf(p))[0]);
+  const su = worstBu && (worstBu.surplusSites.length ? worstBu.surplusSites.slice(0, 2)
+    : [...worstBu.sites].filter(x => spareOf(x) > 0).sort((p, q) => spareOf(q) - spareOf(p)).slice(0, 2));
+
+  slide(2, 'How it happens', st ? 'The money and the snow end up in different places'
+    : `${a.bu || 'This book'} is funded — the work just has not been billed yet`);
+  if (worstBu && st) {
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
       .text(`Take ${worstBu.bu} on its own. Both sites below are ${worstBu.bu} — we are not comparing across`
         + ` business units anywhere in this deck.`, 56, 118, { width: W - 112 });
@@ -575,6 +586,15 @@ function buildDeck(analysis) {
         ? `It looks like this across ${a.bu}. The next page shows every site against its own budget.`
         : 'It looks like this in every business unit. The next page shows each one against its own budget.',
         56, 462, { width: W - 112, lineGap: 4 });
+  } else {
+    doc.fillColor(GREY).fontSize(13).font('Helvetica')
+      .text(`Every site here has a purchase order with room on it. What is outstanding is work we have not`
+        + ` submitted yet, not work you have not funded — so there is nothing to ask for on this one.`,
+        56, 130, { width: W - 112, lineGap: 4 });
+    const b0 = a.buList[0] || {};
+    stat(56, 220, money(a.totals.pending), 'still to be billed', NAVY);
+    stat(300, 220, money(b0.surplus || 0), 'available on the POs behind it', GREEN);
+    stat(544, 220, String(a.totals.sites), 'sites', GREY);
   }
 
   // `y` is shared with slide 4 below, so it is declared out here rather than
