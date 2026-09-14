@@ -45,10 +45,25 @@ function poInSeason(r, season) {
   return t >= season.start && t < season.end;
 }
 
-function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
+// `bu` narrows the whole analysis to one business unit, so a deck can be sent to
+// the team that owns it without exposing another unit's numbers. Everything
+// downstream — sites, ledger, closed POs, the AR reconciliation, the multi-site
+// example — is filtered at source rather than at render time, so no total can
+// quietly include a site the reader cannot see (Edwin 2026-09-14).
+//
+// A site with no business unit in the Amazon master is reachable as
+// '(not in the Amazon master)', matching the label used everywhere else.
+function analyse(invoices, { snowOnly = true, seasonKey = null, bu = null } = {}) {
   const season = seasonKey ? SEASONS[seasonKey] : null;
-  const sites = poLedger.getPendingBySite(invoices, { snowOnly });
-  const ledger = poLedger.getPoLedger(invoices);
+  const NO_BU = '(not in the Amazon master)';
+  const inBu = (v) => !bu || (v || NO_BU) === bu;
+
+  let sites = poLedger.getPendingBySite(invoices, { snowOnly });
+  let ledger = poLedger.getPoLedger(invoices);
+  if (bu) {
+    sites = sites.filter(s => inBu(s.businessUnit));
+    ledger = ledger.filter(p => inBu(p.businessUnit));
+  }
   let rows = snowOnly ? ledger.filter(r => r.serviceType === 'snow') : ledger;
 
   if (season) {
@@ -152,6 +167,7 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
 
     // Snow is a property of the PO, not the invoice. Same rule as everywhere else.
     const snowPos = new Set(ledger.filter(p => p.serviceType === 'snow').map(p => p.poNumber));
+    if (bu) allRows = allRows.filter(r => inBu(r.businessUnit));
     const inScope = snowOnly ? allRows.filter(r => snowPos.has(r.po)) : allRows;
     const sum = (list) => Math.round(list.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100;
 
@@ -242,7 +258,7 @@ function analyse(invoices, { snowOnly = true, seasonKey = null } = {}) {
     }))
     .sort((x, y) => y.siteCount - x.siteCount || y.value - x.value);
 
-  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, multiSitePos, snowOnly, season, seasonKey };
+  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, multiSitePos, bu, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
@@ -488,7 +504,7 @@ function buildDeck(analysis) {
     doc.rect(0, 0, W, 8).fill(NAVY);
     doc.fillColor(GREY).fontSize(10).font('Helvetica-Bold').text(String(kicker).toUpperCase(), 56, 44, { characterSpacing: 1.2 });
     doc.fillColor(NAVY).fontSize(26).font('Helvetica-Bold').text(title, 56, 62, { width: W - 112 });
-    doc.fillColor('#94a3b8').fontSize(9).font('Helvetica').text(`East Coast Facilities · ${n} of ${TOTAL_SLIDES}`, 56, H - 38);
+    doc.fillColor('#94a3b8').fontSize(9).font('Helvetica').text(`East Coast Facilities${a.bu ? ' · ' + a.bu : ''} · ${n} of ${TOTAL_SLIDES}`, 56, H - 38);
   };
   const stat = (x, y, value, caption, color) => {
     doc.fillColor(color || NAVY).fontSize(30).font('Helvetica-Bold').text(value, x, y, { width: 220 });
@@ -521,9 +537,14 @@ function buildDeck(analysis) {
       + ` Nothing new needs to be committed. It just needs to be where the work is.`, 80, 402, { width: W - 160, lineGap: 4 });
 
   // 2 — the mechanism, using the clearest real example
-  const worstBu = a.buList
-    .filter(b => b.coverable > 0 && b.starved.length && b.surplusSites.length)
-    .sort((x, y) => y.coverable - x.coverable)[0];
+  // For a single-BU deck there is only one candidate, and it must be shown even
+  // if its starved/surplus lists are thin — otherwise the deck silently loses
+  // its central slide.
+  const worstBu = a.bu
+    ? a.buList.find(b => b.starved.length && b.surplusSites.length) || a.buList[0]
+    : a.buList
+      .filter(b => b.coverable > 0 && b.starved.length && b.surplusSites.length)
+      .sort((x, y) => y.coverable - x.coverable)[0];
   slide(2, 'How it happens', 'The money and the snow end up in different places');
   if (worstBu) {
     const st = worstBu.starved[0], su = worstBu.surplusSites.slice(0, 2);
@@ -553,37 +574,79 @@ function buildDeck(analysis) {
       .text(`It looks like this in every business unit. The next page shows each one against its own budget.`, 56, 462, { width: W - 112, lineGap: 4 });
   }
 
-  // 3 — scale, by business unit
-  slide(3, 'The whole picture', 'Every business unit already has the money it needs');
+  // 3 — scale. For a single-BU deck the business-unit table is one row, which
+  // says nothing; the useful breakdown there is SITE by SITE.
+  if (a.bu) {
+    slide(3, 'The whole picture', `Where ${a.bu} stands, site by site`);
+    let y = 150;
+    const shortSites = a.sites.filter(s => Math.max(0, (s.pending || 0) - Math.max(0, s.available || 0)) > 0)
+      .sort((x, y2) => (Math.max(0, (y2.pending || 0) - Math.max(0, y2.available || 0))) - (Math.max(0, (x.pending || 0) - Math.max(0, x.available || 0))));
+    const spareSites = a.sites.filter(s => Math.max(0, (s.available || 0) - (s.pending || 0)) > 0)
+      .sort((x, y2) => (Math.max(0, (y2.available || 0) - (y2.pending || 0))) - (Math.max(0, (x.available || 0) - (x.pending || 0))));
+    doc.fillColor(GREY).fontSize(12).font('Helvetica')
+      .text(`${shortSites.length} ${a.bu} site${shortSites.length === 1 ? '' : 's'} cannot bill what they have already done.`
+        + ` ${spareSites.length} hold funds with no work waiting. Same budget, same winter.`, 56, 118, { width: W - 112 });
+    doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
+    doc.text('SITES THAT ARE SHORT', 56, y); doc.text('SHORT BY', 214, y, { width: 100, align: 'right' });
+    doc.text('SITES WITH FUNDS SPARE', 430, y); doc.text('SPARE', 640, y, { width: 96, align: 'right' });
+    y += 18;
+    doc.moveTo(56, y).lineTo(330, y).lineWidth(0.8).stroke('#cbd5e1');
+    doc.moveTo(430, y).lineTo(W - 56, y).lineWidth(0.8).stroke('#cbd5e1');
+    y += 10;
+    const N = Math.min(9, Math.max(shortSites.length, spareSites.length));
+    for (let k = 0; k < N; k++) {
+      const sh = shortSites[k], sp = spareSites[k];
+      if (sh) {
+        doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(sh.site, 56, y, { width: 150 });
+        doc.fillColor(RED).font('Helvetica').text(money(Math.max(0, (sh.pending || 0) - Math.max(0, sh.available || 0))), 214, y, { width: 100, align: 'right' });
+      }
+      if (sp) {
+        doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(sp.site, 430, y, { width: 150 });
+        doc.fillColor(GREEN).font('Helvetica').text(money(Math.max(0, (sp.available || 0) - (sp.pending || 0))), 640, y, { width: 96, align: 'right' });
+      }
+      y += 26;
+    }
+    const b0 = a.buList[0] || { shortfall: 0, surplus: 0, coverable: 0 };
+    doc.moveTo(56, y + 4).lineTo(330, y + 4).lineWidth(0.8).stroke('#cbd5e1');
+    doc.moveTo(430, y + 4).lineTo(W - 56, y + 4).lineWidth(0.8).stroke('#cbd5e1');
+    doc.fillColor(NAVY).fontSize(12.5).font('Helvetica-Bold').text('Total short', 56, y + 16);
+    doc.fillColor(RED).text(money(b0.shortfall), 214, y + 16, { width: 100, align: 'right' });
+    doc.fillColor(NAVY).text('Total spare', 430, y + 16);
+    doc.fillColor(GREEN).text(money(b0.surplus), 640, y + 16, { width: 96, align: 'right' });
+    doc.fillColor(AMBER).fontSize(13).font('Helvetica-Bold')
+      .text(`${money(b0.coverable)} of the shortfall is already sitting inside ${a.bu}. It does not need approving, only moving.`,
+        56, y + 52, { width: W - 112, lineGap: 3 });
+  } else {
   let y = 150;
-  doc.fillColor(GREY).fontSize(12).font('Helvetica')
-    .text('Each row stands on its own budget. We are not asking any business unit to fund another.', 56, 118, { width: W - 112 });
-  doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
-  doc.text('BUSINESS UNIT', 56, y); doc.text('SITES', 214, y); doc.text('WORK WE\u2019VE DONE', 268, y, { width: 118, align: 'right' });
-  doc.text('CAN\u2019T BILL YET', 400, y, { width: 112, align: 'right' });
-  doc.text('UNUSED, SAME BU', 524, y, { width: 118, align: 'right' }); doc.text('COULD BE FREED', 654, y, { width: 96, align: 'right' });
-  y += 18;
-  doc.moveTo(56, y).lineTo(W - 56, y).lineWidth(0.8).stroke('#cbd5e1');
-  y += 10;
-  for (const b of a.buList.filter(x => x.pending > 0 || x.available > 0).slice(0, 8)) {
-    doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(b.bu, 56, y, { width: 156 });
-    doc.fillColor('#1f2937').fontSize(11.5).font('Helvetica').text(String(b.sites.length), 214, y);
-    doc.text(money(b.pending), 268, y, { width: 118, align: 'right' });
-    doc.fillColor(b.shortfall > 0 ? RED : '#94a3b8').text(b.shortfall > 0 ? money(b.shortfall) : '—', 400, y, { width: 112, align: 'right' });
-    doc.fillColor(GREEN).text(money(b.surplus), 524, y, { width: 118, align: 'right' });
-    doc.fillColor(b.coverable > 0 ? AMBER : '#94a3b8').font(b.coverable > 0 ? 'Helvetica-Bold' : 'Helvetica')
-      .text(b.coverable > 0 ? money(b.coverable) : '—', 654, y, { width: 96, align: 'right' });
-    y += 32;
+    doc.fillColor(GREY).fontSize(12).font('Helvetica')
+      .text('Each row stands on its own budget. We are not asking any business unit to fund another.', 56, 118, { width: W - 112 });
+    doc.fillColor(GREY).fontSize(9.5).font('Helvetica-Bold');
+    doc.text('BUSINESS UNIT', 56, y); doc.text('SITES', 214, y); doc.text('WORK WE\u2019VE DONE', 268, y, { width: 118, align: 'right' });
+    doc.text('CAN\u2019T BILL YET', 400, y, { width: 112, align: 'right' });
+    doc.text('UNUSED, SAME BU', 524, y, { width: 118, align: 'right' }); doc.text('COULD BE FREED', 654, y, { width: 96, align: 'right' });
+    y += 18;
+    doc.moveTo(56, y).lineTo(W - 56, y).lineWidth(0.8).stroke('#cbd5e1');
+    y += 10;
+    for (const b of a.buList.filter(x => x.pending > 0 || x.available > 0).slice(0, 8)) {
+      doc.fillColor(NAVY).fontSize(11.5).font('Helvetica-Bold').text(b.bu, 56, y, { width: 156 });
+      doc.fillColor('#1f2937').fontSize(11.5).font('Helvetica').text(String(b.sites.length), 214, y);
+      doc.text(money(b.pending), 268, y, { width: 118, align: 'right' });
+      doc.fillColor(b.shortfall > 0 ? RED : '#94a3b8').text(b.shortfall > 0 ? money(b.shortfall) : '—', 400, y, { width: 112, align: 'right' });
+      doc.fillColor(GREEN).text(money(b.surplus), 524, y, { width: 118, align: 'right' });
+      doc.fillColor(b.coverable > 0 ? AMBER : '#94a3b8').font(b.coverable > 0 ? 'Helvetica-Bold' : 'Helvetica')
+        .text(b.coverable > 0 ? money(b.coverable) : '—', 654, y, { width: 96, align: 'right' });
+      y += 32;
+    }
+    doc.moveTo(56, y + 4).lineTo(W - 56, y + 4).lineWidth(0.8).stroke('#cbd5e1');
+    doc.fillColor(NAVY).fontSize(13).font('Helvetica-Bold').text('Total', 56, y + 18);
+    doc.text(money(a.totals.pending), 268, y + 18, { width: 118, align: 'right' });
+    doc.fillColor(RED).text(money(a.totals.shortfall), 400, y + 18, { width: 112, align: 'right' });
+    doc.fillColor(GREEN).text(money(a.buList.reduce((t, b) => t + b.surplus, 0)), 524, y + 18, { width: 118, align: 'right' });
+    doc.fillColor(AMBER).text(money(a.totals.coverable), 654, y + 18, { width: 96, align: 'right' });
+    doc.fillColor(GREY).fontSize(10).font('Helvetica')
+      .text('\u201cCould be freed\u201d is whichever is smaller: what a business unit can\u2019t bill, or what it has spare.'
+        + ' Nothing here assumes money moving between business units.', 56, y + 48, { width: W - 112, lineGap: 3 });
   }
-  doc.moveTo(56, y + 4).lineTo(W - 56, y + 4).lineWidth(0.8).stroke('#cbd5e1');
-  doc.fillColor(NAVY).fontSize(13).font('Helvetica-Bold').text('Total', 56, y + 18);
-  doc.text(money(a.totals.pending), 268, y + 18, { width: 118, align: 'right' });
-  doc.fillColor(RED).text(money(a.totals.shortfall), 400, y + 18, { width: 112, align: 'right' });
-  doc.fillColor(GREEN).text(money(a.buList.reduce((t, b) => t + b.surplus, 0)), 524, y + 18, { width: 118, align: 'right' });
-  doc.fillColor(AMBER).text(money(a.totals.coverable), 654, y + 18, { width: 96, align: 'right' });
-  doc.fillColor(GREY).fontSize(10).font('Helvetica')
-    .text('\u201cCould be freed\u201d is whichever is smaller: what a business unit can\u2019t bill, or what it has spare.'
-      + ' Nothing here assumes money moving between business units.', 56, y + 48, { width: W - 112, lineGap: 3 });
 
   // 4 — closed POs
   slide(4, 'One more thing worth fixing', 'Some POs get closed with money still on them');
