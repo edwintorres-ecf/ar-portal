@@ -3472,6 +3472,30 @@ app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
   }
 });
 
+// Sites with no business unit — a data-hygiene report, not an Amazon-facing one.
+// Not snow-filtered by default: a site missing from the master is missing for
+// every service, not just snow.
+app.get('/api/amazon/no-bu-report.xlsx', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const { workbook, analysis } = await require('./amazon-no-bu-report')
+      .buildWorkbook(invoices, { snowOnly: req.query.snow === '1' });
+    db.auditLog(req.session.user.email, 'export_no_bu_report', null,
+      `${analysis.totals.sites} sites · open AR ${Math.round(analysis.totals.openAr)} · available ${Math.round(analysis.totals.poAvailable)}`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-sites-with-no-business-unit-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[api] no-bu-report error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/po/funds-case-study.pdf', requireAuth, async (req, res) => {
   try {
     const snowOnly = req.query.snow !== '0';

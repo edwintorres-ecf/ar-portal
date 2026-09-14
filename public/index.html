@@ -5529,6 +5529,13 @@ function exportFundsReport() {
 }
 // Uses the BU already picked in the filter bar when there is exactly one, so a
 // single-unit deck is one click. With no BU picked you get the combined deck.
+// Sites with no business unit. Not snow-filtered — a site missing from the
+// master is missing for every service.
+function exportNoBuReport() {
+  showToast('Building the no-business-unit report…', 'info');
+  window.location = `/api/amazon/no-bu-report.xlsx?t=${Date.now()}`;
+}
+
 function exportCaseStudy() {
   let bu = _poFilterBu.length === 1 ? _poFilterBu[0] : null;
   if (bu === '(none)') bu = '(not in the Amazon master)';
@@ -5875,6 +5882,7 @@ function renderPendingBySite() {
       <button class="btn" style="font-size:11px;padding:4px 10px" title="Summary sheet plus one sheet per business unit, showing where funds are short and where they are sitting unused" onclick="exportFundsReport()">📊 Funds report by BU</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="Case study deck for Amazon, built from this data. Pick a single business unit in the filter bar above for a deck scoped to it." onclick="exportCaseStudy()">📑 Case study (PDF)</button>
       <button class="btn" style="font-size:11px;padding:4px 10px" title="One workbook per business unit: summary of stalled billing, detail by PO, detail by site code" onclick="exportBuWorkbook()">📘 BU workbook</button>
+      <button class="btn" style="font-size:11px;padding:4px 10px" title="Sites with no business unit — they fall out of every per-BU view because they are missing from the Amazon location master" onclick="exportNoBuReport()">🏷️ No business unit</button>
     </div>
     ${buStrip}
     ${reviewBanner}
