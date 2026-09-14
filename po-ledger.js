@@ -595,21 +595,32 @@ function getPoLedger(invoices) {
     ledger.push({
       poNumber,
       tracked: !!po,
-      // Site chain: MANUAL assignment (purchase_orders.site_code) wins, then
-      // Amazon's own Ship To site from the PO detail page (ground truth — it's
-      // the site Amazon actually cut the PO for), then invoice majority-vote,
-      // then PDF extraction (SHIP TO block or the description's leading
-      // "SITE - 20xx" pattern, e.g. "1 DUJ3 - 2026 - …").
+      // Site chain: MANUAL assignment (purchase_orders.site_code) wins, then the
+      // PO's LINE ITEM, then Amazon's Ship To, then invoice majority-vote, then
+      // the PDF's SHIP TO block.
+      //
+      // The LINE ITEM outranks SHIP TO, and that ordering was earned. Ship To
+      // was treated as ground truth until Edwin produced 2D-19170693 on
+      // 2026-09-14: Ship To reads "Amazon.com Services LLC (PPO4), Merrillville
+      // IN" while line 1 reads "OKC2 - 2026 - Snow Removal Ancillary Service",
+      // $137,567. The work is OKC2's; PPO4 is only where the paperwork went. We
+      // had the PO filed under PPO4, so OKC2 showed a $137,567 funding need it
+      // did not have — in a report going to Amazon.
+      //
+      // Ship To names a delivery address. The line item names the site the work
+      // was ordered for, which is what a PO is billed against. 7 POs disagree
+      // and the line item is right in every one Edwin has checked.
+      //
       // Each candidate is validated before it is accepted: Amazon's PO detail
       // page yielded "2D" for 2D-21989423 — the PO-number prefix read as a site
       // code — which then beat the PO document's correct DUJ3. An invalid
       // candidate is skipped, not trusted (Edwin 2026-09-10).
       siteCode: firstValidSite([
         po?.site_code,
+        doc && doc.description && (doc.description.match(/(?:^|\s)([A-Z]{2,5}\d)\s*-\s*20\d\d/) || [])[1],
         detail && detail.site,
         siteCodeByPo[poNumber],
         doc && doc.docSiteCode,
-        doc && doc.description && (doc.description.match(/(?:^|\s)([A-Z]{2,5}\d)\s*-\s*20\d\d/) || [])[1],
       ]),
       siteManual: !!po?.site_code,
       siteFromAmazon: !!(detail && detail.site),
