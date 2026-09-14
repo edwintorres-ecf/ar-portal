@@ -258,7 +258,72 @@ function analyse(invoices, { snowOnly = true, seasonKey = null, bu = null } = {}
     }))
     .sort((x, y) => y.siteCount - x.siteCount || y.value - x.value);
 
-  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, multiSitePos, bu, snowOnly, season, seasonKey };
+  // ── What actually unblocks each dollar ────────────────────────────────────
+  // The deck used to offer ONE answer — "move the money" — to four different
+  // problems, and that made honest data read as a contradiction. MTN1 shows
+  // $92,506 available AND $89,653 held for insufficient funds: both true, on the
+  // SAME PO, because the hold was never released after the PO was funded. A
+  // site can also hold plenty while the specific PO an invoice was billed to is
+  // empty (Edwin 2026-09-14).
+  //
+  // Allocated largest-first so headroom is attributed to what it can actually
+  // clear, rather than spread thin leaving everything half-funded. Each tier
+  // draws down the tier above it, so no dollar of headroom is promised twice.
+  const unblock = (() => {
+    let all = [];
+    try { all = siteLedger.buildAmazonRows(invoices, { payee }).filter(r => (r.amount || 0) > 0.005); }
+    catch (e) { return null; }
+    const poSet = new Set(ledger.map(p => p.poNumber));
+    const byPo = {}; for (const p of ledger) byPo[p.poNumber] = p;
+    if (bu) all = all.filter(r => inBu(r.businessUnit));
+    if (snowOnly) all = all.filter(r => poSet.has(r.po) && byPo[r.po] && byPo[r.po].serviceType === 'snow');
+
+    const isHeld = (r) => /Insufficient/.test(r.payeeStatus || '');
+    const blocked = all.filter(r => isHeld(r) || !r.payeeStatus);
+
+    const poLeft = {}, siteLeft = {}, buLeft = {};
+    for (const p of ledger) {
+      const room = Math.max(0, p.available || 0);
+      poLeft[p.poNumber] = room;
+      const sk = p.siteCode || '(none)'; siteLeft[sk] = (siteLeft[sk] || 0) + room;
+      const bk = p.businessUnit || NO_BU; buLeft[bk] = (buLeft[bk] || 0) + room;
+    }
+
+    const tiers = { release: [], sameSite: [], sameBu: [], newMoney: [] };
+    for (const r of [...blocked].sort((a, b) => (b.amount || 0) - (a.amount || 0))) {
+      const amt = r.amount, sk = r.site || '(none)', bk = r.businessUnit || NO_BU;
+      if (isHeld(r) && (poLeft[r.po] || 0) >= amt - 0.5) {
+        tiers.release.push(r); poLeft[r.po] -= amt; siteLeft[sk] -= amt; buLeft[bk] -= amt;
+      } else if ((siteLeft[sk] || 0) >= amt - 0.5) {
+        tiers.sameSite.push(r); siteLeft[sk] -= amt; buLeft[bk] -= amt;
+      } else if ((buLeft[bk] || 0) >= amt - 0.5) {
+        tiers.sameBu.push(r); buLeft[bk] -= amt;
+      } else {
+        tiers.newMoney.push(r);
+      }
+    }
+    const sum = (l) => Math.round(l.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100;
+    const pack = (l) => ({ amount: sum(l), count: l.length, rows: l });
+    const o = {
+      release: pack(tiers.release), sameSite: pack(tiers.sameSite),
+      sameBu: pack(tiers.sameBu), newMoney: pack(tiers.newMoney),
+    };
+    o.total = Math.round((o.release.amount + o.sameSite.amount + o.sameBu.amount + o.newMoney.amount) * 100) / 100;
+    o.count = o.release.count + o.sameSite.count + o.sameBu.count + o.newMoney.count;
+
+    // The clearest single story: a PO holding invoices it can already pay for.
+    const bySite = {};
+    for (const r of tiers.release) {
+      const k = r.site || '(none)';
+      bySite[k] = bySite[k] || { site: k, amount: 0, count: 0, po: r.po, businessUnit: r.businessUnit };
+      bySite[k].amount += r.amount || 0; bySite[k].count++;
+    }
+    o.releaseSites = Object.values(bySite).sort((a, b) => b.amount - a.amount)
+      .map(x => ({ ...x, poAvailable: (byPo[x.po] || {}).available || 0, poValue: (byPo[x.po] || {}).ceilingAmount || 0 }));
+    return o;
+  })();
+
+  return { sites, buList, closedWithFunds, neverUsed, totals, recon, crossBilled, multiSitePos, unblock, bu, snowOnly, season, seasonKey };
 }
 
 // ─── Workbook ───────────────────────────────────────────────────────────────
@@ -496,8 +561,16 @@ function buildDeck(analysis) {
   // mis-billing, so it was pulled. It is back only because `multiSitePos` now
   // reads the PO's LINE ITEMS. Never reintroduce a claim about a PO's scope
   // from invoice data (2026-09-14).
-  const showMultiSite = (a.multiSitePos || []).length > 0;
-  const TOTAL_SLIDES = showMultiSite ? 6 : 5;
+  // The multi-site slide is GONE. 2D-20105615 is one PO of 836 and, as Edwin
+  // put it, a PO covering four sites just muddies a site-level story. The PO's
+  // scope still matters for attribution — see poLedger.poLineSites — it is
+  // simply not an argument to put in front of Amazon.
+  //
+  // Its place goes to something far stronger: invoices held for "insufficient
+  // PO funds" on a PO that ALREADY has the money.
+  const U = a.unblock || null;
+  const showRelease = !!(U && U.release.amount > 0 && U.releaseSites.length);
+  const TOTAL_SLIDES = showRelease ? 6 : 5;
 
   const slide = (n, kicker, title) => {
     if (n > 1) doc.addPage({ size: [792, 612], margin: 0 });
@@ -699,53 +772,76 @@ function buildDeck(analysis) {
     y += 32;
   }
 
-  // 5 — a PO can cover several sites, and one of Amazon's already does.
-  if (showMultiSite) {
-    const ms = a.multiSitePos;
-    const lead = ms[0];
-    slide(5, 'It has already been done', 'One purchase order can cover several sites');
+  // 5 — held for lack of funds, on a PO that already has the funds.
+  if (showRelease) {
+    const lead = U.releaseSites[0];
+    slide(5, 'Nothing to approve here', 'Some of it is held against money you have already put on the PO');
     doc.fillColor(GREY).fontSize(12).font('Helvetica')
-      .text('We are not asking for a new kind of purchase order. One you have already issued covers'
-        + ` ${lead.siteCount} of our sites on a single order — each site its own line.`, 56, 118, { width: W - 112, lineGap: 3 });
+      .text('These invoices are sitting in "Insufficient PO Funds Hold". The purchase order they were billed'
+        + ' to is not short — your own PO page shows the money on it. The hold was never lifted after the'
+        + ' order was funded.', 56, 118, { width: W - 112, lineGap: 3 });
 
-    doc.roundedRect(56, 168, W - 112, 150, 8).fill('#f8fafc');
-    doc.fillColor(NAVY).fontSize(20).font('Helvetica-Bold').text(lead.poNumber, 80, 192);
-    doc.fillColor(GREY).fontSize(10.5).font('Helvetica')
-      .text(`${money(lead.value)} · ${money(lead.available)} still available` + (lead.shipTo ? ` · ships to ${lead.shipTo}` : ''), 80, 218);
-    let xx = 80;
-    for (const site of lead.sites) {
-      doc.roundedRect(xx, 246, 104, 50, 6).fill('#e0f2fe');
-      doc.fillColor('#0369a1').fontSize(17).font('Helvetica-Bold').text(site, xx, 262, { width: 104, align: 'center' });
-      xx += 116;
-    }
+    doc.roundedRect(56, 176, 330, 190, 8).fill('#fef2f2');
+    doc.fillColor(RED).fontSize(11).font('Helvetica-Bold').text('WHAT PAYEE CENTRAL SAYS', 80, 200);
+    doc.fillColor(NAVY).fontSize(26).font('Helvetica-Bold').text(lead.site, 80, 222);
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
+      .text(`${money(lead.amount)} held`, 80, 262)
+      .text(`${lead.count} invoice${lead.count === 1 ? '' : 's'}`, 80, 288)
+      .text('reason: insufficient PO funds', 80, 314);
+
+    doc.roundedRect(406, 176, 330, 190, 8).fill('#f0fdf4');
+    doc.fillColor(GREEN).fontSize(11).font('Helvetica-Bold').text('WHAT THE SAME PO SAYS', 430, 200);
+    doc.fillColor(NAVY).fontSize(19).font('Helvetica-Bold').text(lead.po || '', 430, 222);
+    doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
+      .text(`${money(lead.poAvailable)} available`, 430, 262)
+      .text(`of ${money(lead.poValue)} ordered`, 430, 288)
+      .text('status: open for invoicing', 430, 314);
 
     doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
-      .text('That is exactly the shape we are asking for. One order covering a group of sites in the same'
-        + ' business unit lets the money follow the storms, instead of being committed to a single site'
-        + ' months before anyone knows where the snow will fall.', 56, 346, { width: W - 112, lineGap: 4 });
-
-    doc.roundedRect(56, 424, W - 112, 116, 8).fill('#f0fdf4');
-    doc.fillColor(GREEN).fontSize(16).font('Helvetica-Bold').text('Nothing new to approve, and nothing new to build.', 80, 450);
-    doc.fillColor('#1f2937').fontSize(13).font('Helvetica')
-      .text('The money is already committed. Grouping it the way this order is already grouped is the whole fix.',
-        80, 478, { width: W - 160, lineGap: 4 });
+      .text(`Both of those are your own figures, on the same purchase order, on the same day.`
+        + ` Across the book that is ${money(U.release.amount)} on ${U.release.count} invoice${U.release.count === 1 ? '' : 's'}`
+        + ` that needs no funding at all — only for the hold to be lifted so we can bill it.`,
+        56, 396, { width: W - 112, lineGap: 4 });
+    doc.fillColor(AMBER).fontSize(14).font('Helvetica-Bold')
+      .text('This is the quickest money on the table for both of us.', 56, 466, { width: W - 112 });
   }
 
-  // 6 — the ask
-  slide(showMultiSite ? 6 : 5, 'What we\u2019re asking', 'Three things, and we can close the season out clean');
-  bullet(155, `Move the money to where the snow was. ${money(a.totals.coverable)} of what we can\u2019t bill is already sitting`
-    + ` unused in the same business unit. You don\u2019t need to approve anything new — it just needs to be on the right PO.`, RED);
-  bullet(245, `Top up the sites that have nothing left. These are the ones our invoices sit on longest, and they\u2019re the`
-    + ` sites where our crews were out the most.`, AMBER);
-  bullet(325, `Give us a heads-up before a PO is closed. ${money(a.totals.closedFunds)} is stranded on POs we can no longer`
-    + ` bill against`
-    + (a.totals.neverUsedCount ? `, including ${a.totals.neverUsedCount} that were never used once.` : '.')
-    + ` A quick check with us first would catch these.`, NAVY);
-  doc.roundedRect(56, 410, W - 112, 130, 8).fill('#f8fafc');
-  doc.fillColor(NAVY).fontSize(17).font('Helvetica-Bold').text('What that gets us both', 80, 438);
-  doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
-    .text(`${a.totals.invoices} invoices, ${money(a.totals.pending)} of ${svc} work your sites have already had the benefit of,`
-      + ` billed and paid on normal terms — and a clean start on next season.`, 80, 468, { width: W - 160, lineGap: 4 });
+  // 6 — the ask, split by what actually unblocks each dollar. One instruction
+  // for four different problems was what made the earlier decks confusing:
+  // a site can genuinely show funds available AND invoices held, and "move the
+  // money" is the wrong answer to three of the four cases.
+  slide(showRelease ? 6 : 5, 'What we\u2019re asking', 'Four things, in the order they can be done');
+  if (U) {
+    const rows4 = [
+      ['1', 'Lift the holds where the PO is already funded', U.release, GREEN, 'No money. The order has the balance on it today.'],
+      ['2', 'Re-point invoices to the funded PO at the same site', U.sameSite, '#0369a1', 'No money. The site has the funds, on a different order.'],
+      ['3', 'Move funds between sites in the same business unit', U.sameBu, AMBER, 'No new money. The unit already holds it, at sites with no work waiting.'],
+      ['4', 'New funding', U.newMoney, RED, 'The only part that needs a new commitment.'],
+    ];
+    let y6 = 148;
+    for (const [nOrd, label, part, colour, note] of rows4) {
+      doc.circle(66, y6 + 11, 11).fill(colour);
+      doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text(nOrd, 61, y6 + 6);
+      doc.fillColor(NAVY).fontSize(13.5).font('Helvetica-Bold').text(label, 90, y6, { width: 430 });
+      doc.fillColor(GREY).fontSize(10).font('Helvetica').text(note, 90, y6 + 20, { width: 430 });
+      doc.fillColor(colour).fontSize(17).font('Helvetica-Bold').text(money(part.amount), 540, y6 + 2, { width: 130, align: 'right' });
+      doc.fillColor(GREY).fontSize(9.5).font('Helvetica').text(`${part.count} invoice${part.count === 1 ? '' : 's'}`, 680, y6 + 8, { width: 56 });
+      y6 += 58;
+    }
+    doc.moveTo(56, y6 + 2).lineTo(W - 56, y6 + 2).lineWidth(0.8).stroke('#cbd5e1');
+    doc.fillColor(NAVY).fontSize(13.5).font('Helvetica-Bold').text('Total we cannot bill today', 90, y6 + 14);
+    doc.fillColor(NAVY).fontSize(17).text(money(U.total), 540, y6 + 10, { width: 130, align: 'right' });
+    doc.fillColor(GREY).fontSize(9.5).font('Helvetica').text(`${U.count} invoices`, 680, y6 + 16, { width: 56 });
+
+    const noNew = U.release.amount + U.sameSite.amount + U.sameBu.amount;
+    doc.roundedRect(56, 452, W - 112, 96, 8).fill('#f0fdf4');
+    doc.fillColor(GREEN).fontSize(15.5).font('Helvetica-Bold')
+      .text(`${money(noNew)} of it \u2014 ${U.total ? Math.round(noNew / U.total * 100) : 0}% \u2014 needs no new money at all.`, 80, 474);
+    doc.fillColor('#1f2937').fontSize(12.5).font('Helvetica')
+      .text(`It is already committed${a.bu ? ' inside ' + a.bu : ''}. Steps 1 to 3 are routing, not budget.`
+        + (a.totals.closedFunds > 0 ? ` A separate ${money(a.totals.closedFunds)} is stranded on closed POs \u2014 a heads-up before one is closed would stop that recurring.` : ''),
+        80, 500, { width: W - 160, lineGap: 3 });
+  }
 
   doc.end();
   return doc;
