@@ -281,8 +281,13 @@ function analyse(invoices, { snowOnly = true, seasonKey = null, bu = null } = {}
     const isHeld = (r) => /Insufficient/.test(r.payeeStatus || '');
     const blocked = all.filter(r => isHeld(r) || !r.payeeStatus);
 
+    // Headroom pools must cover only POs IN SCOPE. `ledger` is not
+    // service-filtered — `rows` above is — so pooling from it let landscaping
+    // headroom pay for snow work and cut the new-money ask from $3.1M to $1.3M.
+    // A landscaping PO cannot fund snow, and Amazon would say so first.
+    const fundingPos = snowOnly ? ledger.filter(p => p.serviceType === 'snow') : ledger;
     const poLeft = {}, siteLeft = {}, buLeft = {};
-    for (const p of ledger) {
+    for (const p of fundingPos) {
       const room = Math.max(0, p.available || 0);
       poLeft[p.poNumber] = room;
       const sk = p.siteCode || '(none)'; siteLeft[sk] = (siteLeft[sk] || 0) + room;
