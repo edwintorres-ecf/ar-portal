@@ -617,14 +617,17 @@ function buildDeck(analysis) {
       yy += 30;
     }
 
-    doc.roundedRect(56, 400, W - 112, 140, 8).fill('#f0fdf4');
+    // Sit the panel under the table rather than at a fixed y — with only two or
+    // three multi-site POs a fixed position leaves a dead band across the slide.
+    const panelY = Math.min(400, Math.max(320, yy + 34));
+    doc.roundedRect(56, panelY, W - 112, 140, 8).fill('#f0fdf4');
     doc.fillColor(GREEN).fontSize(17).font('Helvetica-Bold')
-      .text('So the fix is something your team already knows how to do.', 80, 428);
+      .text('So the fix is something your team already knows how to do.', 80, panelY + 28);
     doc.fillColor('#1f2937').fontSize(13.5).font('Helvetica')
       .text(lead.poNumber + ' alone spans several of our sites on a single ' + money(lead.value)
         + ' order. One PO covering a group of sites in the same business unit would let the money follow the storms,'
         + ' instead of being committed to a single site months before anyone knows where the snow will fall.',
-        80, 458, { width: W - 160, lineGap: 4 });
+        80, panelY + 58, { width: W - 160, lineGap: 4 });
     doc.fillColor('#94a3b8').fontSize(8.5).font('Helvetica')
       .text('Site counts are what we can still see from invoices open on our side, so a PO may cover more sites than are listed.',
         56, H - 52, { width: W - 112 });
