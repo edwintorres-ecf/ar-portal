@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-14T20:32:24.995Z",
+  "generatedAt": "2026-09-14T21:06:32.325Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1221,
-  "scraped": 7,
-  "ok": 7,
+  "openTotal": 1222,
+  "scraped": 1,
+  "ok": 1,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -55589,6 +55589,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-14T03:36:35.979Z",
+      "stale": false
+    },
+    "2D-22640988": {
+      "available": 29350,
+      "poAmount": 29350,
+      "status": "Open",
+      "site": null,
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-14T21:06:32.325Z",
       "stale": false
     }
   }
