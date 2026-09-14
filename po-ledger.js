@@ -103,6 +103,32 @@ function isValidSite(s) {
 // what a naive parse of "2D-21989423" produces.
 const PO_PREFIX_RE = /^\d[A-Z]$/i;
 
+// Every site named in a PO's LINE ITEMS, in line order.
+//
+// A purchase order can cover several sites, one per line. 2D-20105615 is four:
+// DBL1, DJR5, DPP1 and DYY8, on a $203,617.75 order whose Ship To is BNA12 —
+// an address that appears on none of the lines (Edwin 2026-09-14, from the PO
+// document). Deriving a PO's sites from the invoices billed against it gets
+// this wrong in both directions: it misses lines nobody has billed yet, and it
+// mistakes our own mis-billing for extra scope.
+//
+// The extracted text runs the lines together, so we anchor on the LINE NUMBER:
+//   "1 DBL1 - 210 Redstone Hill Road 2045-01-01 100,890.64 ... 2 DJR5 - 2 O'Brien"
+// A previous pattern looked for "SITE - 20xx" and found nothing here, because
+// these lines carry a street address rather than a year.
+const PO_LINE_SITE_RE = /(?:^|\s)\d{1,3}\s+([A-Z]{2,5}\d)\s*-\s/g;
+
+function poLineSites(description) {
+  if (!description) return [];
+  const out = [];
+  for (const m of String(description).matchAll(PO_LINE_SITE_RE)) {
+    const s = normalizeSite(m[1]);
+    if (!s || PO_PREFIX_RE.test(s) || !isValidSite(s)) continue;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 // Walks a preference chain and returns the first candidate that actually looks
 // like a site code. A MANUAL assignment is honoured even if it fails the shape
 // test — a human pinning an odd code knows better than the validator.
@@ -617,11 +643,16 @@ function getPoLedger(invoices) {
       // candidate is skipped, not trusted (Edwin 2026-09-10).
       siteCode: firstValidSite([
         po?.site_code,
-        doc && doc.description && (doc.description.match(/(?:^|\s)([A-Z]{2,5}\d)\s*-\s*20\d\d/) || [])[1],
+        poLineSites(doc && doc.description)[0],
         detail && detail.site,
         siteCodeByPo[poNumber],
         doc && doc.docSiteCode,
       ]),
+      // Every site the PO document names, not just the first. A PO covering
+      // several sites has no single correct `siteCode`, and anything that
+      // reports per site needs to know that rather than silently picking one.
+      lineSites: poLineSites(doc && doc.description),
+      multiSite: poLineSites(doc && doc.description).length > 1,
       siteManual: !!po?.site_code,
       siteFromAmazon: !!(detail && detail.site),
       locationId: po?.location_id || null,
@@ -1249,4 +1280,4 @@ function getPayeeAging(opts = {}) {
 
 module.exports = {
   getPayeeAging,
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites };
