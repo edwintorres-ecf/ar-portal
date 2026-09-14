@@ -112,11 +112,16 @@ const PO_PREFIX_RE = /^\d[A-Z]$/i;
 // this wrong in both directions: it misses lines nobody has billed yet, and it
 // mistakes our own mis-billing for extra scope.
 //
-// The extracted text runs the lines together, so we anchor on the LINE NUMBER:
+// The extracted text runs the lines together, so we anchor on the LINE NUMBER
+// and take the first token after it if that token is a site code:
 //   "1 DBL1 - 210 Redstone Hill Road 2045-01-01 100,890.64 ... 2 DJR5 - 2 O'Brien"
-// A previous pattern looked for "SITE - 20xx" and found nothing here, because
-// these lines carry a street address rather than a year.
-const PO_LINE_SITE_RE = /(?:^|\s)\d{1,3}\s+([A-Z]{2,5}\d)\s*-\s/g;
+//   "1 EWR9 OSP - 35 Cutters Dock Snow Removal 2026-01-31 ..."
+//   "1 WMO7-RSR-2025-Landscaping 2025-10-09 ..."
+// Requiring " - " straight after the code, as a first attempt did, parsed only
+// 54% of documents — the last two forms above were missed. Anchoring on the line
+// number alone lifts it to 836 of 1,148 and changes just two resolved sites,
+// both of which the line item gets right.
+const PO_LINE_SITE_RE = /(?:^|\s)\d{1,3}\s+([A-Z]{2,5}\d)\b/g;
 
 function poLineSites(description) {
   if (!description) return [];
