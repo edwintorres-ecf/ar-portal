@@ -96,6 +96,15 @@ async function buildWorkbook(invoices, opts = {}) {
   s1.getCell('A2').value = 'A business unit comes from the Amazon location master. A site that is not in the master has no BU, '
     + 'so it disappears from the BU tiles, the per-BU workbooks and the per-BU case studies — the money is open, it is just not being looked at.';
   s1.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+  // Say plainly that the snow view is NARROWER than the problem. A site missing
+  // from the master is missing for landscaping and cleaning too, so fixing only
+  // what shows up here would leave most of it in place (Edwin 2026-09-15).
+  if (a.snowOnly) {
+    s1.mergeCells('A3:I3');
+    s1.getCell('A3').value = 'SCOPE: snow POs only. A site missing from the master is missing for every service, '
+      + 'so the all-services version of this report is longer — run it with the snow filter off before calling the master clean.';
+    s1.getCell('A3').font = { bold: true, size: 10, color: { argb: 'FFB45309' } };
+  }
   s1.addRow([]);
 
   for (const [k, v, fmt] of [

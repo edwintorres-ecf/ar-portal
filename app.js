@@ -3487,7 +3487,7 @@ app.get('/api/amazon/no-bu-report.xlsx', requireAuth, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, private, max-age=0');
     res.setHeader('CDN-Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-sites-with-no-business-unit-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="ecf-amazon-sites-with-no-business-unit${req.query.snow === '1' ? '-snow' : ''}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
     await workbook.xlsx.write(res);
     res.end();
   } catch (e) {
