@@ -589,7 +589,36 @@ function buildPendingUpload(invoices) {
  * number seen in Payee Central or in pending Sage/Omnia invoices, even if
  * nobody has entered a ceiling for it yet (surfaced as "untracked").
  */
+// Building the ledger costs ~1.9s, and ONE request builds it two or three
+// times: the route builds it, getNeedsUpload builds it again (line ~787), and
+// getPendingBySite reaches it through both. That was ~4s of pure duplicate work
+// on every load of Pending by Site (Edwin 2026-09-15, sizing for ~400 new POs
+// in October).
+//
+// Memoised on the invoice array IDENTITY plus a short TTL. Identity collapses
+// the duplicates inside one request, which is where all the waste is; the TTL
+// bounds how long a PO edit can be invisible, since the ledger also reads
+// purchase_orders and po_consumption, which change independently of the Sage
+// cache. Anything that writes PO state should call invalidatePoLedger().
+const _ledgerMemo = new WeakMap();
+const LEDGER_TTL_MS = 30 * 1000;
+let _ledgerEpoch = 0;
+
+/** Drop the memo. Call after writing purchase_orders or po_consumption. */
+function invalidatePoLedger() { _ledgerEpoch++; }
+
 function getPoLedger(invoices) {
+  const key = Array.isArray(invoices) ? invoices : null;
+  if (key) {
+    const hit = _ledgerMemo.get(key);
+    if (hit && hit.epoch === _ledgerEpoch && (Date.now() - hit.at) < LEDGER_TTL_MS) return hit.rows;
+  }
+  const rows = _buildPoLedger(invoices);
+  if (key) _ledgerMemo.set(key, { rows, at: Date.now(), epoch: _ledgerEpoch });
+  return rows;
+}
+
+function _buildPoLedger(invoices) {
   const amazonInvoices = filterAmazon(invoices);
   const tracked = db.getPurchaseOrders();
   const trackedByNumber = {};
@@ -1336,4 +1365,4 @@ function getPayeeAging(opts = {}) {
 
 module.exports = {
   getPayeeAging,
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites, poSiteIndex };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites, poSiteIndex, invalidatePoLedger };
