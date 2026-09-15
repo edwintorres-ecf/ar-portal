@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-15T14:23:55.184Z",
+  "generatedAt": "2026-09-15T21:05:05.820Z",
   "source": "payee-po-detail-scraper",
   "openTotal": 1221,
-  "scraped": 1,
-  "ok": 1,
+  "scraped": 8,
+  "ok": 8,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -55371,7 +55371,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22583337": {
@@ -55386,59 +55386,59 @@
           "inv": "S6806A",
           "date": "Sep 10, 2026",
           "amount": 3172.5,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6819A",
           "date": "Sep 10, 2026",
           "amount": 3825,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6839A",
           "date": "Sep 10, 2026",
           "amount": 2420,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6847A",
           "date": "Sep 10, 2026",
           "amount": 6000,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6864A",
           "date": "Sep 10, 2026",
           "amount": 21825,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6884A",
           "date": "Sep 10, 2026",
           "amount": 12000,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S6891A",
           "date": "Sep 10, 2026",
           "amount": 8980,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S8107A",
           "date": "Sep 10, 2026",
           "amount": 30600,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         },
         {
           "inv": "S8133A",
           "date": "Sep 10, 2026",
           "amount": 3937.5,
-          "status": "In Progress"
+          "status": "Scheduled for payment"
         }
       ],
       "matchedCount": 9,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22584268": {
@@ -55450,7 +55450,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22577643": {
@@ -55462,7 +55462,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22573125": {
@@ -55474,7 +55474,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22577515": {
@@ -55486,7 +55486,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22573121": {
@@ -55498,7 +55498,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-14T20:21:57.624Z",
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     },
     "2D-22588136": {
@@ -55562,15 +55562,28 @@
       "stale": false
     },
     "2D-22640988": {
-      "available": 29350,
+      "available": 0,
       "poAmount": 29350,
       "status": "Open",
       "site": null,
       "desc": null,
       "masked": false,
-      "matched": [],
-      "matchedCount": 0,
-      "scrapedAt": "2026-09-14T21:06:32.325Z",
+      "matched": [
+        {
+          "inv": "S6813",
+          "date": "Sep 15, 2026",
+          "amount": 6975,
+          "status": "Scheduled for payment"
+        },
+        {
+          "inv": "S6871",
+          "date": "Sep 15, 2026",
+          "amount": 22375,
+          "status": "Scheduled for payment"
+        }
+      ],
+      "matchedCount": 2,
+      "scrapedAt": "2026-09-15T17:08:06.066Z",
       "stale": false
     }
   }
