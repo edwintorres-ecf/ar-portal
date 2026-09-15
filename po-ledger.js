@@ -262,6 +262,57 @@ function buildSiteCodeByPo(invoices) {
   return byPo;
 }
 
+// PO -> { site, businessUnit }, using the SAME precedence chain as getPoLedger
+// but none of its expensive parts (consumption, pending-upload, aging). It
+// exists so site-ledger can give an invoice with no site of its own the site of
+// the PO it was billed to, WITHOUT either module growing its own opinion about
+// how a PO's site is decided — that divergence is what filed OKC2's PO under
+// PPO4 (Edwin 2026-09-14).
+//
+// Memoised on the invoice array itself: callers pass the shared Sage cache, so
+// repeat calls inside one request are free, and a new fetch produces a new array
+// and therefore a fresh index.
+const _poSiteMemo = new WeakMap();
+function poSiteIndex(invoices) {
+  const key = Array.isArray(invoices) ? invoices : null;
+  if (key && _poSiteMemo.has(key)) return _poSiteMemo.get(key);
+
+  const amazonInvoices = filterAmazon(invoices);
+  const tracked = db.getPurchaseOrders();
+  const trackedByNumber = {};
+  for (const po of tracked) trackedByNumber[po.po_number] = po;
+  const siteCodeByPo = buildSiteCodeByPo(amazonInvoices);
+  const poDocsMap = getPoDocsMap();
+  const poDetailsMap = getPoDetailsMap();
+  const meta = siteMetaMap();
+
+  const numbers = new Set([
+    ...Object.keys(trackedByNumber),
+    ...Object.keys(siteCodeByPo),
+    ...Object.keys(poDocsMap),
+    ...Object.keys(poDetailsMap),
+  ]);
+
+  const out = {};
+  for (const poNumber of numbers) {
+    const po = trackedByNumber[poNumber];
+    const doc = poDocsMap[poNumber];
+    const detail = poDetailsMap[poNumber];
+    const site = firstValidSite([
+      po && po.site_code,
+      poLineSites(doc && doc.description)[0],
+      detail && detail.site,
+      siteCodeByPo[poNumber],
+      doc && doc.docSiteCode,
+    ]);
+    if (!site) continue;
+    const m = meta[site];
+    out[poNumber] = { site, businessUnit: m ? (m.businessUnit || '') : '' };
+  }
+  if (key) _poSiteMemo.set(key, out);
+  return out;
+}
+
 // Classify a PO's service from its document description so snow work can be
 // isolated from landscaping/cleaning/maintenance at the same site (a site mixes
 // them). Order matters: snow wins, then the rest. Word boundaries avoid the
@@ -1285,4 +1336,4 @@ function getPayeeAging(opts = {}) {
 
 module.exports = {
   getPayeeAging,
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites, poSiteIndex };

@@ -494,13 +494,30 @@ function buildAmazonRows(allInvoices, opts = {}) {
   let poDetails = {};
   try { poDetails = readJson('payee-po-details.spark.json', r => r.details); } catch (e) {}
 
+  // An invoice we could not resolve a site for still names a PO, and that PO
+  // belongs to a site. Inheriting it is better than reporting the work as
+  // belonging to no business unit at all, which sent it to the "sites missing
+  // from the Amazon master" report — a master-data problem it is not
+  // (Edwin 2026-09-15).
+  //
+  // Required lazily to keep this module free of a load-time dependency, and
+  // po-ledger memoises the index on the invoice array, so this is one cheap
+  // lookup per refresh rather than per row. The chain lives THERE, so the two
+  // modules cannot drift about which site a PO belongs to.
+  let poSites = {};
+  try { poSites = require('./po-ledger').poSiteIndex(allInvoices); } catch (e) {}
+
   return invoices.map(inv => {
     const rec = String(inv.recordNo);
     const dep = depts[rec] || {};
     const sl = ledger[rec] || {};
-    const loc = sl.siteCode ? master[sl.siteCode] : null;
     const assigned = assignments[rec];
     const po = String((assigned && assigned.assigned_po) || inv.poNumber || '').trim();
+    // Fall back to the PO's site only when the invoice has none of its own; a
+    // resolved site always wins, so nothing already attributed can move.
+    const fb = (!sl.siteCode && po) ? poSites[po] : null;
+    const siteCode = sl.siteCode || (fb ? fb.site : '');
+    const loc = siteCode ? master[siteCode] : null;
     const pay = payeeOf(inv.invoiceId);
     const pod = po ? poDetails[po] : null;
     return {
@@ -525,8 +542,11 @@ function buildAmazonRows(allInvoices, opts = {}) {
       city: loc ? (loc.city || '') : '',
       state: loc ? (loc.state || '') : '',
       // gate 3
-      site: sl.siteCode || '',
-      siteSource: sl.source || '',
+      site: siteCode,
+      // Provenance stays honest: a site inherited from the PO is not the same
+      // claim as one resolved from the invoice's own ship-to.
+      siteSource: sl.source || (fb ? 'po-fallback' : ''),
+      siteFromPo: !!fb,
       siteConfidence: sl.confidence || '',
       siteEvidence: sl.evidence || '',
       // gate 4
