@@ -545,7 +545,10 @@ function buildAmazonRows(allInvoices, opts = {}) {
       site: siteCode,
       // Provenance stays honest: a site inherited from the PO is not the same
       // claim as one resolved from the invoice's own ship-to.
-      siteSource: sl.source || (fb ? 'po-fallback' : ''),
+      // `fb` wins the label: the ledger row exists with source 'unresolved' and an
+      // empty site, so `sl.source ||` kept saying "unresolved" for a site we had
+      // in fact resolved from the PO.
+      siteSource: fb ? 'po-fallback' : (sl.source || ''),
       siteFromPo: !!fb,
       siteConfidence: sl.confidence || '',
       siteEvidence: sl.evidence || '',
