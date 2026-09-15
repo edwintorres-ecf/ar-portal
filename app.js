@@ -3370,6 +3370,55 @@ function pbsCacheKey(user, snowOnly) {
   ].join('|');
 }
 
+// Build (or reuse) the expensive base for one user + snow mode.
+function pbsBase(invoices, user, snowOnly) {
+  const ck = pbsCacheKey(user, snowOnly);
+  let base = _pbsCache.get(ck);
+  if (base) return base;
+  // Built once and shared with getPendingBySite and the status tiles.
+  const fullLedger = poLedger.getPoLedger(invoices);
+  const list = poLedger.getPendingBySite(invoices, { snowOnly, ledger: fullLedger });
+  let arRows = [];
+  try { arRows = siteLedger.buildAmazonRows(invoices, { payee }); } catch (e) { /* site ledger unavailable */ }
+  const snowPos = snowOnly
+    ? new Set(fullLedger.filter(p => p.serviceType === 'snow').map(p => p.poNumber))
+    : null;
+  base = { list, arRows, snowPos };
+  if (_pbsCache.size >= PBS_CACHE_MAX) _pbsCache.delete(_pbsCache.keys().next().value);
+  _pbsCache.set(ck, base);
+  return base;
+}
+
+// Pending by Site costs several seconds of straight CPU, and Node is
+// single-threaded — whoever loads it first stalls the whole box for everyone.
+// Precompute it instead, so that cost lands on a timer rather than on a person.
+//
+// Only the unfiltered admin view is warmed: that is what almost everyone loads,
+// and warming every permutation would spend more CPU than it saves. A user with
+// a location or customer filter still pays for the first load of their own view
+// (Edwin 2026-09-15, sizing for ~400 new POs in October).
+const PBS_WARM_USER = { location_filter: null, customer_filter: null, role: 'admin' };
+let _pbsWarming = false;
+function warmPendingBySite(reason) {
+  if (_pbsWarming) return;
+  const invoices = sage.getCachedInvoices();
+  if (!invoices.length) return;
+  const todo = [true, false].filter(sn => !_pbsCache.has(pbsCacheKey(PBS_WARM_USER, sn)));
+  if (!todo.length) return;
+  _pbsWarming = true;
+  // setImmediate per mode so the two builds do not run back to back in one tick.
+  const next = () => {
+    const sn = todo.shift();
+    if (sn === undefined) { _pbsWarming = false; return; }
+    const t = Date.now();
+    try { pbsBase(invoices, PBS_WARM_USER, sn);
+      console.log(`[pbs-warm] ${sn ? 'snow' : 'all'} built in ${Date.now() - t}ms (${reason})`);
+    } catch (e) { console.error('[pbs-warm] failed:', e.message); }
+    setImmediate(next);
+  };
+  setImmediate(next);
+}
+
 app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
@@ -3377,22 +3426,7 @@ app.get('/api/po/pending-by-site', requireAuth, async (req, res) => {
     invoices = applyUserFilter(invoices, req.session.user);
     const snowOnly = req.query.snow === '1';
 
-    const ck = pbsCacheKey(req.session.user, snowOnly);
-    let base = _pbsCache.get(ck);
-    if (!base) {
-      // Built once and shared with getPendingBySite and the status tiles below.
-      const fullLedger = poLedger.getPoLedger(invoices);
-      const list = poLedger.getPendingBySite(invoices, { snowOnly, ledger: fullLedger });
-      let arRows = [];
-      try { arRows = siteLedger.buildAmazonRows(invoices, { payee }); } catch (e) { /* site ledger unavailable */ }
-      const snowPos = snowOnly
-        ? new Set(fullLedger.filter(p => p.serviceType === 'snow').map(p => p.poNumber))
-        : null;
-      base = { list, arRows, snowPos };
-      if (_pbsCache.size >= PBS_CACHE_MAX) _pbsCache.delete(_pbsCache.keys().next().value);
-      _pbsCache.set(ck, base);
-    }
-    const { list, arRows, snowPos } = base;
+    const { list, arRows, snowPos } = pbsBase(invoices, req.session.user, snowOnly);
 
     const sites = list.map(s => ({
       site: s.site, businessUnit: s.businessUnit || '',
@@ -6197,6 +6231,11 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
+  // Keep Pending by Site warm. The key includes the Sage and Payee stamps, so a
+  // data refresh invalidates it and the next tick rebuilds — before anyone asks.
+  setTimeout(() => warmPendingBySite('boot'), 90 * 1000);
+  setInterval(() => warmPendingBySite('timer'), 4 * 60 * 1000);
+
   setTimeout(doIntakeSweep, 6 * 60 * 1000);
   setInterval(doIntakeSweep, 60 * 60 * 1000);
 
