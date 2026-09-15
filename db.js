@@ -458,6 +458,24 @@ function initSchema() {
   // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
   // of copies meant sitting on a spinner for minutes and being unable to do
   // anything else. Requests are queued here, a worker fills them, and the file
+  // One row per purchase order that has ever failed an intake check, so an
+  // alert fires when a defect APPEARS rather than on every sweep. Snow POs
+  // arrive in batches — 255 in July 2026 — and a PO with no value on it cannot
+  // be checked for headroom, which is how invoices end up held for insufficient
+  // funds months later (Edwin 2026-09-15).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS po_intake_health (
+      po_number TEXT PRIMARY KEY,
+      defects TEXT NOT NULL,             -- comma-separated check keys, sorted
+      blocking INTEGER DEFAULT 0,        -- 1 = cannot safely bill against it
+      at_risk REAL DEFAULT 0,            -- pending upload sitting behind it
+      first_seen_at TEXT,
+      last_seen_at TEXT,
+      resolved_at TEXT                   -- set when the PO stops failing
+    );
+    CREATE INDEX IF NOT EXISTS idx_po_intake_open ON po_intake_health(resolved_at, blocking);
+  `);
+
   // waits in the Reports section for collection.
   db.exec(`
     CREATE TABLE IF NOT EXISTS report_jobs (
