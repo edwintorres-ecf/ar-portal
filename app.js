@@ -3472,6 +3472,17 @@ app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
   }
 });
 
+// PO intake health — every purchase order that cannot be safely billed against,
+// checked the day it arrives rather than when an invoice against it is held.
+app.get('/api/po/intake-health', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    res.json(require('./po-intake-health').analyse(invoices, { snowOnly: req.query.snow === '1' }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Sites with no business unit — a data-hygiene report, not an Amazon-facing one.
 // Not snow-filtered by default: a site missing from the master is missing for
 // every service, not just snow.
@@ -6159,6 +6170,36 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
       }
     } catch (e) { console.warn(`[site-ledger] rebuild failed: ${e.message}`); }
   };
+  // PO intake health. Snow POs arrive in batches — 255 in July 2026 — and a PO
+  // with no value on it cannot be checked for headroom, so we would not find out
+  // until Amazon held the invoice. Sweep hourly and alert only on defects that
+  // are NEW, so the mail stays worth reading during the season.
+  function doIntakeSweep() {
+    try {
+      const inv = sage.getCachedInvoices();
+      if (!inv.length) return;
+      const { newly, analysis } = require('./po-intake-health').sweep(inv);
+      const blockers = newly.filter(p => p.blocking);
+      if (!blockers.length) {
+        try { require('./ops-alerts').ok('po-intake-health',
+          `${analysis.totals.blocking} blocking of ${analysis.totals.posChecked} POs`); } catch (e) {}
+        return;
+      }
+      const atRisk = blockers.reduce((t, p) => t + (p.atRisk || 0), 0);
+      const lines = blockers.slice(0, 15).map(p =>
+        `  ${p.poNumber}  ${p.siteCode || '(no site)'}  ${p.serviceType || ''}  ${p.defects.join(', ')}`
+        + (p.atRisk ? `  — $${Math.round(p.atRisk).toLocaleString('en-US')} waiting` : '')).join('\n');
+      require('./ops-alerts').raise('po-intake-health',
+        `${blockers.length} new PO(s) cannot be billed against`,
+        `These purchase orders arrived or changed and cannot be safely billed against.\n`
+        + `$${Math.round(atRisk).toLocaleString('en-US')} of finished work is already waiting behind them.\n\n${lines}\n\n`
+        + `PO Manager → Intake health.`,
+        { minIntervalHours: 4 });
+    } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
+  }
+  setTimeout(doIntakeSweep, 6 * 60 * 1000);
+  setInterval(doIntakeSweep, 60 * 60 * 1000);
+
   setTimeout(doSiteLedgerRebuild, 4 * 60 * 1000);
   setInterval(doSiteLedgerRebuild, 60 * 60 * 1000);
 

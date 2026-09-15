@@ -947,6 +947,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <button class="cust-pill" id="po-subtab-aging" onclick="setPoFundsSubtab('aging')">⏳ Aging <span id="po-aging-badge"></span></button>
       <button class="cust-pill" id="po-subtab-rejections" onclick="setPoFundsSubtab('rejections')">❌ Rejections <span id="po-rejections-badge"></span></button>
       <button class="cust-pill" id="po-subtab-contacts" onclick="setPoFundsSubtab('contacts')">👥 Site Contacts</button>
+      <button class="cust-pill" id="po-subtab-intake" onclick="setPoFundsSubtab('intake')">🩺 Intake health <span id="po-intake-badge"></span></button>
     </div>
     <div id="po-form-container" style="display:none;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px;margin-bottom:16px;"></div>
     <div id="po-ledger-content">
@@ -956,6 +957,9 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-pending-site-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
+    <div id="po-intake-content" style="display:none">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-uploaded-content" style="display:none">
@@ -5394,6 +5398,92 @@ async function refreshPayee() {
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+// ─── PO intake health ───────────────────────────────────────────────────────
+// A purchase order that arrives without a value on it cannot be checked for
+// headroom, so we submit against it blind and learn it was short when Amazon
+// holds the invoice. Snow POs land in batches — 255 in July 2026 — so the
+// season is exactly when nobody has time to find these one at a time.
+let _poIntake = null;
+
+async function loadPoIntakeHealth() {
+  const el = document.getElementById('po-intake-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Checking every purchase order…</div>';
+  try {
+    _poIntake = await apiFetch('/api/po/intake-health' + (_pbsSnowOnly ? '?snow=1' : ''));
+    renderPoIntakeHealth();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--red)">Could not run the check: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPoIntakeHealth() {
+  const el = document.getElementById('po-intake-content');
+  const a = _poIntake;
+  if (!el || !a) return;
+  const t = a.totals;
+  const badge = document.getElementById('po-intake-badge');
+  if (badge) { badge.textContent = t.blocking ? `(${t.blocking})` : ''; badge.style.color = t.blocking ? '#dc2626' : ''; }
+
+  const tile = (label, value, note, bg, fg) => `<div style="background:${bg};border-radius:9px;padding:10px 14px;min-width:150px;flex:1">
+    <div style="font-size:10.5px;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.3px">${label}</div>
+    <div style="font-size:19px;font-weight:700;color:${fg};margin-top:2px" class="amount">${value}</div>
+    <div style="font-size:10px;color:var(--gray-500)">${note}</div></div>`;
+
+  const checks = (a.checks || []).filter(c => c.count);
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${tile('Ready to bill against', t.readyPct + '%', `${t.clean} of ${t.posChecked} POs clean`, t.readyPct >= 95 ? '#dcfce7' : '#fef3c7', t.readyPct >= 95 ? '#166534' : '#92400e')}
+      ${tile('Cannot bill against', String(t.blocking), 'blocking defects — fix before billing', t.blocking ? '#fee2e2' : '#f1f5f9', t.blocking ? '#991b1b' : '#334155')}
+      ${tile('Work waiting behind them', fmt$(t.atRisk), 'already done, cannot be invoiced', '#ede9fe', '#5b21b6')}
+      ${tile('POs with any defect', String(t.posWithDefects), 'including non-blocking', '#f1f5f9', '#334155')}
+    </div>
+    <div style="font-size:11.5px;color:var(--gray-500);margin-bottom:10px">
+      ${_pbsSnowOnly ? '❄ snow POs only — use the Snow only toggle on Pending by Site to widen' : 'all services'} ·
+      checked ${agoLabel(a.generatedAt)}
+    </div>
+    ${checks.map(c => `
+      <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          ${c.blocking ? '<span style="font-size:10px;font-weight:700;color:#991b1b;background:#fee2e2;padding:2px 7px;border-radius:5px">BLOCKING</span>' : ''}
+          <span style="font-size:13.5px;font-weight:700;color:var(--navy)">${escHtml(c.label)}</span>
+          <span style="font-size:12.5px;color:var(--gray-600)">${c.count} PO${c.count === 1 ? '' : 's'}</span>
+          ${c.atRisk > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#b45309">${fmt$(c.atRisk)} waiting</span>` : ''}
+          <span style="margin-left:auto;font-size:11px;color:var(--gray-400);cursor:pointer" onclick="poIntakeToggle('${escHtml(c.key)}')">show POs ▾</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--gray-500);margin-top:4px">${escHtml(c.why)}</div>
+        <div id="intake-${escHtml(c.key)}" style="display:none;margin-top:8px">
+          ${poIntakeTable(a.pos.filter(p => p.defects.includes(c.key)))}
+        </div>
+      </div>`).join('')}
+    ${checks.length ? '' : '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Every purchase order passes. Nothing is blocking billing.</div>'}`;
+}
+
+function poIntakeTable(pos) {
+  if (!pos.length) return '<div style="font-size:12px;color:var(--gray-500)">None.</div>';
+  return `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
+      <th style="padding:5px 8px;text-align:left">PO</th><th style="padding:5px 8px;text-align:left">Site</th>
+      <th style="padding:5px 8px;text-align:left">BU</th><th style="padding:5px 8px;text-align:left">Service</th>
+      <th style="padding:5px 8px;text-align:right">PO value</th><th style="padding:5px 8px;text-align:right">Waiting</th>
+      <th style="padding:5px 8px;text-align:left">All defects</th></tr></thead>
+    <tbody>${pos.slice(0, 60).map(p => `<tr style="border-top:1px solid var(--gray-100)">
+      <td style="padding:5px 8px;font-weight:600">${p.docUrl ? `<a href="${escHtml(p.docUrl)}" target="_blank" rel="noopener">${escHtml(p.poNumber)}</a>` : escHtml(p.poNumber)}</td>
+      <td style="padding:5px 8px">${escHtml(p.siteCode || '—')}</td>
+      <td style="padding:5px 8px;color:var(--gray-500)">${escHtml(p.businessUnit || '—')}</td>
+      <td style="padding:5px 8px;color:var(--gray-500)">${escHtml(p.serviceType || '')}</td>
+      <td style="padding:5px 8px;text-align:right">${p.value == null ? '<span style="color:#dc2626">none</span>' : fmt$(p.value)}</td>
+      <td style="padding:5px 8px;text-align:right;font-weight:${p.atRisk > 0 ? '700' : '400'}">${p.atRisk > 0 ? fmt$(p.atRisk) : '—'}</td>
+      <td style="padding:5px 8px;color:var(--gray-500);font-size:11px">${escHtml(p.defects.join(', '))}</td>
+    </tr>`).join('')}</tbody></table>
+    ${pos.length > 60 ? `<div style="font-size:11px;color:var(--gray-500);padding:6px 8px">Showing 60 of ${pos.length}.</div>` : ''}`;
+}
+
+function poIntakeToggle(key) {
+  const d = document.getElementById('intake-' + key);
+  if (d) d.style.display = d.style.display === 'none' ? '' : 'none';
+}
+
 function setPoFundsSubtab(name) {
   _poFundsSubtab = name;
   document.getElementById('po-subtab-ledger').classList.toggle('active', name === 'ledger');
@@ -5408,9 +5498,11 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-subtab-aging').classList.toggle('active', name === 'aging');
   document.getElementById('po-subtab-rejections').classList.toggle('active', name === 'rejections');
   document.getElementById('po-subtab-contacts').classList.toggle('active', name === 'contacts');
+  document.getElementById('po-subtab-intake').classList.toggle('active', name === 'intake');
   document.getElementById('po-ledger-content').style.display = name === 'ledger' ? '' : 'none';
   document.getElementById('po-sites-content').style.display = name === 'sites' ? '' : 'none';
   document.getElementById('po-pending-site-content').style.display = name === 'pending-site' ? '' : 'none';
+  document.getElementById('po-intake-content').style.display = name === 'intake' ? '' : 'none';
   document.getElementById('po-uploaded-content').style.display = name === 'uploaded' ? '' : 'none';
   document.getElementById('po-needs-upload-content').style.display = name === 'needs-upload' ? '' : 'none';
   document.getElementById('po-orphans-content').style.display = name === 'orphans' ? '' : 'none';
@@ -5423,6 +5515,7 @@ function setPoFundsSubtab(name) {
   if (name === 'sites') renderPoSiteReport();
   if (name === 'pending-site') renderPendingBySite();
   if (name === 'contacts') loadSiteContacts();
+  if (name === 'intake') loadPoIntakeHealth();
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = (name === 'ledger' && currentUser && ['admin', 'manager'].includes(currentUser.role)) ? '' : 'none';
 }
