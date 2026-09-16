@@ -4265,9 +4265,13 @@ app.put('/api/comms/drafts/:conversationId', requireAuth, requirePerm('email.sen
   try {
     const id = parseInt(req.params.conversationId, 10);
     const b = req.body || {};
-    // An empty draft is a deletion, not a row of blanks.
-    const empty = !(b.bodyHtml || '').trim() && !(b.attachmentIds || []).length
-      && !(b.subject || '').trim() && !(b.toEmails || []).length;
+    // A draft exists only if the user actually WROTE something — body text or an
+    // attachment. To and Subject are prefilled the moment a thread is opened
+    // (reply-to address, "RE: …"), so counting them meant merely LOOKING at a
+    // conversation created a draft and put a DRAFT badge on it
+    // (caught in test 2026-09-16).
+    const bodyText = String(b.bodyHtml || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+    const empty = !bodyText && !(b.attachmentIds || []).length;
     if (empty) { db.deleteDraft(req.session.user.email, id); return res.json({ ok: true, deleted: true }); }
     db.saveDraft(req.session.user.email, id, {
       toEmails: b.toEmails || [], ccEmails: b.ccEmails || [], subject: b.subject || '',
