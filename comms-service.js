@@ -295,16 +295,18 @@ async function htmlToPdf(html, opts = {}) {
 }
 
 // ─── Recipient guard ─────────────────────────────────────────────────────────
-// Dedupe + normalize; block contacts with consent revoked; enforce allowlist.
+// Dedupe + normalize; enforce the allowlist.
+//
+// There is NO email-consent gate. It was removed 2026-09-16 at Edwin's
+// direction: "consent is not something we need to track or a gate we want."
+// This mailbox sends collections correspondence to businesses that owe us
+// money about invoices they already hold — that is transactional, not
+// marketing, and a per-contact opt-out was modelling the wrong thing. The
+// allowlist below is the real gate and stays.
 function resolveRecipients(customerId, toEmails, ccEmails) {
   const to = [...new Set((toEmails || []).map(graph.normEmail).filter(Boolean))];
   const cc = [...new Set((ccEmails || []).map(graph.normEmail).filter(Boolean))].filter(e => !to.includes(e));
   if (!to.length) throw new Error('At least one recipient is required');
-  const contacts = customerId ? db.listCustomerContacts(customerId, true) : [];
-  for (const e of [...to, ...cc]) {
-    const c = contacts.find(x => x.email === e);
-    if (c && !c.consent_email) throw new Error(`${e} has email consent turned off for this customer`);
-  }
   const allow = allowlist();
   if (allow.length) {
     const outside = [...to, ...cc].filter(e => !allowlistPermits(e));

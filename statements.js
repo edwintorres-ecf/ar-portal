@@ -7,7 +7,7 @@
 //   - STATEMENTS_ARMED=1 required for live sends; unarmed runs log would-sends.
 //   - COMMS_ALLOWLIST still gates every recipient while set.
 //   - One send per customer per month (last_sent_period), Amazon hard-excluded,
-//     zero/low balances skipped, consent respected by the service.
+//     zero/low balances skipped.
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -50,7 +50,7 @@ async function runStatementSchedules({ triggeredBy, force } = {}) {
       const totalDue = custInvoices.reduce((t, i) => t + i.totalDue, 0);
       if (totalDue < (s.min_balance ?? 0.01)) { out.reason = 'below_min_balance'; continue; }
 
-      const contacts = db.listCustomerContacts(s.customer_id).filter(c => c.consent_email);
+      const contacts = db.listCustomerContacts(s.customer_id);
       let recipients;
       if (s.contact_ids) {
         const ids = new Set(JSON.parse(s.contact_ids));

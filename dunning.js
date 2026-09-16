@@ -111,7 +111,9 @@ function dunningContacts(customerId) {
   // Collections contacts first — Sage-synced billing addresses are invoice
   // delivery inboxes, not the people to chase (Edwin 2026-08-13).
   return db.listCustomerContacts(customerId)
-    .filter(c => c.dunning_enabled && c.consent_email)
+    // dunning_enabled is the only gate; the email-consent flag was retired
+    // 2026-09-16 (Edwin: not something we track).
+    .filter(c => c.dunning_enabled)
     .sort((a, b) => (a.contact_type === 'collections' ? 0 : 1) - (b.contact_type === 'collections' ? 0 : 1));
 }
 

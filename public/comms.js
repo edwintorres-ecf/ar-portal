@@ -107,7 +107,6 @@ function commsRenderContactList(contacts) {
     <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
       <th style="padding:6px 8px"></th><th style="padding:6px 8px">Name</th><th style="padding:6px 8px">Email</th>
       <th style="padding:6px 8px">Phone</th><th style="padding:6px 8px">Type</th><th style="padding:6px 8px">Source</th>
-      <th style="padding:6px 8px" title="May be emailed at all">Email OK</th>
       <th style="padding:6px 8px" title="Approved for automated dunning">Dunning</th>
       <th style="padding:6px 8px"></th>
     </tr></thead>
@@ -122,7 +121,6 @@ function commsRenderContactList(contacts) {
           ? `<span style="cursor:pointer;background:${c.contact_type === 'collections' ? '#ddefd9;color:#3f7238' : '#fdf4d5;color:#8a6d1a'};padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700" title="Click to switch billing/collections" onclick="commsToggleContactType(${c.id}, '${c.contact_type === 'collections' ? 'billing' : 'collections'}')">${c.contact_type === 'collections' ? '📞 Collections' : '📨 Billing'}</span>`
           : `<span style="background:${c.contact_type === 'collections' ? '#ddefd9;color:#3f7238' : '#fdf4d5;color:#8a6d1a'};padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700">${c.contact_type === 'collections' ? '📞 Collections' : '📨 Billing'}</span>`}</td>
         <td style="padding:6px 8px"><span style="background:${c.source === 'intacct' ? '#e0f2fe' : '#f3e8ff'};color:${c.source === 'intacct' ? '#0c4a6e' : '#6b21a8'};padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600">${c.source === 'intacct' ? 'Intacct' : 'Manual'}</span></td>
-        <td style="padding:6px 8px">${commsToggle(c.id, 'consent_email', c.consent_email, canEdit)}</td>
         <td style="padding:6px 8px">${isAmazon ? '<span style="font-size:11px;color:var(--gray-400)">n/a</span>' : commsToggle(c.id, 'dunning_enabled', c.dunning_enabled, canEdit)}</td>
         <td style="padding:6px 8px;white-space:nowrap">${canEdit ? `
           <button class="btn-sm" style="background:#f1f5f9;border:none;padding:3px 8px;border-radius:5px;cursor:pointer" title="Edit" onclick='commsEditContact(${JSON.stringify(c).replace(/'/g, "&#39;")})'>✎</button>
@@ -132,7 +130,7 @@ function commsRenderContactList(contacts) {
 
 function commsToggle(id, field, val, canEdit) {
   const on = !!val;
-  return `<span style="cursor:${canEdit ? 'pointer' : 'default'};font-size:16px" title="${field === 'consent_email' ? 'May be emailed' : 'Approved for automated dunning'}"
+  return `<span style="cursor:${canEdit ? 'pointer' : 'default'};font-size:16px" title="Approved for automated dunning"
     ${canEdit ? `onclick="commsToggleFlag(${id}, '${field}', ${on ? 0 : 1})"` : ''}>${on ? '🟢' : '⚪'}</span>`;
 }
 
@@ -296,7 +294,7 @@ async function commsOpenComposer({ customerId, customerName, recordNos, invoiceI
   document.getElementById('composer-to-wrap').innerHTML = contacts.length
     ? 'To: ' + contacts.map(c => `<label style="margin-right:12px;display:inline-flex;align-items:center;gap:4px">
         <input type="checkbox" class="composer-to" value="${escHtml(c.email)}" ${(contacts.some(x => x.contact_type === 'collections') ? c.contact_type === 'collections' : c.is_primary) ? 'checked' : ''}>
-        ${escHtml(c.name || c.email)}${c.is_primary ? ' ⭐' : ''}${c.consent_email ? '' : ' <span style="color:#b91c1c;font-size:10px">(consent off)</span>'}</label>`).join('')
+        ${escHtml(c.name || c.email)}${c.is_primary ? ' ⭐' : ''}</label>`).join('')
       + ` <input id="composer-to-extra" placeholder="add address…" style="padding:4px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;width:180px">`
     : `To: <input id="composer-to-extra" placeholder="recipient@company.com" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;width:260px">
        <span style="color:var(--gray-500);font-size:11.5px">(no contacts on file — <a href="#" onclick="commsCloseComposer();commsOpenContacts('${escHtml(customerId)}','${escHtml(customerName || '')}');return false">add one</a>)</span>`;
