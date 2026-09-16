@@ -4245,8 +4245,9 @@ app.get('/api/comms/drafts/:conversationId', requireAuth, (req, res) => {
     const d = db.getDraft(req.session.user.email, parseInt(req.params.conversationId, 10));
     if (!d) return res.json({ draft: null });
     const parse = (v, fallback) => { try { return JSON.parse(v || 'null') ?? fallback; } catch (e) { return fallback; } };
-    // Attachments expire after 6h while a draft does not, so drop the ones that
-    // are gone rather than restoring ids that would fail at send.
+    // A draft's attachments are pinned against the 6h TTL, but they are not
+    // immortal (30-day cap) and one can be deleted by hand, so still drop the
+    // ones that are gone rather than restoring ids that would fail at send.
     const att = require('./comms-attachments');
     const live = parse(d.attachment_ids, []).map(id => att.meta(id)).filter(Boolean)
       .map(m => ({ id: m.id, name: m.name, size: m.size, contentType: m.contentType }));
@@ -6482,10 +6483,11 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
-  // Attachments a user uploaded but never sent.
+  // Attachments a user uploaded but never sent. Anything a saved draft still
+  // points at is spared the 6h TTL and held to the 30-day cap instead.
   setInterval(() => {
     try {
-      const n = require('./comms-attachments').sweep();
+      const n = require('./comms-attachments').sweep(db.draftAttachmentIds());
       if (n) console.log(`[comms-attachments] swept ${n} expired upload(s)`);
     } catch (e) {}
   }, 60 * 60 * 1000);

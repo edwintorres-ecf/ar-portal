@@ -1935,6 +1935,22 @@ function deleteDraft(userEmail, conversationId) {
   getDb().prepare('DELETE FROM comms_drafts WHERE user_email=? AND conversation_id=?')
     .run(String(userEmail).toLowerCase(), conversationId);
 }
+/**
+ * Every attachment id any saved draft still points at, across all users. The
+ * attachment sweeper uses this to spare files that are not abandoned — a draft
+ * outlives the 6h upload TTL, so without it a reply left over a weekend lost
+ * its attachment (2026-09-16).
+ */
+function draftAttachmentIds() {
+  const ids = new Set();
+  try {
+    for (const r of getDb().prepare('SELECT attachment_ids FROM comms_drafts').all()) {
+      try { for (const id of JSON.parse(r.attachment_ids || '[]')) if (id) ids.add(String(id)); }
+      catch (e) {}
+    }
+  } catch (e) {}
+  return ids;
+}
 
 function listCustomerContacts(customerId, includeInactive = false) {
   const d = getDb();
@@ -3081,7 +3097,7 @@ module.exports = {
   getCommState,
   setCommState,
   listCustomerContacts,
-  saveDraft, getDraft, listDrafts, deleteDraft,
+  saveDraft, getDraft, listDrafts, deleteDraft, draftAttachmentIds,
   getCustomerContact,
   addCustomerContact,
   updateCustomerContact,
