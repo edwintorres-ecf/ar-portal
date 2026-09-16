@@ -6233,6 +6233,22 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
     try {
       const inv = sage.getCachedInvoices();
       if (!inv.length) return;
+      // Adopt first, then judge. An invoice on a placeholder PO should move to
+      // the real order as soon as Amazon issues one, so the health check sees
+      // the corrected picture rather than reporting a placeholder that is
+      // already answerable. Only unambiguous cases move; anything with several
+      // candidate POs is left for a person (Edwin 2026-09-15, KRB5).
+      try {
+        const r = require('./po-placeholder-adopt').apply(inv);
+        if (r.adopt.length) {
+          console.log(`[placeholder-adopt] ${r.adopt.length} invoice(s) moved onto a real PO: `
+            + r.adopt.map(a => `${a.invoiceId} ${a.from}->${a.to}`).join(', '));
+        }
+        if (r.ambiguous.length) {
+          console.warn(`[placeholder-adopt] ${r.ambiguous.length} invoice(s) need a person to pick the PO: `
+            + r.ambiguous.map(a => `${a.invoiceId}@${a.site}`).join(', '));
+        }
+      } catch (e) { console.error('[placeholder-adopt] failed:', e.message); }
       const { newly, analysis } = require('./po-intake-health').sweep(inv);
       const blockers = newly.filter(p => p.blocking);
       if (!blockers.length) {
