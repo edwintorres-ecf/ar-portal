@@ -2157,18 +2157,29 @@ function commsRenderFyi() {
   const box = document.getElementById('cmp-fyi');
   const d = _cmpInvoices;
   if (!box || !d) return;
+  // NOTHING is ticked by default, and only the first slice is listed. Amazon's
+  // past-due bucket alone is 1,577 invoices worth $25.9M — pre-selecting it
+  // would paste the entire book into an email, and rendering it would hang the
+  // pane. An FYI is a handful of lines; if you want the whole book, that is
+  // what the statement attachment is for (Edwin 2026-09-16).
+  const CAP = 25;
   const group = (key, label, rows, colour) => !rows.length ? '' : `
     <div style="margin-bottom:6px">
-      <label style="font-size:11px;font-weight:700;color:${colour};display:inline-flex;align-items:center;gap:4px">
-        <input type="checkbox" data-fyi-group="${key}" checked onchange="commsFyiGroupToggle('${key}', this.checked)"> ${label} · ${rows.length} · ${fmt$(rows.reduce((t, r) => t + r.amount, 0))}</label>
-      <div style="max-height:96px;overflow-y:auto;margin-top:2px">
-        ${rows.map(r => `<label style="display:flex;gap:6px;align-items:center;font-size:11px;padding:1px 0">
-          <input type="checkbox" data-fyi="${escHtml(r.recordNo)}" data-fyi-in="${key}" checked>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <span style="font-size:11px;font-weight:700;color:${colour}">${label} · ${rows.length} · ${fmt$(rows.reduce((t, r) => t + r.amount, 0))}</span>
+        <a href="#" style="font-size:10.5px" onclick="commsFyiGroupToggle('${key}', true);return false">select listed</a>
+        <a href="#" style="font-size:10.5px" onclick="commsFyiGroupToggle('${key}', false);return false">none</a>
+      </div>
+      <div style="max-height:110px;overflow-y:auto;margin-top:2px">
+        ${rows.slice(0, CAP).map(r => `<label style="display:flex;gap:6px;align-items:center;font-size:11px;padding:1px 0">
+          <input type="checkbox" data-fyi="${escHtml(r.recordNo)}" data-fyi-in="${key}">
           <span style="font-family:monospace">${escHtml(r.invoiceId)}</span>
           <span style="color:var(--gray-500)">${fmt$(r.amount)}</span>
           <span style="color:var(--gray-400)">${r.daysOverdue > 0 ? r.daysOverdue + 'd overdue' : 'due ' + escHtml(String(r.dueDate || '').slice(0, 10))}</span>
         </label>`).join('')}
       </div>
+      ${rows.length > CAP ? `<div style="font-size:10.5px;color:var(--gray-500);margin-top:2px">
+        Showing the ${CAP} most urgent of ${rows.length}. For a full list, tick <b>Attach statement</b> instead.</div>` : ''}
     </div>`;
   box.innerHTML = `
     <div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;background:#fcfcfd">
@@ -2197,7 +2208,7 @@ function commsInsertFyi() {
     .map(r => `  ${r.invoiceId}   ${fmt$(r.amount)}   ${r.daysOverdue > 0 ? r.daysOverdue + ' days past due' : 'due ' + String(r.dueDate || '').slice(0, 10)}`)
     .join('\n');
   const past = fmt(d.pastDue), soon = fmt(d.soon);
-  if (!past && !soon) { showToast('Nothing selected', 'error'); return; }
+  if (!past && !soon) { showToast('Tick the invoices you want to mention first', 'error'); return; }
   let txt = '\n';
   if (past) txt += `Past due:\n${past}\n`;
   if (soon) txt += `${past ? '\n' : ''}Coming due within ${d.soonDays} days:\n${soon}\n`;
