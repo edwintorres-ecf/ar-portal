@@ -4287,10 +4287,15 @@ app.get('/api/comms/inbound/state', requireAuth, (req, res) => {
 // ─── Mailbox visibility ─────────────────────────────────────────────────────
 // "A user should only be able to see their correspondence" (Edwin 2026-09-15).
 // A conversation is YOURS if it is assigned to you, or you sent or received a
-// message in it. UNASSIGNED threads stay visible to everyone, deliberately:
-// scoping strictly to assignment would make unclaimed mail invisible to the
-// people who could answer it, and the failure mode of a shared mailbox is
-// silence, not over-sharing.
+// message in it.
+//
+// UNASSIGNED mail is ADMIN/MANAGER ONLY (Edwin 2026-09-16, revising the earlier
+// rule). The first version showed unclaimed threads to everybody so nothing
+// would go unanswered; the cost was that every specialist saw every unfiled
+// customer's mail, which is the thing this change exists to stop. Triage is now
+// explicitly a privileged job, surfaced through its own filter rather than
+// mixed into everyone's list — so unowned mail is still impossible to miss, but
+// only for the people whose job it is.
 //
 // Admins and managers may pass ?scope=all to see everything; nobody else can,
 // whatever they send.
@@ -4300,8 +4305,10 @@ function mailboxScopeIds(user, scope) {
   if (scope === 'all' && privileged) return null;   // null = no restriction
   const ids = new Set();
   try {
-    for (const r of db.all(
-      `SELECT id FROM conversations WHERE assigned_email IS NULL OR TRIM(assigned_email)=''`)) ids.add(r.id);
+    if (privileged) {
+      for (const r of db.all(
+        `SELECT id FROM conversations WHERE assigned_email IS NULL OR TRIM(assigned_email)=''`)) ids.add(r.id);
+    }
     for (const r of db.all(
       `SELECT id FROM conversations WHERE LOWER(assigned_email)=?`, [email])) ids.add(r.id);
     // Participation: any message I sent, or that was addressed to me.
@@ -4328,6 +4335,15 @@ app.get('/api/comms/conversations', requireAuth, (req, res) => {
       `);
       return res.json(rows.filter(c => inMailboxScope(ids, c.id)));
     }
+    // Unowned mail as its own view rather than salted through everyone's list.
+    if (req.query.unassigned === '1') {
+      if (!['admin', 'manager'].includes(req.session.user.role)) return res.json([]);
+      return res.json(db.all(`
+        SELECT * FROM conversations
+        WHERE (assigned_email IS NULL OR TRIM(assigned_email)='')
+          AND COALESCE(status,'') NOT IN ('archived','completed')
+        ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 200`));
+    }
     const rows = db.listConversations({
       customerId: req.query.customerId || undefined,
       status: req.query.status || undefined,
@@ -4353,7 +4369,10 @@ app.get('/api/comms/action-items', requireAuth, (req, res) => {
     const triage = db.get(`SELECT COUNT(*) AS c FROM conversations WHERE status='triage'`).c;
     res.json({
       needsReplyMine: visible.filter(c => (c.assigned_email || '').toLowerCase() === me).length,
-      needsReplyUnassigned: visible.filter(c => !c.assigned_email).length,
+      // Only privileged users can see or claim unowned mail, so only they get a
+      // count for it — a number you cannot act on is noise.
+      needsReplyUnassigned: ['admin', 'manager'].includes(req.session.user.role)
+        ? needs.filter(c => !c.assigned_email).length : 0,
       needsReplyTotal: visible.length,
       triage,
       items: visible.slice(0, 20),
