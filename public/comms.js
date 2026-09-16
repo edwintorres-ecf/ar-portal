@@ -2081,9 +2081,13 @@ function commsIsPrivileged() {
 async function commsLoadMailbox() {
   const root = document.getElementById('comms-mailbox-root');
   if (!root) return;
+  // "Unassigned" is a triage queue, not a status, and only admins/managers can
+  // see or claim it — so the chip only exists for them (Edwin 2026-09-16).
   const chips = [
     ['needs-reply', '📩 Needs reply'], ['open', 'Open'], ['waiting', 'Waiting'],
-    ['due', 'Due'], ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
+    ['due', 'Due'], ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'],
+    ...(commsIsPrivileged() ? [['unassigned', '🗂 Unassigned']] : []),
+    ['', 'All'],
   ];
   root.innerHTML = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
@@ -2112,6 +2116,7 @@ async function commsLoadMailbox() {
     let q = _mailboxScopeAll && commsIsPrivileged() ? '?scope=all' : '?';
     if (_mailboxFilter === 'mine') q += '&assigned=' + encodeURIComponent((commsUser()?.email || '').toLowerCase());
     else if (_mailboxFilter === 'needs-reply') q += '&needsReply=1';
+    else if (_mailboxFilter === 'unassigned') q += '&unassigned=1';
     else if (_mailboxFilter) q += '&status=' + _mailboxFilter;
     // Standard verbiage, loaded once per view so the composer can offer it.
     if (!_commsTemplatesCache.length) {
@@ -2135,8 +2140,8 @@ function commsRenderList() {
     || String(c.customer_id || '').toLowerCase().includes(q));
   if (!list.length) {
     el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--gray-500);font-size:12.5px">${
-      _mailboxFilter === 'needs-reply'
-        ? '✅ Nothing awaiting a reply.'
+      _mailboxFilter === 'needs-reply' ? '✅ Nothing awaiting a reply.'
+        : _mailboxFilter === 'unassigned' ? '✅ Every conversation has an owner.'
         : (q ? 'Nothing matches that search.' : 'No conversations here.')}</div>`;
     return;
   }
@@ -2160,6 +2165,7 @@ function commsRenderList() {
 
 async function commsSelectThread(id) {
   _mailboxSel = id;
+  _threadOpen = {};                     // each thread starts with only its newest open
   commsRenderList();
   const el = document.getElementById('mailbox-thread');
   el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
@@ -2192,6 +2198,11 @@ function commsRenderThread({ conversation: c, messages }) {
           ${statuses.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </div>` : ''}
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <span style="font-size:11px;color:var(--gray-400)">${messages.length} message${messages.length === 1 ? '' : 's'}</span>
+        <a href="#" onclick="commsExpandAll(true);return false" style="font-size:11px">expand all</a>
+        <a href="#" onclick="commsExpandAll(false);return false" style="font-size:11px">collapse all</a>
+      </div>
       <div style="font-size:11px;color:var(--gray-500);margin-top:6px">
         ${c.assigned_email
           ? `Customer replies route to <b>${escHtml(commsPersonName(c.assigned_email))}</b>.`
@@ -2199,19 +2210,79 @@ function commsRenderThread({ conversation: c, messages }) {
       </div>
     </div>
     <div style="max-height:44vh;overflow-y:auto;padding:10px 14px">
-      ${messages.map(m => `
-        <div style="border:1px solid var(--gray-200);border-radius:9px;margin-bottom:8px;background:${m.direction === 'in' ? '#fff' : '#f8fafc'}">
-          <div style="padding:7px 11px;font-size:11.5px;color:var(--gray-600);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
-            <span>${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(m.direction === 'in' ? m.from_email : (commsPersonName(m.corresponding_email || m.actor_email) || m.from_email))}</strong>
-              ${m.direction === 'out' && (m.actor_email || m.corresponding_email) ? `<span style="color:var(--gray-500)">· sent by ${escHtml(commsPersonName(m.actor_email || m.corresponding_email))}</span>` : ''}
-              ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">AUTO</span>' : ''}
-              ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">FAILED</span>' : ''}</span>
-            <span>${escHtml(((m.sent_at || m.received_at || m.created_at) || '').slice(0, 16).replace('T', ' '))}</span>
-          </div>
-          <div style="padding:4px 13px 11px;font-size:12.5px;border-top:1px solid var(--gray-100)">${m.body_html || escHtml(m.body_text || '')}</div>
-        </div>`).join('')}
+      ${commsThreadMessagesHtml(messages)}
     </div>
     ${commsCanEdit() ? commsComposerHtml(c, messages) : ''}`;
+}
+
+// Messages collapse by default; the newest stays open. A long AR thread is
+// mostly quoted history, and rendering all of it expanded pushed the composer
+// off screen and buried the message you actually needed to read
+// (Edwin 2026-09-16: "email and replies should be nested or collapsible").
+//
+// Consecutive messages from the same side are grouped, so a run of reminders
+// reads as one block rather than five identical headers.
+let _threadOpen = {};
+
+function commsThreadMessagesHtml(messages) {
+  if (!messages.length) return '<div style="padding:16px;color:var(--gray-500);font-size:12.5px">No messages.</div>';
+  const last = messages.length - 1;
+  const groups = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const prev = groups[groups.length - 1];
+    if (prev && prev.direction === m.direction) prev.items.push({ m, i });
+    else groups.push({ direction: m.direction, items: [{ m, i }] });
+  }
+  return groups.map(g => {
+    const many = g.items.length > 1;
+    const head = many
+      ? `<div style="font-size:11px;color:var(--gray-500);margin:8px 2px 4px">${g.direction === 'in' ? '📩 from the customer' : '📤 from us'} · ${g.items.length} messages</div>`
+      : '';
+    return head + g.items.map(({ m, i }) => commsMessageHtml(m, i, i === last)).join('');
+  }).join('');
+}
+
+function commsMessageHtml(m, idx, isLast) {
+  // Default: only the newest is open. Once someone toggles one, their choice
+  // wins for as long as the thread stays on screen.
+  const open = _threadOpen[m.id] !== undefined ? _threadOpen[m.id] : isLast;
+  const who = m.direction === 'in'
+    ? (m.from_email || '')
+    : (commsPersonName(m.corresponding_email || m.actor_email) || m.from_email || '');
+  const when = ((m.sent_at || m.received_at || m.created_at) || '').slice(0, 16).replace('T', ' ');
+  const preview = String(m.body_text || String(m.body_html || '').replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ').trim().slice(0, 90);
+  return `
+    <div style="border:1px solid var(--gray-200);border-radius:9px;margin-bottom:6px;background:${m.direction === 'in' ? '#fff' : '#f8fafc'}">
+      <div onclick="commsToggleMessage(${m.id})" style="padding:7px 11px;font-size:11.5px;color:var(--gray-600);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer;align-items:baseline">
+        <span style="flex:1;min-width:0">
+          <span style="color:var(--gray-400);font-size:10px">${open ? '▾' : '▸'}</span>
+          ${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(who)}</strong>
+          ${m.direction === 'out' && (m.actor_email || m.corresponding_email) ? `<span style="color:var(--gray-500)">· sent by ${escHtml(commsPersonName(m.actor_email || m.corresponding_email))}</span>` : ''}
+          ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">AUTO</span>' : ''}
+          ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">FAILED</span>' : ''}
+          ${!open && preview ? `<span style="color:var(--gray-400);font-weight:400"> — ${escHtml(preview)}…</span>` : ''}
+        </span>
+        <span style="white-space:nowrap">${escHtml(when)}</span>
+      </div>
+      <div style="display:${open ? '' : 'none'};padding:4px 13px 11px;font-size:12.5px;border-top:1px solid var(--gray-100)">${m.body_html || escHtml(m.body_text || '')}</div>
+    </div>`;
+}
+
+function commsToggleMessage(id) {
+  const cur = _threadOpen[id];
+  const ctx = _mailboxCtx;
+  const isLast = ctx && ctx.messages.length && ctx.messages[ctx.messages.length - 1].id === id;
+  _threadOpen[id] = !(cur !== undefined ? cur : isLast);
+  if (ctx) commsRenderThread(ctx);
+}
+
+function commsExpandAll(open) {
+  const ctx = _mailboxCtx;
+  if (!ctx) return;
+  for (const m of ctx.messages) _threadOpen[m.id] = open;
+  commsRenderThread(ctx);
 }
 
 // Inline composer. Posts the same payload as the modal composer, so there is
