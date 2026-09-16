@@ -2052,71 +2052,305 @@ async function commsUpdateFooter() {
   setInterval(tickAll, 2 * 60 * 1000);
 })();
 
-// ─── Mailbox view (Deploy 6) ─────────────────────────────────────────────────
-// Filter chips over ONE canonical conversation store — chips are filters and
-// assignments, never copies.
 
+// ─── Mailbox (three-pane, 2026-09-15) ────────────────────────────────────────
+// List left, thread and composer centre, context right.
+//
+// Replaces a flat table that drilled into a separate thread page: you lost the
+// list the moment you opened anything, and composing meant a modal on top of a
+// modal. The context pane exists because answering an AR email almost always
+// means looking at the invoice, the site or the customer at the same time
+// (Edwin 2026-09-15).
+//
+// Visibility is enforced SERVER-side (mailboxScopeIds in app.js): you see a
+// thread if it is assigned to you, if you sent or received a message in it, or
+// if nobody owns it. This UI only reflects that; it never decides it.
 let _mailboxFilter = 'needs-reply';
+let _mailboxScopeAll = false;
+let _mailboxConvs = [];
+let _mailboxSel = null;
+let _mailboxSearch = '';
+let _mailboxCtx = null;
+let _commsTemplatesCache = [];
+
+function commsIsPrivileged() {
+  const u = commsUser();
+  return !!(u && ['admin', 'manager'].includes(u.role));
+}
 
 async function commsLoadMailbox() {
   const root = document.getElementById('comms-mailbox-root');
   if (!root) return;
   const chips = [
-    ['needs-reply', '📩 Needs reply'], ['open', 'Open'], ['waiting', 'Waiting'], ['due', 'Due'], ['triage', 'Triage'],
-    ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
+    ['needs-reply', '📩 Needs reply'], ['open', 'Open'], ['waiting', 'Waiting'],
+    ['due', 'Due'], ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'], ['', 'All'],
   ];
   root.innerHTML = `
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 12px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
       ${chips.map(([k, label]) => `<button class="btn-sm" style="border:none;padding:5px 12px;border-radius:14px;cursor:pointer;font-size:12px;font-weight:600;background:${_mailboxFilter === k ? 'var(--navy)' : '#f1f5f9'};color:${_mailboxFilter === k ? '#fff' : 'var(--gray-700)'}" onclick="_mailboxFilter='${k}';commsLoadMailbox()">${label}</button>`).join('')}
       <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        ${commsIsPrivileged() ? `<label style="font-size:11.5px;color:var(--gray-600);display:flex;align-items:center;gap:4px" title="Show correspondence belonging to everyone, not just yours">
+          <input type="checkbox" ${_mailboxScopeAll ? 'checked' : ''} onchange="_mailboxScopeAll=this.checked;commsLoadMailbox()"> All mail</label>` : ''}
         <span id="mailbox-poll-state" style="font-size:11.5px;color:var(--gray-500)"></span>
         <button class="btn-sm" id="mailbox-check-btn" style="border:1px solid var(--gray-300);background:var(--white);padding:5px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600" onclick="commsCheckMail(this)">↻ Check mail</button>
       </span>
     </div>
-    <div id="mailbox-list"><div style="padding:24px;text-align:center;color:var(--gray-500)">Loading…</div></div>
-    <div id="mailbox-thread" style="display:none"></div>`;
+    <div style="display:grid;grid-template-columns:300px minmax(420px,1fr) 290px;gap:12px;align-items:start">
+      <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
+        <div style="padding:8px">
+          <input id="mailbox-search" value="${escHtml(_mailboxSearch)}" placeholder="Search subject or customer…" oninput="_mailboxSearch=this.value;commsRenderList()"
+            style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:7px;font-size:12px">
+        </div>
+        <div id="mailbox-list" style="max-height:70vh;overflow-y:auto"><div style="padding:20px;text-align:center;color:var(--gray-500);font-size:12.5px">Loading…</div></div>
+      </div>
+      <div id="mailbox-thread" style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);min-height:320px">
+        <div style="padding:40px;text-align:center;color:var(--gray-500);font-size:13px">Pick a conversation on the left.</div>
+      </div>
+      <div id="mailbox-context"></div>
+    </div>`;
   try {
-    let q = '';
-    if (_mailboxFilter === 'mine') q = '?assigned=' + encodeURIComponent((commsUser()?.email || '').toLowerCase());
-    else if (_mailboxFilter === 'needs-reply') q = '?needsReply=1';
-    else if (_mailboxFilter) q = '?status=' + _mailboxFilter;
-    const convs = await apiFetch('/api/comms/conversations' + q);
-    const list = document.getElementById('mailbox-list');
-    if (!convs.length) {
-      list.innerHTML = _mailboxFilter === 'needs-reply'
-        ? '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Nothing awaiting a reply. The mailbox is checked every couple of minutes — use “Check mail” if you are expecting something now.</div>'
-        : '<div style="padding:30px;text-align:center;color:var(--gray-500)">No conversations here.</div>';
-      commsPollState();
-      return;
+    let q = _mailboxScopeAll && commsIsPrivileged() ? '?scope=all' : '?';
+    if (_mailboxFilter === 'mine') q += '&assigned=' + encodeURIComponent((commsUser()?.email || '').toLowerCase());
+    else if (_mailboxFilter === 'needs-reply') q += '&needsReply=1';
+    else if (_mailboxFilter) q += '&status=' + _mailboxFilter;
+    // Standard verbiage, loaded once per view so the composer can offer it.
+    if (!_commsTemplatesCache.length) {
+      try { _commsTemplatesCache = await apiFetch('/api/comms/templates') || []; } catch (e) { _commsTemplatesCache = []; }
     }
-    const dirIcon = (c) => c.last_direction === 'in' ? '📩' : c.last_direction === 'out' ? '📤' : '·';
-    list.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="text-align:left;color:var(--gray-500);font-size:11px;text-transform:uppercase">
-        <th style="padding:6px 10px"></th><th style="padding:6px 10px">Customer</th><th style="padding:6px 10px">Subject</th>
-        <th style="padding:6px 10px">Status</th><th style="padding:6px 10px">Assigned</th><th style="padding:6px 10px">Last activity</th><th style="padding:6px 10px"></th>
-      </tr></thead>
-      <tbody>${convs.map(c => `
-        <tr style="border-top:1px solid var(--gray-100);cursor:pointer" onclick="commsOpenThread(${c.id})">
-          <td style="padding:8px 10px">${dirIcon(c)}</td>
-          <td style="padding:8px 10px">${escHtml(c.customer_id || '(unfiled)')}</td>
-          <td style="padding:8px 10px;font-weight:600">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}
-            ${c.status === 'open' && c.last_direction === 'in' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;margin-left:5px">NEEDS REPLY</span>' : ''}</td>
-          <td style="padding:8px 10px"><span style="background:#f1f5f9;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${escHtml(c.status)}</span></td>
-          <td style="padding:8px 10px;font-size:12px;color:var(--gray-600)">${escHtml((c.assigned_email || '').split('@')[0] || '—')}</td>
-          <td style="padding:8px 10px;font-size:12px;color:var(--gray-500)">${escHtml((c.last_message_at || c.created_at || '').slice(0, 16).replace('T', ' '))}</td>
-          <td style="padding:8px 10px" onclick="event.stopPropagation()">
-            ${commsCanEdit() && c.customer_id ? `<button class="btn-sm" style="background:var(--navy);color:#fff;border:none;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600" onclick="commsReplyToConversation(${c.id})">↩ Reply</button>` : ''}</td>
-        </tr>`).join('')}</tbody></table>`;
+    _mailboxConvs = await apiFetch('/api/comms/conversations' + q);
+    commsRenderList();
     commsPollState();
+    if (_mailboxSel && _mailboxConvs.some(c => c.id === _mailboxSel)) commsSelectThread(_mailboxSel);
   } catch (e) {
-    document.getElementById('mailbox-list').innerHTML = `<div style="padding:24px;color:var(--red)">${escHtml(e.message)}</div>`;
+    document.getElementById('mailbox-list').innerHTML = `<div style="padding:20px;color:var(--red);font-size:12.5px">${escHtml(e.message)}</div>`;
   }
 }
 
-// ─── Mailbox freshness ──────────────────────────────────────────────────────
-// "It did not reach the portal" was really "it has not been fetched yet": the
-// poll runs every two minutes and nothing on screen said so, or when it last
-// ran (Edwin 2026-09-10).
+function commsRenderList() {
+  const el = document.getElementById('mailbox-list');
+  if (!el) return;
+  const q = _mailboxSearch.trim().toLowerCase();
+  const list = _mailboxConvs.filter(c => !q
+    || String(c.subject || '').toLowerCase().includes(q)
+    || String(c.customer_id || '').toLowerCase().includes(q));
+  if (!list.length) {
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--gray-500);font-size:12.5px">${
+      _mailboxFilter === 'needs-reply'
+        ? '✅ Nothing awaiting a reply.'
+        : (q ? 'Nothing matches that search.' : 'No conversations here.')}</div>`;
+    return;
+  }
+  el.innerHTML = list.map(c => {
+    const sel = c.id === _mailboxSel;
+    const unowned = !c.assigned_email;
+    return `<div onclick="commsSelectThread(${c.id})" style="padding:9px 11px;border-bottom:1px solid var(--gray-100);cursor:pointer;background:${sel ? '#eff6ff' : 'transparent'};border-left:3px solid ${sel ? 'var(--navy)' : 'transparent'}">
+      <div style="display:flex;gap:6px;align-items:baseline">
+        <span style="font-size:12px">${c.last_direction === 'in' ? '📩' : c.last_direction === 'out' ? '📤' : '·'}</span>
+        <span style="font-size:12.5px;font-weight:${c.last_direction === 'in' && c.status === 'open' ? '700' : '600'};color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
+        <span style="font-size:11px;color:var(--gray-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(c.customer_id || 'unfiled')}</span>
+        <span style="font-size:10px;color:var(--gray-400)">${escHtml(String(c.last_message_at || c.created_at || '').slice(5, 10))}</span>
+      </div>
+      <div style="font-size:10.5px;margin-top:2px;color:${unowned ? '#b45309' : 'var(--gray-500)'}">
+        ${unowned ? '⚠ nobody owns this' : escHtml(commsPersonName(c.assigned_email))} · ${escHtml(c.status || '')}</div>
+    </div>`;
+  }).join('');
+}
+
+async function commsSelectThread(id) {
+  _mailboxSel = id;
+  commsRenderList();
+  const el = document.getElementById('mailbox-thread');
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div>';
+  try {
+    const data = await apiFetch(`/api/comms/conversations/${id}` + (_mailboxScopeAll && commsIsPrivileged() ? '?scope=all' : ''));
+    _mailboxCtx = data;
+    commsRenderThread(data);
+    commsRenderContext(data);
+  } catch (e) {
+    el.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+function commsRenderThread({ conversation: c, messages }) {
+  const el = document.getElementById('mailbox-thread');
+  const statuses = ['open', 'waiting', 'due', 'completed', 'archived'];
+  el.innerHTML = `
+    <div style="padding:12px 14px;border-bottom:1px solid var(--gray-200)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <strong style="font-size:14px;color:var(--navy)">${escHtml((c.subject || '(no subject)').replace(/\s*\[ECF#[^\]]+\]/, ''))}</strong>
+        <span style="font-size:11.5px;color:var(--gray-500)">${escHtml(c.customer_id || 'unfiled')}</span>
+      </div>
+      ${commsCanEdit() ? `<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--gray-500)">Owner
+          <select onchange="commsAssignThread(${c.id}, this.value)" style="padding:4px 7px;border:1px solid var(--gray-200);border-radius:6px;font-size:11.5px;margin-left:3px">
+            <option value="">— nobody —</option>
+            ${(_portalUsers || []).map(u => `<option value="${escHtml(u.email.toLowerCase())}"${(c.assigned_email || '').toLowerCase() === u.email.toLowerCase() ? ' selected' : ''}>${escHtml(u.name || u.email)}</option>`).join('')}
+          </select></label>
+        <select onchange="commsSetThreadStatus(${c.id}, this.value)" style="padding:4px 7px;border:1px solid var(--gray-200);border-radius:6px;font-size:11.5px">
+          ${statuses.map(s => `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </div>` : ''}
+      <div style="font-size:11px;color:var(--gray-500);margin-top:6px">
+        ${c.assigned_email
+          ? `Customer replies route to <b>${escHtml(commsPersonName(c.assigned_email))}</b>.`
+          : '<span style="color:#b45309">Nobody owns this thread — a reply would reach no one. Set an owner.</span>'}
+      </div>
+    </div>
+    <div style="max-height:44vh;overflow-y:auto;padding:10px 14px">
+      ${messages.map(m => `
+        <div style="border:1px solid var(--gray-200);border-radius:9px;margin-bottom:8px;background:${m.direction === 'in' ? '#fff' : '#f8fafc'}">
+          <div style="padding:7px 11px;font-size:11.5px;color:var(--gray-600);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;cursor:pointer" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
+            <span>${m.direction === 'in' ? '📩' : '📤'} <strong>${escHtml(m.direction === 'in' ? m.from_email : (commsPersonName(m.corresponding_email || m.actor_email) || m.from_email))}</strong>
+              ${m.direction === 'out' && (m.actor_email || m.corresponding_email) ? `<span style="color:var(--gray-500)">· sent by ${escHtml(commsPersonName(m.actor_email || m.corresponding_email))}</span>` : ''}
+              ${m.actor_type === 'automation' ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">AUTO</span>' : ''}
+              ${m.status === 'failed' ? '<span style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">FAILED</span>' : ''}</span>
+            <span>${escHtml(((m.sent_at || m.received_at || m.created_at) || '').slice(0, 16).replace('T', ' '))}</span>
+          </div>
+          <div style="padding:4px 13px 11px;font-size:12.5px;border-top:1px solid var(--gray-100)">${m.body_html || escHtml(m.body_text || '')}</div>
+        </div>`).join('')}
+    </div>
+    ${commsCanEdit() ? commsComposerHtml(c, messages) : ''}`;
+}
+
+// Inline composer. Posts the same payload as the modal composer, so there is
+// one send path and one audit trail. The modal stays available for the cases it
+// does better — contact picker, token preview, statement attach.
+function commsComposerHtml(c, messages) {
+  let replyTo = '';
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].direction === 'in' && messages[i].from_email) { replyTo = messages[i].from_email; break; }
+  }
+  if (!replyTo) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      try { const t = JSON.parse(messages[i].to_emails || '[]'); if (t.length) { replyTo = t[0]; break; } } catch (e) {}
+    }
+  }
+  const subject = /^re:/i.test(c.subject || '') ? c.subject : 'RE: ' + (c.subject || '');
+  const tpl = (_commsTemplatesCache || []);
+  return `
+    <div style="border-top:1px solid var(--gray-200);padding:12px 14px;background:#fcfcfd;border-radius:0 0 10px 10px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:7px">
+        <strong style="font-size:12px;color:var(--navy)">Reply</strong>
+        <select id="cmp-tpl" onchange="commsApplyInlineTemplate(this.value)" title="Standard verbiage — inserts the approved wording, which you can then edit"
+          style="padding:4px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:11.5px">
+          <option value="">Standard verbiage…</option>
+          ${tpl.map(t => `<option value="${escHtml(t.key)}">${escHtml(t.name)}</option>`).join('')}
+        </select>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-400)">
+          <a href="#" onclick="commsReplyToConversation(${c.id});return false">full composer →</a></span>
+      </div>
+      <input id="cmp-to" value="${escHtml(replyTo)}" placeholder="To (comma separated)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <input id="cmp-cc" placeholder="Cc (optional)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <input id="cmp-subject" value="${escHtml(subject)}" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <textarea id="cmp-body" rows="6" placeholder="Write your reply…" style="width:100%;padding:8px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;font-family:inherit;resize:vertical"></textarea>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
+        <label style="font-size:11.5px;color:var(--gray-600);display:flex;align-items:center;gap:4px">
+          <input type="checkbox" id="cmp-attach-pdf"> Attach invoice PDFs</label>
+        <label style="font-size:11.5px;color:var(--gray-600);display:flex;align-items:center;gap:4px">
+          <input type="checkbox" id="cmp-attach-stmt"> Attach statement</label>
+        <span id="cmp-note" style="font-size:11px;color:var(--gray-500)"></span>
+        <button class="btn-sm" style="margin-left:auto;background:var(--navy);color:#fff;border:none;padding:6px 16px;border-radius:7px;cursor:pointer;font-weight:600;font-size:12px"
+          onclick="commsSendInline(${c.id}, this)">Send</button>
+      </div>
+    </div>`;
+}
+
+function commsApplyInlineTemplate(key) {
+  const t = (_commsTemplatesCache || []).find(x => x.key === key);
+  const note = document.getElementById('cmp-note');
+  if (!t) { if (note) note.textContent = ''; return; }
+  // The template is applied SERVER-side when the body is left untouched, so the
+  // version used is recorded on the message. Show the wording here so nobody
+  // sends blind; editing it switches to a plain send with your text.
+  const body = document.getElementById('cmp-body');
+  if (body && !body.value.trim()) {
+    body.value = '[' + t.name + ' will be used — its approved wording is filled in when sent. '
+      + 'Type here instead if you want to write your own.]';
+    body.dataset.templateKey = t.key;
+  }
+  if (note) note.textContent = 'Using “' + t.name + '”';
+}
+
+async function commsSendInline(conversationId, btn) {
+  const to = (document.getElementById('cmp-to').value || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  const cc = (document.getElementById('cmp-cc').value || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  const subject = document.getElementById('cmp-subject').value || '';
+  const bodyEl = document.getElementById('cmp-body');
+  const body = bodyEl.value || '';
+  const tplKey = document.getElementById('cmp-tpl').value || '';
+  const usingTemplate = !!tplKey && body.startsWith('[');
+  if (!to.length) { showToast('Add at least one recipient', 'error'); return; }
+  if (!usingTemplate && !body.trim()) { showToast('Write something first', 'error'); return; }
+  const c = _mailboxCtx && _mailboxCtx.conversation;
+  const recordNos = [...new Set((_mailboxCtx?.messages || []).flatMap(m => m.recordNos || []))];
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await apiFetch('/api/comms/send', { method: 'POST', body: JSON.stringify({
+      customerId: c && c.customer_id, conversationId,
+      toEmails: to, ccEmails: cc.length ? cc : undefined, recordNos,
+      templateKey: usingTemplate ? tplKey : undefined,
+      rawSubject: usingTemplate ? undefined : subject,
+      rawBody: usingTemplate ? undefined : body,
+      attachInvoicePdfs: document.getElementById('cmp-attach-pdf').checked,
+      attachStatement: document.getElementById('cmp-attach-stmt').checked,
+    }) });
+    showToast('Sent', 'success');
+    bodyEl.value = '';
+    await commsSelectThread(conversationId);
+  } catch (e) {
+    showToast('Send failed: ' + e.message, 'error');
+  } finally { btn.disabled = false; btn.textContent = 'Send'; }
+}
+
+// Right-hand pane: what you need in front of you to answer the email.
+async function commsRenderContext({ conversation: c, messages }) {
+  const el = document.getElementById('mailbox-context');
+  if (!el) return;
+  const recordNos = [...new Set(messages.flatMap(m => m.recordNos || []))];
+  const card = (title, inner) => `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:11px 13px;margin-bottom:10px">
+    <div style="font-size:10.5px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">${title}</div>${inner}</div>`;
+
+  el.innerHTML = card('Customer', c.customer_id
+      ? `<div style="font-size:13px;font-weight:600;color:var(--navy)">${escHtml(c.customer_id)}</div>
+         <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+           <a href="#" onclick="navGo('customers');return false" style="font-size:11.5px">Open customer view →</a>
+           <a href="#" onclick="navGo('comms-statements');return false" style="font-size:11.5px">Send a statement →</a>
+         </div>`
+      : '<div style="font-size:12px;color:#b45309">Unfiled — file it to a customer in Triage so replies and tokens resolve.</div>')
+    + card('Invoices on this thread', recordNos.length
+      ? '<div id="ctx-invoices" style="font-size:12px;color:var(--gray-500)">Loading…</div>'
+      : '<div style="font-size:12px;color:var(--gray-500)">None tagged.</div>')
+    + card('Thread', `<div style="font-size:11.5px;color:var(--gray-600);line-height:1.7">
+        Status <b>${escHtml(c.status || '')}</b><br>
+        Owner <b>${escHtml(c.assigned_email ? commsPersonName(c.assigned_email) : 'nobody')}</b><br>
+        ${messages.length} message${messages.length === 1 ? '' : 's'}<br>
+        Last ${escHtml(String(c.last_message_at || c.created_at || '').slice(0, 16).replace('T', ' '))}
+      </div>`);
+
+  if (!recordNos.length) return;
+  // Fetched one by one rather than as a batch: it is a handful per thread, and
+  // /api/invoices/:recordno already applies the caller's scope.
+  const box = document.getElementById('ctx-invoices');
+  const rows = [];
+  for (const rn of recordNos.slice(0, 8)) {
+    try {
+      const inv = await apiFetch('/api/invoices/' + encodeURIComponent(rn));
+      const i = inv.invoice || inv;
+      rows.push(`<div style="border-top:1px solid var(--gray-100);padding:5px 0">
+        <div style="font-size:12px;font-weight:600;color:var(--navy)">${escHtml(i.invoiceId || rn)}</div>
+        <div style="font-size:11px;color:var(--gray-600)">${fmt$(i.totalDue || 0)}${i.daysOverdue ? ' · ' + i.daysOverdue + 'd overdue' : ''}</div>
+        ${i.siteCode || i.poNumber ? `<div style="font-size:10.5px;color:var(--gray-500)">${escHtml(i.siteCode || '')}${i.poNumber ? ' · ' + escHtml(i.poNumber) : ''}</div>` : ''}
+      </div>`);
+    } catch (e) { rows.push(`<div style="font-size:11px;color:var(--gray-400);padding:4px 0">${escHtml(rn)} — not visible to you</div>`); }
+  }
+  if (box) box.innerHTML = rows.join('') || '<div style="font-size:12px;color:var(--gray-500)">None.</div>';
+}
+
+// Kept so anything still calling it lands in the right place.
+async function commsOpenThread(id) { return commsSelectThread(id); }
+
 async function commsPollState() {
   const el = document.getElementById('mailbox-poll-state');
   if (!el) return;
