@@ -71,6 +71,18 @@ function analyse(invoices, { snowOnly = false } = {}) {
   let ledger = poLedger.getPoLedger(invoices);
   if (snowOnly) ledger = ledger.filter(p => p.serviceType === 'snow');
 
+  // A placeholder with nothing behind it is a spent note to ourselves, not a
+  // defective purchase order. "NEEDED KRB5" held $55,555 until its invoices
+  // adopted the real PO; the row lingers because it is a tracked PO, and
+  // reporting it forever would train people to ignore this screen. A
+  // placeholder that STILL carries work stays flagged — that is the real thing
+  // to fix (Edwin 2026-09-15).
+  const spentPlaceholder = (p) => {
+    try { if (!require('./po-placeholder-adopt').isPlaceholder(p.poNumber)) return false; } catch (e) { return false; }
+    return !(p.pendingUpload > 0) && !(p.consumed > 0) && !(p.ceilingAmount > 0);
+  };
+  ledger = ledger.filter(p => !spentPlaceholder(p));
+
   const pos = [];
   for (const p of ledger) {
     const hits = CHECKS.filter(c => c.test(p));
