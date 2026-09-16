@@ -53,8 +53,12 @@ function plan(invoices) {
     const site = r.site;
     const cands = (site && bySite[site]) || [];
     // Match the service type where we know it, so snow work never adopts a
-    // landscaping order.
-    const svc = r.serviceType || guessService(r, ledger);
+    // landscaping order. The placeholder itself usually carries one — the
+    // ledger classifies "NEEDED KRB5" as snow from purchase_orders.service_type
+    // — and that is a far better signal than anything inferred from the site.
+    const ph = ledger.find(p => p.poNumber === r.po);
+    const svc = (ph && ph.serviceType && ph.serviceType !== 'unknown' ? ph.serviceType : null)
+      || r.serviceType || guessService(r, ledger);
     const matched = svc ? cands.filter(p => p.serviceType === svc) : cands;
     const pool = matched.length ? matched : (svc ? [] : cands);
 
