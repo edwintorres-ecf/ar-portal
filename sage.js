@@ -818,18 +818,26 @@ async function enrichLocations(invoices) {
 }
 
 // ─── Customer lookup ─────────────────────────────────────────────────────────
+// Uses the modern <query>/<select> shape, NOT <readByQuery>. Adding PARENTID
+// and PARENTNAME to the legacy call made it return ZERO rows — no error, no
+// warning, just an empty customer list, which would have emptied every customer
+// dropdown in the portal. Same trap as DISPLAYCONTACT below. If you add a field
+// here, check the row count actually moved (Edwin 2026-09-16).
 async function getCustomers() {
   const allCustomers = [];
   let offset = 0;
   while (true) {
     const xml = buildXml(`
-      <readByQuery>
+      <query>
         <object>CUSTOMER</object>
-        <fields>CUSTOMERID,NAME,STATUS,PARENTID,PARENTNAME</fields>
-        <query>STATUS = 'active'</query>
+        <select>
+          <field>CUSTOMERID</field><field>NAME</field>
+          <field>PARENTID</field><field>PARENTNAME</field>
+        </select>
+        <filter><equalto><field>STATUS</field><value>active</value></equalto></filter>
         <pagesize>100</pagesize>
         <offset>${offset}</offset>
-      </readByQuery>
+      </query>
     `);
     const resp = await sagePost(xml);
     const matches = [...resp.matchAll(/<customer>([\s\S]*?)<\/customer>/gi)];
