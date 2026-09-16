@@ -4232,6 +4232,68 @@ app.get('/api/comms/config', requireAuth, (req, res) => {
   });
 });
 
+// ─── Drafts ─────────────────────────────────────────────────────────────────
+// Scoped to the signed-in user throughout — a draft is private until sent, and
+// the mailbox scope rules do not apply because you can only ever reach your own.
+app.get('/api/comms/drafts', requireAuth, (req, res) => {
+  try { res.json({ drafts: db.listDrafts(req.session.user.email) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/comms/drafts/:conversationId', requireAuth, (req, res) => {
+  try {
+    const d = db.getDraft(req.session.user.email, parseInt(req.params.conversationId, 10));
+    if (!d) return res.json({ draft: null });
+    const parse = (v, fallback) => { try { return JSON.parse(v || 'null') ?? fallback; } catch (e) { return fallback; } };
+    // Attachments expire after 6h while a draft does not, so drop the ones that
+    // are gone rather than restoring ids that would fail at send.
+    const att = require('./comms-attachments');
+    const live = parse(d.attachment_ids, []).map(id => att.meta(id)).filter(Boolean)
+      .map(m => ({ id: m.id, name: m.name, size: m.size, contentType: m.contentType }));
+    res.json({ draft: {
+      conversationId: d.conversation_id,
+      toEmails: parse(d.to_emails, []), ccEmails: parse(d.cc_emails, []),
+      subject: d.subject || '', bodyHtml: d.body_html || '',
+      templateKey: d.template_key || '', recordNos: parse(d.record_nos, []),
+      attachments: live, attachmentsDropped: parse(d.attachment_ids, []).length - live.length,
+      updatedAt: d.updated_at,
+    } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/comms/drafts/:conversationId', requireAuth, requirePerm('email.send'), (req, res) => {
+  try {
+    const id = parseInt(req.params.conversationId, 10);
+    const b = req.body || {};
+    // An empty draft is a deletion, not a row of blanks.
+    const empty = !(b.bodyHtml || '').trim() && !(b.attachmentIds || []).length
+      && !(b.subject || '').trim() && !(b.toEmails || []).length;
+    if (empty) { db.deleteDraft(req.session.user.email, id); return res.json({ ok: true, deleted: true }); }
+    db.saveDraft(req.session.user.email, id, {
+      toEmails: b.toEmails || [], ccEmails: b.ccEmails || [], subject: b.subject || '',
+      bodyHtml: b.bodyHtml ? sanitiseEmailHtml(b.bodyHtml) : '',
+      templateKey: b.templateKey || null, attachmentIds: b.attachmentIds || [], recordNos: b.recordNos || [],
+    });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete('/api/comms/drafts/:conversationId', requireAuth, (req, res) => {
+  try {
+    const id = parseInt(req.params.conversationId, 10);
+    // Discarding the draft discards its uploads too; nothing else references them.
+    const d = db.getDraft(req.session.user.email, id);
+    if (d) {
+      try {
+        const att = require('./comms-attachments');
+        for (const aid of JSON.parse(d.attachment_ids || '[]')) att.remove(aid);
+      } catch (e) {}
+    }
+    db.deleteDraft(req.session.user.email, id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Attachment upload. Its own body limit — the global express.json() is 100kb
 // and a 4 MB file base64-encodes to ~5.5 MB, so raising it globally to suit one
 // route would let every other route accept huge bodies too.
@@ -4316,8 +4378,9 @@ app.post('/api/comms/send', requireAuth, requirePerm('email.send'), async (req, 
       actorType: 'human',
       correspondingEmail: p.correspondingEmail || actor,
     });
-    // Sent — Graph holds the copy now, so drop ours.
+    // Sent — Graph holds the copy now, so drop ours, and the draft with it.
     for (const id of (p.attachmentIds || [])) { try { require('./comms-attachments').remove(id); } catch (e) {} }
+    if (p.conversationId) { try { db.deleteDraft(req.session.user.email, p.conversationId); } catch (e) {} }
     res.json(result);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

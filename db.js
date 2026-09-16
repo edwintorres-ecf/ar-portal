@@ -458,6 +458,29 @@ function initSchema() {
   // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
   // of copies meant sitting on a spinner for minutes and being unable to do
   // anything else. Requests are queued here, a worker fills them, and the file
+  // An unsent reply, per user per conversation. Clicking another thread used to
+  // discard whatever you had typed, which is the one thing a mail client is
+  // expected never to do (Edwin 2026-09-16).
+  //
+  // Keyed on (user_email, conversation_id): two people can hold their own draft
+  // on the same thread without overwriting each other.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comms_drafts (
+      user_email TEXT NOT NULL,
+      conversation_id INTEGER NOT NULL,
+      to_emails TEXT,
+      cc_emails TEXT,
+      subject TEXT,
+      body_html TEXT,
+      template_key TEXT,
+      attachment_ids TEXT,          -- JSON array; the files themselves expire in 6h
+      record_nos TEXT,              -- JSON array of FYI invoices picked
+      updated_at TEXT,
+      PRIMARY KEY (user_email, conversation_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_comms_drafts_user ON comms_drafts(user_email, updated_at DESC);
+  `);
+
   // Intacct's customer hierarchy, cached. 399 of our customers sit under a
   // parent — every CBRE and Kurv site under its head office, Amazon.com
   // Services LLC under Amazon. Correspondence and balances follow the family,
@@ -1882,6 +1905,37 @@ function updateUserPhone(email, phone) {
 const _normCEmail = (e) => String(e || '').trim().toLowerCase();
 const _validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
+// ─── Drafts ─────────────────────────────────────────────────────────────────
+function saveDraft(userEmail, conversationId, d) {
+  const db = getDb();
+  db.prepare(`INSERT INTO comms_drafts
+      (user_email, conversation_id, to_emails, cc_emails, subject, body_html, template_key, attachment_ids, record_nos, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
+      ON CONFLICT(user_email, conversation_id) DO UPDATE SET
+        to_emails=excluded.to_emails, cc_emails=excluded.cc_emails, subject=excluded.subject,
+        body_html=excluded.body_html, template_key=excluded.template_key,
+        attachment_ids=excluded.attachment_ids, record_nos=excluded.record_nos,
+        updated_at=excluded.updated_at`)
+    .run(String(userEmail).toLowerCase(), conversationId,
+      JSON.stringify(d.toEmails || []), JSON.stringify(d.ccEmails || []),
+      d.subject || '', d.bodyHtml || '', d.templateKey || null,
+      JSON.stringify(d.attachmentIds || []), JSON.stringify(d.recordNos || []));
+}
+function getDraft(userEmail, conversationId) {
+  return getDb().prepare('SELECT * FROM comms_drafts WHERE user_email=? AND conversation_id=?')
+    .get(String(userEmail).toLowerCase(), conversationId) || null;
+}
+function listDrafts(userEmail) {
+  return getDb().prepare(`SELECT d.*, c.subject AS conv_subject, c.customer_id
+    FROM comms_drafts d LEFT JOIN conversations c ON c.id = d.conversation_id
+    WHERE d.user_email=? ORDER BY d.updated_at DESC LIMIT 100`)
+    .all(String(userEmail).toLowerCase());
+}
+function deleteDraft(userEmail, conversationId) {
+  getDb().prepare('DELETE FROM comms_drafts WHERE user_email=? AND conversation_id=?')
+    .run(String(userEmail).toLowerCase(), conversationId);
+}
+
 function listCustomerContacts(customerId, includeInactive = false) {
   const d = getDb();
   const sql = includeInactive
@@ -3027,6 +3081,7 @@ module.exports = {
   getCommState,
   setCommState,
   listCustomerContacts,
+  saveDraft, getDraft, listDrafts, deleteDraft,
   getCustomerContact,
   addCustomerContact,
   updateCustomerContact,
