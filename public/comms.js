@@ -2070,6 +2070,98 @@ let _mailboxSel = null;
 let _mailboxSearch = '';
 let _mailboxCtx = null;
 
+// ── Drafts ──────────────────────────────────────────────────────────────────
+// Autosaved as you type, restored when you come back, cleared when it sends.
+// Clicking another thread used to discard whatever you had written, which is
+// the one thing a mail client must never do (Edwin 2026-09-16).
+let _draftTimer = null;
+let _draftConv = null;      // which conversation the composer currently holds
+let _draftIds = [];         // conversation ids that have a draft, for the list badge
+
+function commsDraftPayload() {
+  const get = (id) => (document.getElementById(id) || {}).value || '';
+  const split = (v) => v.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+  return {
+    toEmails: split(get('cmp-to')), ccEmails: split(get('cmp-cc')),
+    subject: get('cmp-subject'), bodyHtml: commsBodyHtml(),
+    templateKey: get('cmp-tpl'),
+    attachmentIds: (_cmpAttachments || []).map(a => a.id),
+    recordNos: _cmpFyiRecordNos || [],
+  };
+}
+
+// Debounced: typing should not post on every keystroke.
+function commsDraftTouch() {
+  if (!_draftConv) return;
+  clearTimeout(_draftTimer);
+  commsDraftStatus('…');
+  _draftTimer = setTimeout(() => commsDraftSave(_draftConv), 900);
+}
+
+async function commsDraftSave(convId) {
+  if (!convId) return;
+  try {
+    const r = await apiFetch('/api/comms/drafts/' + convId, { method: 'PUT', body: JSON.stringify(commsDraftPayload()) });
+    commsDraftStatus(r && r.deleted ? '' : 'Draft saved');
+    if (r && r.deleted) _draftIds = _draftIds.filter(x => x !== convId);
+    else if (!_draftIds.includes(convId)) { _draftIds.push(convId); commsRenderList(); }
+  } catch (e) { commsDraftStatus('Not saved'); }
+}
+
+function commsDraftStatus(text) {
+  const el = document.getElementById('cmp-draft-state');
+  if (el) el.textContent = text || '';
+}
+
+// Save synchronously-ish before the composer is torn down for another thread.
+function commsDraftFlush() {
+  if (!_draftConv) return;
+  clearTimeout(_draftTimer);
+  const conv = _draftConv;
+  commsDraftSave(conv);
+}
+
+async function commsDraftRestore(convId) {
+  _draftConv = convId;
+  try {
+    const { draft } = await apiFetch('/api/comms/drafts/' + convId);
+    if (!draft) { commsDraftStatus(''); return; }
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    if (draft.toEmails.length) set('cmp-to', draft.toEmails.join(', '));
+    if (draft.ccEmails.length) set('cmp-cc', draft.ccEmails.join(', '));
+    if (draft.subject) set('cmp-subject', draft.subject);
+    if (draft.templateKey) set('cmp-tpl', draft.templateKey);
+    commsSetBody(draft.bodyHtml || '');
+    _cmpAttachments = draft.attachments || [];
+    _cmpFyiRecordNos = draft.recordNos || [];
+    commsRenderAttachments();
+    commsDraftStatus('Draft from ' + String(draft.updatedAt || '').slice(5, 16).replace('T', ' '));
+    if (draft.attachmentsDropped) {
+      showToast(`${draft.attachmentsDropped} attachment(s) expired and were dropped — re-attach them`, 'error');
+    }
+  } catch (e) { commsDraftStatus(''); }
+}
+
+async function commsDraftDiscard() {
+  if (!_draftConv) return;
+  if (!confirm('Discard this draft? Any files attached to it are deleted too.')) return;
+  const conv = _draftConv;
+  clearTimeout(_draftTimer);
+  try { await apiFetch('/api/comms/drafts/' + conv, { method: 'DELETE' }); } catch (e) {}
+  _cmpAttachments = []; _cmpFyiRecordNos = [];
+  commsSetBody(''); commsRenderAttachments();
+  _draftIds = _draftIds.filter(x => x !== conv);
+  commsDraftStatus(''); commsRenderList();
+  showToast('Draft discarded', 'success');
+}
+
+async function commsLoadDraftIds() {
+  try {
+    const { drafts } = await apiFetch('/api/comms/drafts');
+    _draftIds = (drafts || []).map(d => d.conversation_id);
+  } catch (e) { _draftIds = []; }
+}
+
 // ── Rich text ───────────────────────────────────────────────────────────────
 // document.execCommand is deprecated but is the only formatting API every
 // browser still implements without pulling in an editor library. The body is
@@ -2331,6 +2423,7 @@ async function commsLoadMailbox() {
     ['needs-reply', '📩 Needs reply'], ['open', 'Open'], ['waiting', 'Waiting'],
     ['due', 'Due'], ['completed', 'Completed'], ['archived', 'Archived'], ['mine', 'Mine'],
     ...(commsIsPrivileged() ? [['unassigned', '🗂 Unassigned']] : []),
+    ['drafts', '✏️ Drafts'],
     ['', 'All'],
   ];
   root.innerHTML = `
@@ -2366,7 +2459,19 @@ async function commsLoadMailbox() {
     if (!_commsTemplatesCache.length) {
       try { _commsTemplatesCache = await apiFetch('/api/comms/templates') || []; } catch (e) { _commsTemplatesCache = []; }
     }
-    _mailboxConvs = await apiFetch('/api/comms/conversations' + q);
+    await commsLoadDraftIds();
+    if (_mailboxFilter === 'drafts') {
+      // Drafts are mine by definition, so this view is built from them rather
+      // than filtered out of the conversation list.
+      const { drafts } = await apiFetch('/api/comms/drafts');
+      _mailboxConvs = (drafts || []).map(d => ({
+        id: d.conversation_id, subject: d.conv_subject || d.subject || '(no subject)',
+        customer_id: d.customer_id, status: 'draft', assigned_email: commsUser()?.email,
+        last_message_at: d.updated_at, last_direction: 'out',
+      }));
+    } else {
+      _mailboxConvs = await apiFetch('/api/comms/conversations' + q);
+    }
     commsRenderList();
     commsPollState();
     if (_mailboxSel && _mailboxConvs.some(c => c.id === _mailboxSel)) commsSelectThread(_mailboxSel);
@@ -2384,7 +2489,8 @@ function commsRenderList() {
     || String(c.customer_id || '').toLowerCase().includes(q));
   if (!list.length) {
     el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--gray-500);font-size:12.5px">${
-      _mailboxFilter === 'needs-reply' ? '✅ Nothing awaiting a reply.'
+      _mailboxFilter === 'drafts' ? 'No unsent drafts.'
+        : _mailboxFilter === 'needs-reply' ? '✅ Nothing awaiting a reply.'
         : _mailboxFilter === 'unassigned' ? '✅ Every conversation has an owner.'
         : (q ? 'Nothing matches that search.' : 'No conversations here.')}</div>`;
     return;
@@ -2399,6 +2505,7 @@ function commsRenderList() {
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:2px">
         <span style="font-size:11px;color:var(--gray-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(c.customer_id || 'unfiled')}</span>
+        ${_draftIds.includes(c.id) ? '<span title="You have an unsent draft here" style="font-size:9.5px;background:#fef3c7;color:#92400e;padding:0 5px;border-radius:7px;font-weight:700">DRAFT</span>' : ''}
         <span style="font-size:10px;color:var(--gray-400)">${escHtml(String(c.last_message_at || c.created_at || '').slice(5, 10))}</span>
       </div>
       <div style="font-size:10.5px;margin-top:2px;color:${unowned ? '#b45309' : 'var(--gray-500)'}">
@@ -2408,6 +2515,9 @@ function commsRenderList() {
 }
 
 async function commsSelectThread(id) {
+  // Save whatever is in the composer for the thread we are leaving, before the
+  // DOM that holds it is replaced.
+  if (_draftConv && _draftConv !== id) commsDraftFlush();
   _mailboxSel = id;
   _threadOpen = {};                     // each thread starts with only its newest open
   commsRenderList();
@@ -2419,6 +2529,10 @@ async function commsSelectThread(id) {
     commsRenderThread(data);
     commsRenderContext(data);
     commsLoadComposerContacts(data.conversation);
+    _cmpAttachments = [];
+    _cmpFyiRecordNos = [];
+    commsRenderAttachments();
+    commsDraftRestore(id);
   } catch (e) {
     el.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
@@ -2554,13 +2668,15 @@ function commsComposerHtml(c, messages) {
           <option value="">Standard verbiage…</option>
           ${tpl.map(t => `<option value="${escHtml(t.key)}">${escHtml(t.name)}</option>`).join('')}
         </select>
+        <span id="cmp-draft-state" style="font-size:11px;color:var(--gray-400);margin-left:6px"></span>
         <span style="margin-left:auto;font-size:11px;color:var(--gray-400)">
+          <a href="#" onclick="commsDraftDiscard();return false">discard draft</a> ·
           <a href="#" onclick="commsReplyToConversation(${c.id});return false">full composer →</a></span>
       </div>
       <div id="cmp-contacts" style="margin-bottom:5px"></div>
-      <input id="cmp-to" value="${escHtml(replyTo)}" placeholder="To (comma separated)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
-      <input id="cmp-cc" placeholder="Cc (optional)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
-      <input id="cmp-subject" value="${escHtml(subject)}" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <input id="cmp-to" oninput="commsDraftTouch()" value="${escHtml(replyTo)}" placeholder="To (comma separated)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <input id="cmp-cc" oninput="commsDraftTouch()" placeholder="Cc (optional)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
+      <input id="cmp-subject" oninput="commsDraftTouch()" value="${escHtml(subject)}" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <div style="border:1px solid var(--gray-300);border-radius:6px;overflow:hidden">
         <div style="display:flex;gap:1px;background:var(--gray-100);padding:3px;flex-wrap:wrap">
           ${[['bold', 'B', 'Bold', 'font-weight:700'], ['italic', 'I', 'Italic', 'font-style:italic'],
@@ -2574,7 +2690,7 @@ function commsComposerHtml(c, messages) {
           <label title="Attach a file" style="border:none;background:var(--white);padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px;margin-left:auto">
             📎<input type="file" id="cmp-files" multiple style="display:none" onchange="commsAttachFiles(this)"></label>
         </div>
-        <div id="cmp-body" contenteditable="true" data-placeholder="Write your reply…"
+        <div id="cmp-body" contenteditable="true" data-placeholder="Write your reply…" oninput="commsDraftTouch()"
           style="min-height:120px;max-height:260px;overflow-y:auto;padding:8px 10px;font-size:12.5px;outline:none;background:var(--white)"></div>
       </div>
       <div id="cmp-attachments" style="margin-top:5px"></div>
@@ -2640,6 +2756,8 @@ async function commsSendInline(conversationId, btn) {
     commsSetBody('');
     _cmpAttachments = [];
     _cmpFyiRecordNos = [];
+    _draftIds = _draftIds.filter(x => x !== conversationId);
+    commsDraftStatus('');
     await commsSelectThread(conversationId);
   } catch (e) {
     showToast('Send failed: ' + e.message, 'error');
