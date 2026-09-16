@@ -3506,6 +3506,27 @@ app.get('/api/po/funds-report.xlsx', requireAuth, async (req, res) => {
   }
 });
 
+// Daily snapshots — what the book looked like, so a swing can be explained
+// after the fact instead of guessed at.
+app.get('/api/snapshots', requireAuth, (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(2, parseInt(req.query.days, 10) || 30));
+    res.json({ snapshots: require('./ar-snapshot').history(days) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Take one on demand. Useful right before or after a bulk change, so the
+// before-and-after is recorded rather than reconstructed.
+app.post('/api/snapshots/take', requireAuth, requirePerm('refresh.data'), async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    const snap = require('./ar-snapshot').take(invoices, { sage });
+    db.auditLog(req.session.user.email, 'snapshot_take', snap.day, `open AR ${Math.round(snap.open_ar)}`);
+    res.json({ ok: true, snapshot: snap });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // PO intake health — every purchase order that cannot be safely billed against,
 // checked the day it arrives rather than when an invoice against it is held.
 app.get('/api/po/intake-health', requireAuth, async (req, res) => {
@@ -6231,6 +6252,21 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
+  // One snapshot a day, plus one shortly after boot so a restart never leaves a
+  // gap. take() upserts on the calendar day, so running it more often is safe
+  // and simply refreshes today's row with the latest figures.
+  function doSnapshot(why) {
+    try {
+      const inv = sage.getCachedInvoices();
+      if (!inv.length) return;
+      const s = require('./ar-snapshot').take(inv, { sage });
+      console.log(`[snapshot] ${s.day}: open AR ${Math.round(s.open_ar).toLocaleString('en-US')}`
+        + ` · ${s.open_ar_count} invoices · ${s.intake_blocking} blocking POs (${why})`);
+    } catch (e) { console.error('[snapshot] failed:', e.message); }
+  }
+  setTimeout(() => doSnapshot('boot'), 3 * 60 * 1000);
+  setInterval(() => doSnapshot('daily'), 6 * 60 * 60 * 1000);
+
   // Keep Pending by Site warm. The key includes the Sage and Payee stamps, so a
   // data refresh invalidates it and the next tick rebuilds — before anyone asks.
   setTimeout(() => warmPendingBySite('boot'), 90 * 1000);
