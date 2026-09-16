@@ -458,6 +458,28 @@ function initSchema() {
   // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
   // of copies meant sitting on a spinner for minutes and being unable to do
   // anything else. Requests are queued here, a worker fills them, and the file
+  // One row per day describing where the Amazon book stood. Every figure in the
+  // portal is computed live from the Sage cache and the Payee feed, both of
+  // which are replaced on a timer — so when a number changes, the number it
+  // changed FROM is gone. On 2026-09-15 the no-business-unit AR moved $52k in
+  // ninety minutes and there was no way to say where it went.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ar_snapshots (
+      day TEXT PRIMARY KEY,              -- calendar day, ET
+      taken_at TEXT,
+      sage_fetched_at TEXT,
+      payee_feed_at TEXT,
+      invoices_cached INTEGER,
+      open_ar REAL, open_ar_count INTEGER,
+      snow_ar REAL, snow_ar_count INTEGER,
+      pos_total INTEGER, pos_snow INTEGER,
+      po_available REAL, po_overdrawn REAL,
+      intake_blocking INTEGER, intake_at_risk REAL,
+      no_bu_sites INTEGER, no_bu_available REAL,
+      detail TEXT                        -- JSON: by-status, unblock split, intake, no-BU
+    );
+  `);
+
   // One row per purchase order that has ever failed an intake check, so an
   // alert fires when a defect APPEARS rather than on every sweep. Snow POs
   // arrive in batches — 255 in July 2026 — and a PO with no value on it cannot
