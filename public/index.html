@@ -5404,6 +5404,64 @@ async function refreshPayee() {
 // holds the invoice. Snow POs land in batches — 255 in July 2026 — so the
 // season is exactly when nobody has time to find these one at a time.
 let _poIntake = null;
+let _arSnaps = [];
+
+// Day-over-day movement. Every figure on this portal is computed live from
+// caches that are replaced on a timer, so without this the number a figure
+// changed FROM is simply gone — which is why a $52k swing on 2026-09-15 could
+// not be explained (Edwin 2026-09-15).
+function renderArTrend() {
+  const el = document.getElementById('ar-trend');
+  if (!el) return;
+  if (!_arSnaps.length) {
+    el.innerHTML = '<div style="font-size:11.5px;color:var(--gray-500);padding:8px 0">No snapshots yet — the first is taken a few minutes after a restart, then every six hours.</div>';
+    return;
+  }
+  const rows = _arSnaps.slice().reverse();
+  const d$ = (v) => v == null || v === 0 ? '<span style="color:var(--gray-400)">—</span>'
+    : `<span style="color:${v > 0 ? '#166534' : '#b91c1c'}">${v > 0 ? '+' : '−'}${fmt$(Math.abs(v))}</span>`;
+  const dn = (v) => v == null || v === 0 ? '<span style="color:var(--gray-400)">—</span>'
+    : `<span style="color:${v > 0 ? '#b91c1c' : '#166534'}">${v > 0 ? '+' : '−'}${Math.abs(v)}</span>`;
+  el.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:10px;margin:18px 0 8px">
+      <span style="font-size:13.5px;font-weight:700;color:var(--navy)">What moved</span>
+      <span style="font-size:11.5px;color:var(--gray-500)">day over day · last ${rows.length} snapshot${rows.length === 1 ? '' : 's'}</span>
+      <button class="btn-sm" style="margin-left:auto;border:1px solid var(--gray-300);background:var(--white);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px" onclick="arTakeSnapshot(this)">📸 Snapshot now</button>
+    </div>
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Day</th>
+        <th style="padding:6px 10px;text-align:right">Open AR</th><th style="padding:6px 10px;text-align:right">Δ</th>
+        <th style="padding:6px 10px;text-align:right">Invoices</th>
+        <th style="padding:6px 10px;text-align:right">On POs</th><th style="padding:6px 10px;text-align:right">Δ</th>
+        <th style="padding:6px 10px;text-align:right">POs</th>
+        <th style="padding:6px 10px;text-align:right">Blocking</th><th style="padding:6px 10px;text-align:right">Δ</th>
+      </tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--gray-100)">
+        <td style="padding:6px 10px;font-weight:600">${escHtml(r.day)}</td>
+        <td style="padding:6px 10px;text-align:right">${fmt$(r.open_ar)}</td>
+        <td style="padding:6px 10px;text-align:right">${d$(r.delta && r.delta.open_ar)}</td>
+        <td style="padding:6px 10px;text-align:right;color:var(--gray-500)">${r.open_ar_count}</td>
+        <td style="padding:6px 10px;text-align:right">${fmt$(r.po_available)}</td>
+        <td style="padding:6px 10px;text-align:right">${d$(r.delta && r.delta.po_available)}</td>
+        <td style="padding:6px 10px;text-align:right;color:var(--gray-500)">${r.pos_total}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;color:${r.intake_blocking ? '#b91c1c' : '#166534'}">${r.intake_blocking == null ? '—' : r.intake_blocking}</td>
+        <td style="padding:6px 10px;text-align:right">${dn(r.delta && r.delta.intake_blocking)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+async function arTakeSnapshot(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Taking…'; }
+  try {
+    await apiFetch('/api/snapshots/take', { method: 'POST' });
+    _arSnaps = (await apiFetch('/api/snapshots?days=14')).snapshots || [];
+    renderArTrend();
+    showToast('Snapshot recorded', 'success');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '📸 Snapshot now'; } }
+}
 
 async function loadPoIntakeHealth() {
   const el = document.getElementById('po-intake-content');
@@ -5412,6 +5470,8 @@ async function loadPoIntakeHealth() {
   try {
     _poIntake = await apiFetch('/api/po/intake-health' + (_pbsSnowOnly ? '?snow=1' : ''));
     renderPoIntakeHealth();
+    // Trend loads after, so a slow history never delays the health figures.
+    try { _arSnaps = (await apiFetch('/api/snapshots?days=14')).snapshots || []; renderArTrend(); } catch (e) {}
   } catch (e) {
     el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--red)">Could not run the check: ${escHtml(e.message)}</div>`;
   }
@@ -5456,7 +5516,9 @@ function renderPoIntakeHealth() {
           ${poIntakeTable(a.pos.filter(p => p.defects.includes(c.key)))}
         </div>
       </div>`).join('')}
-    ${checks.length ? '' : '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Every purchase order passes. Nothing is blocking billing.</div>'}`;
+    ${checks.length ? '' : '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Every purchase order passes. Nothing is blocking billing.</div>'}
+    <div id="ar-trend"></div>`;
+  renderArTrend();
 }
 
 function poIntakeTable(pos) {
