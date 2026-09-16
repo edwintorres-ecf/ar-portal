@@ -4083,6 +4083,45 @@ app.get('/api/customer-accounts', requireAuth, (req, res) => {
 
 // ─── API: Customer contacts (comms platform) ─────────────────────────────────
 // Sync-seed from Intacct, manual-authoritative — see db.js customer_contacts.
+// The Intacct customer hierarchy for one record, and every contact across it.
+app.get('/api/customers/:customerId/family', requireAuth, (req, res) => {
+  try {
+    const fam = require('./customer-family');
+    res.json({ ...fam.family(req.params.customerId), contacts: fam.familyContacts(req.params.customerId) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Open invoices across the family, split by how urgent they are, for dropping
+// an FYI table into an email: what is past due, and what is about to be.
+app.get('/api/customers/:customerId/open-invoices', requireAuth, async (req, res) => {
+  try {
+    const fam = require('./customer-family');
+    const ids = new Set(req.query.familyWide === '0' ? [req.params.customerId] : fam.family(req.params.customerId).all);
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const soonDays = Math.min(120, Math.max(1, parseInt(req.query.soonDays, 10) || 30));
+    const rows = invoices
+      .filter(i => ids.has(i.customerId) && (i.totalDue || 0) > 0.005)
+      .map(i => ({
+        recordNo: i.recordNo, invoiceId: i.invoiceId, customerId: i.customerId,
+        customerName: i.customerName, amount: i.totalDue, dueDate: i.whenDue,
+        daysOverdue: i.daysOverdue || 0, poNumber: i.poNumber || null, siteCode: i.siteCode || null,
+      }));
+    const pastDue = rows.filter(r => r.daysOverdue > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+    // "Soon to be due" is everything not yet late that falls inside the window.
+    const soon = rows.filter(r => r.daysOverdue <= 0 && r.daysOverdue > -soonDays)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const later = rows.filter(r => r.daysOverdue <= -soonDays);
+    const sum = (l) => Math.round(l.reduce((t, r) => t + (r.amount || 0), 0) * 100) / 100;
+    res.json({
+      soonDays, familyIds: [...ids],
+      pastDue, soon, later,
+      totals: { pastDue: sum(pastDue), soon: sum(soon), later: sum(later), all: sum(rows), count: rows.length },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/customers/:customerId/contacts', requireAuth, (req, res) => {
   try {
     res.json(db.listCustomerContacts(req.params.customerId, req.query.all === '1'));
@@ -6327,6 +6366,17 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
+  // Intacct's customer hierarchy. Changes only when someone edits a customer,
+  // so daily is plenty — but it must be populated or family lookups fall back
+  // to the single record.
+  function doFamilyRefresh(why) {
+    require('./customer-family').refresh(sage)
+      .then(r => console.log(`[customer-family] ${r.count} customers, ${r.parents} with a parent (${why})`))
+      .catch(e => console.error('[customer-family] refresh failed:', e.message));
+  }
+  setTimeout(() => doFamilyRefresh('boot'), 4 * 60 * 1000);
+  setInterval(() => doFamilyRefresh('daily'), 24 * 60 * 60 * 1000);
+
   // One snapshot a day, plus one shortly after boot so a restart never leaves a
   // gap. take() upserts on the calendar day, so running it more often is safe
   // and simply refreshes today's row with the latest figures.

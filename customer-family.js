@@ -87,9 +87,19 @@ function familyContacts(customerId) {
   }
   // This customer's own contacts first, primaries above the rest.
   const rank = { 'this customer': 0, parent: 1, child: 2, related: 3 };
-  return out.sort((a, b) => (rank[a.relationship] - rank[b.relationship])
+  out.sort((a, b) => (rank[a.relationship] - rank[b.relationship])
     || (b.is_primary - a.is_primary)
     || String(a.name || a.email).localeCompare(String(b.name || b.email)));
+  // One row per ADDRESS. A head-office contact is commonly duplicated onto
+  // every child record, and offering the same person four times in a picker
+  // invites sending to them four times. The sort above means the copy we keep
+  // is the closest to the customer in hand.
+  const seen = new Set();
+  return out.filter(c => {
+    const k = String(c.email || '').trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k); return true;
+  });
 }
 
 module.exports = { refresh, family, familyContacts, row };
