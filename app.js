@@ -4284,24 +4284,57 @@ app.get('/api/comms/inbound/state', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Mailbox visibility ─────────────────────────────────────────────────────
+// "A user should only be able to see their correspondence" (Edwin 2026-09-15).
+// A conversation is YOURS if it is assigned to you, or you sent or received a
+// message in it. UNASSIGNED threads stay visible to everyone, deliberately:
+// scoping strictly to assignment would make unclaimed mail invisible to the
+// people who could answer it, and the failure mode of a shared mailbox is
+// silence, not over-sharing.
+//
+// Admins and managers may pass ?scope=all to see everything; nobody else can,
+// whatever they send.
+function mailboxScopeIds(user, scope) {
+  const email = String(user.email || '').toLowerCase();
+  const privileged = ['admin', 'manager'].includes(user.role);
+  if (scope === 'all' && privileged) return null;   // null = no restriction
+  const ids = new Set();
+  try {
+    for (const r of db.all(
+      `SELECT id FROM conversations WHERE assigned_email IS NULL OR TRIM(assigned_email)=''`)) ids.add(r.id);
+    for (const r of db.all(
+      `SELECT id FROM conversations WHERE LOWER(assigned_email)=?`, [email])) ids.add(r.id);
+    // Participation: any message I sent, or that was addressed to me.
+    for (const r of db.all(
+      `SELECT DISTINCT conversation_id AS id FROM messages
+        WHERE LOWER(COALESCE(actor_email,''))=? OR LOWER(COALESCE(from_email,''))=?
+           OR LOWER(COALESCE(to_emails,'')) LIKE ? OR LOWER(COALESCE(cc_emails,'')) LIKE ?`,
+      [email, email, '%' + email + '%', '%' + email + '%'])) if (r.id) ids.add(r.id);
+  } catch (e) { return null; }
+  return ids;
+}
+function inMailboxScope(ids, id) { return !ids || ids.has(id); }
+
 app.get('/api/comms/conversations', requireAuth, (req, res) => {
   try {
     // needsReply=1: customer spoke last and the thread is open — the core
     // "action item" state for a collector.
+    const ids = mailboxScopeIds(req.session.user, req.query.scope);
     if (req.query.needsReply === '1') {
       const rows = db.all(`
         SELECT * FROM conversations
         WHERE status='open' AND last_direction='in'
         ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 200
       `);
-      return res.json(rows);
+      return res.json(rows.filter(c => inMailboxScope(ids, c.id)));
     }
-    res.json(db.listConversations({
+    const rows = db.listConversations({
       customerId: req.query.customerId || undefined,
       status: req.query.status || undefined,
       assigned: req.query.assigned || undefined,
       limit: Math.min(parseInt(req.query.limit || '200', 10) || 200, 500),
-    }));
+    });
+    res.json(rows.filter(c => inMailboxScope(ids, c.id)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4315,13 +4348,15 @@ app.get('/api/comms/action-items', requireAuth, (req, res) => {
       FROM conversations WHERE status='open' AND last_direction='in'
       ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 100
     `);
+    const scopeIds = mailboxScopeIds(req.session.user);
+    const visible = needs.filter(c => inMailboxScope(scopeIds, c.id));
     const triage = db.get(`SELECT COUNT(*) AS c FROM conversations WHERE status='triage'`).c;
     res.json({
-      needsReplyMine: needs.filter(c => (c.assigned_email || '') === me).length,
-      needsReplyUnassigned: needs.filter(c => !c.assigned_email).length,
-      needsReplyTotal: needs.length,
+      needsReplyMine: visible.filter(c => (c.assigned_email || '').toLowerCase() === me).length,
+      needsReplyUnassigned: visible.filter(c => !c.assigned_email).length,
+      needsReplyTotal: visible.length,
       triage,
-      items: needs.slice(0, 20),
+      items: visible.slice(0, 20),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4330,6 +4365,11 @@ app.get('/api/comms/conversations/:id', requireAuth, (req, res) => {
   try {
     const conversation = db.getConversation(parseInt(req.params.id, 10));
     if (!conversation) return res.status(404).json({ error: 'Not found' });
+    // 404 rather than 403: a thread you cannot see should not be confirmed to
+    // exist by the error you get back.
+    if (!inMailboxScope(mailboxScopeIds(req.session.user, req.query.scope), conversation.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
     const messages = db.getMessagesForConversation(conversation.id).map(m => ({
       ...m,
       recordNos: db.all('SELECT record_no FROM message_invoices WHERE message_id=?', [m.id]).map(r => r.record_no),
