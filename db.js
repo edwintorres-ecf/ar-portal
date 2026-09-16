@@ -458,6 +458,21 @@ function initSchema() {
   // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
   // of copies meant sitting on a spinner for minutes and being unable to do
   // anything else. Requests are queued here, a worker fills them, and the file
+  // Intacct's customer hierarchy, cached. 399 of our customers sit under a
+  // parent — every CBRE and Kurv site under its head office, Amazon.com
+  // Services LLC under Amazon. Correspondence and balances follow the family,
+  // not the single record (Edwin 2026-09-16).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customer_family (
+      customer_id TEXT PRIMARY KEY,
+      name TEXT,
+      parent_id TEXT,
+      parent_name TEXT,
+      updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_customer_family_parent ON customer_family(parent_id);
+  `);
+
   // One row per day describing where the Amazon book stood. Every figure in the
   // portal is computed live from the Sage cache and the Payee feed, both of
   // which are replaced on a timer — so when a number changes, the number it

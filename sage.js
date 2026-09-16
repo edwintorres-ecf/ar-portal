@@ -825,7 +825,7 @@ async function getCustomers() {
     const xml = buildXml(`
       <readByQuery>
         <object>CUSTOMER</object>
-        <fields>CUSTOMERID,NAME,STATUS</fields>
+        <fields>CUSTOMERID,NAME,STATUS,PARENTID,PARENTNAME</fields>
         <query>STATUS = 'active'</query>
         <pagesize>100</pagesize>
         <offset>${offset}</offset>
@@ -838,7 +838,14 @@ async function getCustomers() {
       const b = m[1];
       const id   = extractTag(b, 'CUSTOMERID') || '';
       const name = extractTag(b, 'NAME') || '';
-      if (id) allCustomers.push({ id, name });
+      // Intacct models a customer hierarchy: 399 of ours sit under a parent
+      // (Amazon.com Services LLC C-00403 under Amazon C-00002; every CBRE and
+      // Kurv site under its head office). Correspondence and balances follow
+      // the FAMILY, not the single record, so carry it through
+      // (Edwin 2026-09-16).
+      const parentId   = extractTag(b, 'PARENTID') || '';
+      const parentName = extractTag(b, 'PARENTNAME') || '';
+      if (id) allCustomers.push({ id, name, parentId: parentId || null, parentName: parentName || null });
     }
     if (matches.length < 100) break;
     offset += 100;
