@@ -2070,6 +2070,98 @@ let _mailboxSel = null;
 let _mailboxSearch = '';
 let _mailboxCtx = null;
 
+// ── Rich text ───────────────────────────────────────────────────────────────
+// document.execCommand is deprecated but is the only formatting API every
+// browser still implements without pulling in an editor library. The body is
+// already sent as HTML — rawBody feeds the same renderTemplate path as the
+// stored templates — so this needed no change on the send side. The server
+// strips script/style/handlers before storing or sending (Edwin 2026-09-16).
+function commsRich(cmd) {
+  const b = document.getElementById('cmp-body');
+  if (b) b.focus();
+  try { document.execCommand(cmd, false, null); } catch (e) {}
+}
+
+function commsRichLink() {
+  const b = document.getElementById('cmp-body');
+  if (b) b.focus();
+  const url = prompt('Link to:', 'https://');
+  if (!url) return;
+  // Only http(s) and mailto. A javascript: href would be stripped server-side
+  // anyway, but there is no reason to let it get that far.
+  if (!/^(https?:|mailto:)/i.test(url)) { showToast('Links must start with http, https or mailto', 'error'); return; }
+  try { document.execCommand('createLink', false, url); } catch (e) {}
+}
+
+function commsBodyHtml() {
+  const b = document.getElementById('cmp-body');
+  return b ? b.innerHTML.trim() : '';
+}
+function commsBodyText() {
+  const b = document.getElementById('cmp-body');
+  return b ? (b.innerText || '').trim() : '';
+}
+function commsSetBody(html) {
+  const b = document.getElementById('cmp-body');
+  if (b) b.innerHTML = html || '';
+}
+
+// ── Attachments ─────────────────────────────────────────────────────────────
+// Uploaded as soon as they are chosen, so a slow file is not discovered at the
+// moment you press Send, and a failed send does not lose them.
+let _cmpAttachments = [];
+
+async function commsAttachFiles(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  if (!files.length) return;
+  const box = document.getElementById('cmp-attachments');
+  if (box) box.insertAdjacentHTML('beforeend', '<div id="cmp-att-progress" style="font-size:11px;color:var(--gray-400)">Uploading…</div>');
+  try {
+    const payload = [];
+    for (const f of files) {
+      if (f.size > 4 * 1024 * 1024) { showToast(`${f.name} is over the 4 MB limit`, 'error'); continue; }
+      payload.push({ name: f.name, contentType: f.type || 'application/octet-stream', contentBytes: await commsFileToBase64(f) });
+    }
+    if (payload.length) {
+      const r = await apiFetch('/api/comms/attachments', { method: 'POST', body: JSON.stringify({ files: payload }) });
+      _cmpAttachments = [..._cmpAttachments, ...(r.attachments || [])];
+    }
+  } catch (e) {
+    showToast('Upload failed: ' + e.message, 'error');
+  } finally {
+    const p = document.getElementById('cmp-att-progress'); if (p) p.remove();
+    commsRenderAttachments();
+  }
+}
+
+function commsFileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] || '');
+    r.onerror = () => rej(new Error('Could not read ' + file.name));
+    r.readAsDataURL(file);
+  });
+}
+
+function commsRenderAttachments() {
+  const box = document.getElementById('cmp-attachments');
+  if (!box) return;
+  if (!_cmpAttachments.length) { box.innerHTML = ''; return; }
+  const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:5px">${_cmpAttachments.map(a => `
+    <span style="display:inline-flex;align-items:center;gap:5px;background:#eef2ff;color:#3730a3;border-radius:7px;padding:3px 8px;font-size:11px">
+      📎 ${escHtml(a.name)} <span style="color:#6366f1">${kb(a.size)}</span>
+      <span style="cursor:pointer;font-weight:700" title="Remove" onclick="commsRemoveAttachment('${escHtml(a.id)}')">✕</span>
+    </span>`).join('')}</div>`;
+}
+
+async function commsRemoveAttachment(id) {
+  _cmpAttachments = _cmpAttachments.filter(a => a.id !== id);
+  commsRenderAttachments();
+  try { await apiFetch('/api/comms/attachments/' + encodeURIComponent(id), { method: 'DELETE' }); } catch (e) {}
+}
+
 // Contacts for the composer, drawn from the whole customer FAMILY. The person
 // who handles a past-due invoice at one CBRE site usually handles the other
 // nine, and Intacct already records that relationship — 399 of our customers
@@ -2212,9 +2304,11 @@ function commsInsertFyi() {
   let txt = '\n';
   if (past) txt += `Past due:\n${past}\n`;
   if (soon) txt += `${past ? '\n' : ''}Coming due within ${d.soonDays} days:\n${soon}\n`;
-  const body = document.getElementById('cmp-body');
-  body.value = (body.value ? body.value.replace(/\s*$/, '\n') : '') + txt;
-  body.focus();
+  // The body is HTML now, so the block goes in as a <pre> — it keeps the column
+  // alignment in every mail client without needing a table.
+  const el = document.getElementById('cmp-body');
+  el.innerHTML = (el.innerHTML || '') + '<pre style="font-family:inherit;margin:8px 0">' + escHtml(txt.trim()) + '</pre>';
+  el.focus();
   // Tag them on the message so the thread records what was discussed.
   _cmpFyiRecordNos = [...picked];
   showToast('Added to the message', 'success');
@@ -2467,7 +2561,23 @@ function commsComposerHtml(c, messages) {
       <input id="cmp-to" value="${escHtml(replyTo)}" placeholder="To (comma separated)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <input id="cmp-cc" placeholder="Cc (optional)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <input id="cmp-subject" value="${escHtml(subject)}" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
-      <textarea id="cmp-body" rows="6" placeholder="Write your reply…" style="width:100%;padding:8px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;font-family:inherit;resize:vertical"></textarea>
+      <div style="border:1px solid var(--gray-300);border-radius:6px;overflow:hidden">
+        <div style="display:flex;gap:1px;background:var(--gray-100);padding:3px;flex-wrap:wrap">
+          ${[['bold', 'B', 'Bold', 'font-weight:700'], ['italic', 'I', 'Italic', 'font-style:italic'],
+             ['underline', 'U', 'Underline', 'text-decoration:underline'],
+             ['insertUnorderedList', '•', 'Bulleted list', ''], ['insertOrderedList', '1.', 'Numbered list', ''],
+             ['removeFormat', '⌫', 'Clear formatting', '']]
+            .map(([cmd, label, title, css]) => `<button type="button" title="${title}" onmousedown="event.preventDefault()" onclick="commsRich('${cmd}')"
+              style="border:none;background:var(--white);padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px;${css}">${label}</button>`).join('')}
+          <button type="button" title="Insert a link" onmousedown="event.preventDefault()" onclick="commsRichLink()"
+            style="border:none;background:var(--white);padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px">🔗</button>
+          <label title="Attach a file" style="border:none;background:var(--white);padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px;margin-left:auto">
+            📎<input type="file" id="cmp-files" multiple style="display:none" onchange="commsAttachFiles(this)"></label>
+        </div>
+        <div id="cmp-body" contenteditable="true" data-placeholder="Write your reply…"
+          style="min-height:120px;max-height:260px;overflow-y:auto;padding:8px 10px;font-size:12.5px;outline:none;background:var(--white)"></div>
+      </div>
+      <div id="cmp-attachments" style="margin-top:5px"></div>
       <div id="cmp-fyi" style="margin-top:6px"></div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
         <button class="btn-sm" type="button" onclick="commsToggleFyi()" title="Drop a table of what is past due and what is coming due into the message"
@@ -2490,11 +2600,9 @@ function commsApplyInlineTemplate(key) {
   // The template is applied SERVER-side when the body is left untouched, so the
   // version used is recorded on the message. Show the wording here so nobody
   // sends blind; editing it switches to a plain send with your text.
-  const body = document.getElementById('cmp-body');
-  if (body && !body.value.trim()) {
-    body.value = '[' + t.name + ' will be used — its approved wording is filled in when sent. '
-      + 'Type here instead if you want to write your own.]';
-    body.dataset.templateKey = t.key;
+  if (!commsBodyText()) {
+    commsSetBody('[' + escHtml(t.name) + ' will be used — its approved wording is filled in when sent. '
+      + 'Type here instead if you want to write your own.]');
   }
   if (note) note.textContent = 'Using “' + t.name + '”';
 }
@@ -2503,12 +2611,12 @@ async function commsSendInline(conversationId, btn) {
   const to = (document.getElementById('cmp-to').value || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
   const cc = (document.getElementById('cmp-cc').value || '').split(/[,;]/).map(s => s.trim()).filter(Boolean);
   const subject = document.getElementById('cmp-subject').value || '';
-  const bodyEl = document.getElementById('cmp-body');
-  const body = bodyEl.value || '';
+  const bodyHtml = commsBodyHtml();
+  const bodyText = commsBodyText();
   const tplKey = document.getElementById('cmp-tpl').value || '';
-  const usingTemplate = !!tplKey && body.startsWith('[');
+  const usingTemplate = !!tplKey && bodyText.startsWith('[');
   if (!to.length) { showToast('Add at least one recipient', 'error'); return; }
-  if (!usingTemplate && !body.trim()) { showToast('Write something first', 'error'); return; }
+  if (!usingTemplate && !bodyText && !_cmpAttachments.length) { showToast('Write something first', 'error'); return; }
   const c = _mailboxCtx && _mailboxCtx.conversation;
   // Thread invoices plus anything added as FYI, so the message records what it
   // actually talked about.
@@ -2523,12 +2631,14 @@ async function commsSendInline(conversationId, btn) {
       toEmails: to, ccEmails: cc.length ? cc : undefined, recordNos,
       templateKey: usingTemplate ? tplKey : undefined,
       rawSubject: usingTemplate ? undefined : subject,
-      rawBody: usingTemplate ? undefined : body,
+      rawBody: usingTemplate ? undefined : bodyHtml,
+      attachmentIds: _cmpAttachments.map(a => a.id),
       attachInvoicePdfs: document.getElementById('cmp-attach-pdf').checked,
       attachStatement: document.getElementById('cmp-attach-stmt').checked,
     }) });
     showToast('Sent', 'success');
-    bodyEl.value = '';
+    commsSetBody('');
+    _cmpAttachments = [];
     _cmpFyiRecordNos = [];
     await commsSelectThread(conversationId);
   } catch (e) {

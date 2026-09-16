@@ -483,6 +483,10 @@
   .mention-ac-name { font-weight: 600; }
   .mention-ac-email { font-size: 11px; color: var(--gray-500); }
   .note-body-highlighted .mention-tag { color: var(--blue); font-weight: 600; }
+  /* contenteditable has no placeholder; :empty + ::before is the standard trick. */
+  #cmp-body:empty::before { content: attr(data-placeholder); color: var(--gray-400); }
+  #cmp-body:focus:empty::before { color: var(--gray-300); }
+  #cmp-body pre { white-space: pre-wrap; }
 </style>
 <style id="ui-polish-2026">
 /* ── Typography: self-hosted Inter (latin), tabular numerals for money ── */
@@ -7498,7 +7502,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260916fyi"></script>
+<script src="/comms.js?v=20260916rich"></script>
 <script src="/amazon.js?v=20260910k"></script>
 </body>
 </html>
