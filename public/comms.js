@@ -2069,6 +2069,147 @@ let _mailboxConvs = [];
 let _mailboxSel = null;
 let _mailboxSearch = '';
 let _mailboxCtx = null;
+
+// Contacts for the composer, drawn from the whole customer FAMILY. The person
+// who handles a past-due invoice at one CBRE site usually handles the other
+// nine, and Intacct already records that relationship — 399 of our customers
+// sit under a parent (Edwin 2026-09-16).
+let _cmpFamily = null;   // set by commsLoadComposerContacts, read by the context pane too
+let _cmpInvoices = null;
+
+async function commsLoadComposerContacts(c) {
+  const wrap = document.getElementById('cmp-contacts');
+  if (!wrap || !c || !c.customer_id) {
+    if (wrap) wrap.innerHTML = '<div style="font-size:11px;color:#b45309">Unfiled thread — no contacts on file. Type an address below.</div>';
+    return;
+  }
+  wrap.innerHTML = '<div style="font-size:11px;color:var(--gray-400)">Loading contacts…</div>';
+  try {
+    _cmpFamily = await apiFetch(`/api/customers/${encodeURIComponent(c.customer_id)}/family`);
+    commsRenderContactPicker();
+    // The context pane drew before this landed; redraw it now it can name the
+    // parent and the related records.
+    if (_mailboxCtx) commsRenderContext(_mailboxCtx);
+  } catch (e) {
+    wrap.innerHTML = `<div style="font-size:11px;color:var(--gray-500)">No contacts (${escHtml(e.message)})</div>`;
+  }
+}
+
+function commsRenderContactPicker() {
+  const wrap = document.getElementById('cmp-contacts');
+  if (!wrap || !_cmpFamily) return;
+  const cs = _cmpFamily.contacts || [];
+  const fam = _cmpFamily;
+  const famLine = fam.parent
+    ? `<span style="font-size:10.5px;color:var(--gray-500)">under <b>${escHtml(fam.parent.name || fam.parent.customer_id)}</b>${fam.siblings.length ? ` · ${fam.siblings.length} related record${fam.siblings.length === 1 ? '' : 's'}` : ''}</span>`
+    : (fam.children && fam.children.length
+      ? `<span style="font-size:10.5px;color:var(--gray-500)">parent of ${fam.children.length} record${fam.children.length === 1 ? '' : 's'}</span>` : '');
+  if (!cs.length) {
+    wrap.innerHTML = `<div style="font-size:11px;color:var(--gray-500)">No contacts on file for this customer. ${famLine}</div>`;
+    return;
+  }
+  const tag = (r) => r === 'this customer' ? ''
+    : `<span style="background:#eef2ff;color:#3730a3;padding:0 5px;border-radius:7px;font-size:9.5px;margin-left:3px">${escHtml(r)}</span>`;
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
+      <span style="font-size:11px;color:var(--gray-500)">Contacts</span>${famLine}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:6px 8px;background:#f8fafc;border:1px solid var(--gray-200);border-radius:7px">
+      ${cs.map((c, i) => `<label style="font-size:11.5px;display:inline-flex;align-items:center;gap:4px;cursor:pointer" title="${escHtml(c.email)}${c.fromCustomerId ? ' · ' + escHtml(c.fromCustomerId) : ''}">
+        <input type="checkbox" data-cmp-contact="${i}" value="${escHtml(c.email)}" onchange="commsContactPicked()">
+        ${escHtml(c.name || c.email)}${c.is_primary ? ' ⭐' : ''}${tag(c.relationship)}</label>`).join('')}
+    </div>`;
+}
+
+// Ticking a contact adds it to To; unticking removes it. Anything typed by hand
+// is left alone, so the field stays yours.
+function commsContactPicked() {
+  const to = document.getElementById('cmp-to');
+  if (!to) return;
+  const picked = [...document.querySelectorAll('[data-cmp-contact]')].filter(b => b.checked).map(b => b.value.toLowerCase());
+  const known = [...document.querySelectorAll('[data-cmp-contact]')].map(b => b.value.toLowerCase());
+  const manual = to.value.split(/[,;]/).map(x => x.trim()).filter(Boolean)
+    .filter(x => !known.includes(x.toLowerCase()));
+  to.value = [...new Set([...manual, ...picked])].join(', ');
+}
+
+// ── FYI invoices ────────────────────────────────────────────────────────────
+// "This is past due and these are soon to be due." Built from the customer's
+// open book across the family, so the note covers what they actually owe rather
+// than only the invoice that started the thread.
+async function commsToggleFyi() {
+  const box = document.getElementById('cmp-fyi');
+  if (!box) return;
+  if (box.dataset.open === '1') { box.dataset.open = '0'; box.innerHTML = ''; return; }
+  box.dataset.open = '1';
+  const c = _mailboxCtx && _mailboxCtx.conversation;
+  if (!c || !c.customer_id) { box.innerHTML = '<div style="font-size:11px;color:#b45309">File this thread to a customer first.</div>'; return; }
+  box.innerHTML = '<div style="font-size:11px;color:var(--gray-400)">Loading open invoices…</div>';
+  try {
+    _cmpInvoices = await apiFetch(`/api/customers/${encodeURIComponent(c.customer_id)}/open-invoices`);
+    commsRenderFyi();
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:11px;color:var(--red)">${escHtml(e.message)}</div>`;
+  }
+}
+
+function commsRenderFyi() {
+  const box = document.getElementById('cmp-fyi');
+  const d = _cmpInvoices;
+  if (!box || !d) return;
+  const group = (key, label, rows, colour) => !rows.length ? '' : `
+    <div style="margin-bottom:6px">
+      <label style="font-size:11px;font-weight:700;color:${colour};display:inline-flex;align-items:center;gap:4px">
+        <input type="checkbox" data-fyi-group="${key}" checked onchange="commsFyiGroupToggle('${key}', this.checked)"> ${label} · ${rows.length} · ${fmt$(rows.reduce((t, r) => t + r.amount, 0))}</label>
+      <div style="max-height:96px;overflow-y:auto;margin-top:2px">
+        ${rows.map(r => `<label style="display:flex;gap:6px;align-items:center;font-size:11px;padding:1px 0">
+          <input type="checkbox" data-fyi="${escHtml(r.recordNo)}" data-fyi-in="${key}" checked>
+          <span style="font-family:monospace">${escHtml(r.invoiceId)}</span>
+          <span style="color:var(--gray-500)">${fmt$(r.amount)}</span>
+          <span style="color:var(--gray-400)">${r.daysOverdue > 0 ? r.daysOverdue + 'd overdue' : 'due ' + escHtml(String(r.dueDate || '').slice(0, 10))}</span>
+        </label>`).join('')}
+      </div>
+    </div>`;
+  box.innerHTML = `
+    <div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px;background:#fcfcfd">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">
+        <strong style="font-size:11.5px;color:var(--navy)">Invoices to mention</strong>
+        <span style="font-size:10.5px;color:var(--gray-500)">${d.familyIds.length > 1 ? `across ${d.familyIds.length} related customer records` : 'this customer'}</span>
+        <a href="#" style="margin-left:auto;font-size:11px" onclick="commsInsertFyi();return false">Insert into message →</a>
+      </div>
+      ${group('pastDue', 'Past due', d.pastDue, '#b91c1c')}
+      ${group('soon', `Due within ${d.soonDays} days`, d.soon, '#b45309')}
+      ${!d.pastDue.length && !d.soon.length ? '<div style="font-size:11px;color:var(--gray-500)">Nothing past due or coming due.</div>' : ''}
+    </div>`;
+}
+
+function commsFyiGroupToggle(key, on) {
+  document.querySelectorAll(`[data-fyi-in="${key}"]`).forEach(b => { b.checked = on; });
+}
+
+// Plain text, because the inline composer sends plain text. Readable in any
+// client and it survives being quoted back.
+function commsInsertFyi() {
+  const d = _cmpInvoices;
+  if (!d) return;
+  const picked = new Set([...document.querySelectorAll('[data-fyi]')].filter(b => b.checked).map(b => b.getAttribute('data-fyi')));
+  const fmt = (rows) => rows.filter(r => picked.has(String(r.recordNo)))
+    .map(r => `  ${r.invoiceId}   ${fmt$(r.amount)}   ${r.daysOverdue > 0 ? r.daysOverdue + ' days past due' : 'due ' + String(r.dueDate || '').slice(0, 10)}`)
+    .join('\n');
+  const past = fmt(d.pastDue), soon = fmt(d.soon);
+  if (!past && !soon) { showToast('Nothing selected', 'error'); return; }
+  let txt = '\n';
+  if (past) txt += `Past due:\n${past}\n`;
+  if (soon) txt += `${past ? '\n' : ''}Coming due within ${d.soonDays} days:\n${soon}\n`;
+  const body = document.getElementById('cmp-body');
+  body.value = (body.value ? body.value.replace(/\s*$/, '\n') : '') + txt;
+  body.focus();
+  // Tag them on the message so the thread records what was discussed.
+  _cmpFyiRecordNos = [...picked];
+  showToast('Added to the message', 'success');
+}
+let _cmpFyiRecordNos = [];
+
 let _commsTemplatesCache = [];
 
 function commsIsPrivileged() {
@@ -2172,6 +2313,7 @@ async function commsSelectThread(id) {
     _mailboxCtx = data;
     commsRenderThread(data);
     commsRenderContext(data);
+    commsLoadComposerContacts(data.conversation);
   } catch (e) {
     el.innerHTML = `<div style="padding:30px;color:var(--red)">${escHtml(e.message)}</div>`;
   }
@@ -2310,11 +2452,15 @@ function commsComposerHtml(c, messages) {
         <span style="margin-left:auto;font-size:11px;color:var(--gray-400)">
           <a href="#" onclick="commsReplyToConversation(${c.id});return false">full composer →</a></span>
       </div>
+      <div id="cmp-contacts" style="margin-bottom:5px"></div>
       <input id="cmp-to" value="${escHtml(replyTo)}" placeholder="To (comma separated)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <input id="cmp-cc" placeholder="Cc (optional)" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <input id="cmp-subject" value="${escHtml(subject)}" style="width:100%;padding:6px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;margin-bottom:5px">
       <textarea id="cmp-body" rows="6" placeholder="Write your reply…" style="width:100%;padding:8px 9px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;font-family:inherit;resize:vertical"></textarea>
+      <div id="cmp-fyi" style="margin-top:6px"></div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
+        <button class="btn-sm" type="button" onclick="commsToggleFyi()" title="Drop a table of what is past due and what is coming due into the message"
+          style="border:1px solid var(--gray-300);background:var(--white);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11.5px">📋 Add invoices as FYI</button>
         <label style="font-size:11.5px;color:var(--gray-600);display:flex;align-items:center;gap:4px">
           <input type="checkbox" id="cmp-attach-pdf"> Attach invoice PDFs</label>
         <label style="font-size:11.5px;color:var(--gray-600);display:flex;align-items:center;gap:4px">
@@ -2353,7 +2499,12 @@ async function commsSendInline(conversationId, btn) {
   if (!to.length) { showToast('Add at least one recipient', 'error'); return; }
   if (!usingTemplate && !body.trim()) { showToast('Write something first', 'error'); return; }
   const c = _mailboxCtx && _mailboxCtx.conversation;
-  const recordNos = [...new Set((_mailboxCtx?.messages || []).flatMap(m => m.recordNos || []))];
+  // Thread invoices plus anything added as FYI, so the message records what it
+  // actually talked about.
+  const recordNos = [...new Set([
+    ...(_mailboxCtx?.messages || []).flatMap(m => m.recordNos || []),
+    ...(_cmpFyiRecordNos || []),
+  ])];
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
     await apiFetch('/api/comms/send', { method: 'POST', body: JSON.stringify({
@@ -2367,6 +2518,7 @@ async function commsSendInline(conversationId, btn) {
     }) });
     showToast('Sent', 'success');
     bodyEl.value = '';
+    _cmpFyiRecordNos = [];
     await commsSelectThread(conversationId);
   } catch (e) {
     showToast('Send failed: ' + e.message, 'error');
@@ -2381,10 +2533,19 @@ async function commsRenderContext({ conversation: c, messages }) {
   const card = (title, inner) => `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:11px 13px;margin-bottom:10px">
     <div style="font-size:10.5px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">${title}</div>${inner}</div>`;
 
+  // The family is fetched for the composer's contact picker; reuse it here so
+  // the pane names the parent and related records rather than a bare id.
+  const fam = _cmpFamily && _cmpFamily.self && _cmpFamily.self.customer_id === c.customer_id ? _cmpFamily : null;
+  const famName = fam && fam.self ? fam.self.name : '';
   el.innerHTML = card('Customer', c.customer_id
-      ? `<div style="font-size:13px;font-weight:600;color:var(--navy)">${escHtml(c.customer_id)}</div>
+      ? `<div style="font-size:13px;font-weight:600;color:var(--navy)">${escHtml(famName || c.customer_id)}</div>
+         <div style="font-size:11px;color:var(--gray-500)">${escHtml(c.customer_id)}</div>
+         ${fam && fam.parent ? `<div style="font-size:11px;color:var(--gray-600);margin-top:4px">under
+            <a href="#" onclick="goToCustomer('${escHtml(fam.parent.customer_id)}');return false">${escHtml(fam.parent.name || fam.parent.customer_id)}</a></div>` : ''}
+         ${fam && fam.siblings && fam.siblings.length ? `<div style="font-size:11px;color:var(--gray-500);margin-top:2px">${fam.siblings.length} related record${fam.siblings.length === 1 ? '' : 's'}</div>` : ''}
+         ${fam && fam.children && fam.children.length ? `<div style="font-size:11px;color:var(--gray-500);margin-top:2px">parent of ${fam.children.length} record${fam.children.length === 1 ? '' : 's'}</div>` : ''}
          <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
-           <a href="#" onclick="navGo('customers');return false" style="font-size:11.5px">Open customer view →</a>
+           <a href="#" onclick="goToCustomer('${escHtml(c.customer_id)}');return false" style="font-size:11.5px">Open customer view →</a>
            <a href="#" onclick="navGo('comms-statements');return false" style="font-size:11.5px">Send a statement →</a>
          </div>`
       : '<div style="font-size:12px;color:#b45309">Unfiled — file it to a customer in Triage so replies and tokens resolve.</div>')
