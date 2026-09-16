@@ -4183,9 +4183,11 @@ function commsRealActor(req) {
 // server-side so a request body can never spoof automation identity.
 function commsPickBody(body) {
   const { customerId, contactId, toEmails, ccEmails, recordNos,
-          templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId, correspondingEmail } = body || {};
+          templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId,
+          correspondingEmail, attachmentIds } = body || {};
   return { customerId, contactId, toEmails, ccEmails, recordNos,
-           templateKey, rawSubject, rawBody, attachStatement, attachInvoicePdfs, conversationId, correspondingEmail };
+           templateKey, rawSubject, rawBody: rawBody ? sanitiseEmailHtml(rawBody) : rawBody,
+           attachStatement, attachInvoicePdfs, conversationId, correspondingEmail, attachmentIds };
 }
 
 // ─── API: Granular permission administration ─────────────────────────────────
@@ -4230,6 +4232,45 @@ app.get('/api/comms/config', requireAuth, (req, res) => {
   });
 });
 
+// Attachment upload. Its own body limit — the global express.json() is 100kb
+// and a 4 MB file base64-encodes to ~5.5 MB, so raising it globally to suit one
+// route would let every other route accept huge bodies too.
+app.post('/api/comms/attachments', requireAuth, requirePerm('email.send'),
+  express.json({ limit: '24mb' }), (req, res) => {
+    try {
+      const files = Array.isArray(req.body && req.body.files) ? req.body.files : [];
+      if (!files.length) return res.status(400).json({ error: 'No files' });
+      const att = require('./comms-attachments');
+      const out = files.slice(0, 10).map(f => att.store(req.session.user.email, f));
+      res.json({ attachments: out });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+app.delete('/api/comms/attachments/:id', requireAuth, requirePerm('email.send'), (req, res) => {
+  try {
+    const att = require('./comms-attachments');
+    const m = att.meta(req.params.id);
+    if (m && m.userEmail && m.userEmail !== String(req.session.user.email).toLowerCase()) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    att.remove(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// A rich-text body is authored in the browser, so it arrives as HTML we did not
+// write. Staff-only or not, it is stored and then rendered back into the thread
+// view, so strip the parts that could execute before any of that happens.
+function sanitiseEmailHtml(html) {
+  return String(html || '')
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|style|iframe|object|embed|link|meta)\b[^>]*>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
+}
+
 app.post('/api/comms/preview', requireAuth, requirePerm('email.send'), (req, res) => {
   try {
     const actor = commsRealActor(req);
@@ -4262,6 +4303,12 @@ app.post('/api/comms/send', requireAuth, requirePerm('email.send'), async (req, 
       }
     }
 
+    // User-uploaded files, resolved from the ids the upload route handed back.
+    if (Array.isArray(p.attachmentIds) && p.attachmentIds.length) {
+      const resolved = require('./comms-attachments').resolve(req.session.user.email, p.attachmentIds);
+      extraAttachments = [...(extraAttachments || []), ...resolved];
+    }
+
     const result = await comms.sendMessage({
       ...p,
       extraAttachments,
@@ -4269,6 +4316,8 @@ app.post('/api/comms/send', requireAuth, requirePerm('email.send'), async (req, 
       actorType: 'human',
       correspondingEmail: p.correspondingEmail || actor,
     });
+    // Sent — Graph holds the copy now, so drop ours.
+    for (const id of (p.attachmentIds || [])) { try { require('./comms-attachments').remove(id); } catch (e) {} }
     res.json(result);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -6366,6 +6415,14 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
+  // Attachments a user uploaded but never sent.
+  setInterval(() => {
+    try {
+      const n = require('./comms-attachments').sweep();
+      if (n) console.log(`[comms-attachments] swept ${n} expired upload(s)`);
+    } catch (e) {}
+  }, 60 * 60 * 1000);
+
   // Intacct's customer hierarchy. Changes only when someone edits a customer,
   // so daily is plenty — but it must be populated or family lookups fall back
   // to the single record.
