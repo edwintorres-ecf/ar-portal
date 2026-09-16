@@ -21,14 +21,34 @@ const payee = require('./payee');
 
 const PLACEHOLDER_RE = /needed|tbd|to be determined|pending|none|n\/a|po-msg|^-+$/i;
 
+// The authority on whether a purchase order is real is AMAZON, not its shape.
+// B997-22182169 is a genuine $130,206 order that no "2D-" rule would accept,
+// while "987639" and "WO #534482" look plausible and are ours, not theirs
+// (Edwin 2026-09-15: "the ones here without the 2D are not actual amazon PO's").
+let _amazonPoSet = null, _amazonPoAt = 0;
+function amazonPoSet() {
+  if (_amazonPoSet && (Date.now() - _amazonPoAt) < 5 * 60 * 1000) return _amazonPoSet;
+  const set = new Set();
+  try { for (const k of Object.keys(require('./payee').getOpenPoMap().byPo || {})) set.add(k); } catch (e) {}
+  try {
+    const d = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'payee-po-details.spark.json'), 'utf8'));
+    for (const k of Object.keys(d.details || {})) set.add(k);
+  } catch (e) {}
+  _amazonPoSet = set; _amazonPoAt = Date.now();
+  return set;
+}
+
 /** Is this PO number a stand-in rather than a real Amazon order? */
 function isPlaceholder(po) {
   const s = String(po || '').trim();
   if (!s) return true;
-  // A real Amazon PO looks like 2D-19170691. Anything that does not, and that
-  // reads like a note to ourselves, is a placeholder.
-  if (/^\d[A-Z]-\d{6,}$/i.test(s)) return false;
-  return PLACEHOLDER_RE.test(s);
+  // Amazon knows it — real, whatever it looks like.
+  if (amazonPoSet().has(s)) return false;
+  // Obvious notes to ourselves.
+  if (PLACEHOLDER_RE.test(s)) return true;
+  // Otherwise fall back to shape. Amazon orders are <prefix>-<6+ digits>;
+  // a bare number or a work-order reference is not one of theirs.
+  return !/^[A-Z0-9]{2,6}-\d{6,}$/i.test(s);
 }
 
 /**
