@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-16T01:02:48.432Z",
+  "generatedAt": "2026-09-16T01:16:52.930Z",
   "source": "payee-po-detail-scraper",
   "openTotal": 1222,
-  "scraped": 986,
-  "ok": 986,
+  "scraped": 1,
+  "ok": 1,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -55498,7 +55498,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-15T05:14:17.998Z",
+      "scrapedAt": "2026-09-16T01:16:52.930Z",
       "stale": false
     },
     "2D-22592925": {
