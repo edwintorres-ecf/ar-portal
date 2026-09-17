@@ -3605,6 +3605,23 @@ app.get('/api/po/intake-health', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// The intake list as a worklist someone can take away and work through. The
+// screen answers "how bad is it"; this answers "what do I do next, in what
+// order" (built for Vincenzo, 2026-09-17).
+app.get('/api/po/intake-health.xlsx', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const { wb } = require('./po-intake-workbook').build(invoices, { snowOnly: req.query.snow === '1' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="ECF-PO-intake-health-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Sites with no business unit — a data-hygiene report, not an Amazon-facing one.
 // Not snow-filtered by default: a site missing from the master is missing for
 // every service, not just snow.
