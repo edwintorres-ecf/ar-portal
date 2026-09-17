@@ -452,6 +452,11 @@ if (STAGING) {
 }
 
 app.get('/auth/login', async (req, res) => {
+  // Microsoft would refuse this origin anyway: the redirect URI is registered
+  // against the production hostname. Without this, every 401 the SPA hits sends
+  // the reviewer to a login that cannot possibly come back (Edwin, 2026-09-17:
+  // "Takes me to Microsoft to login").
+  if (STAGING) return res.redirect('/staging-login');
   try {
     const authUrl = await msalApp.getAuthCodeUrl({
       scopes: SCOPES,
@@ -4822,7 +4827,10 @@ app.get('/api/overview', requireAuth, async (req, res) => {
       sentToLegal,
       pctPastDue: totalAR > 0 ? Math.round((pastDueAR / totalAR) * 100) : 0,
       top10,
-      sageCacheAgeMin: Math.round((sage.getCacheAge() || 0) / 60000),
+      // getCacheAge() returns an OBJECT, so dividing it by 60000 produced NaN,
+      // which JSON renders as null. Harmless while nothing displayed it; the
+      // Phase 2 dashboard does, and showed "Data nullm old" (2026-09-16).
+      sageCacheAgeMin: (() => { const c = sage.getCacheAge(); return c ? Math.round(c.ageMs / 60000) : null; })(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6425,6 +6433,15 @@ app.delete('/api/regions/:regionCode', requireAuth, requirePerm('regions.admin')
     db.auditLog(user.email, 'region_delete', null, req.params.regionCode);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The design-system reference. Admin-only: it is a build tool, not a report,
+// and a live component gallery on a finance portal invites questions about
+// whose numbers those are. (They are illustrative; the page says so.)
+// NOT in public/ — that directory is served by express.static with no auth, so
+// a file there would be reachable at /styleguide.html regardless of this gate.
+app.get('/styleguide', requireAuth, requireRole('admin'), (req, res) => {
+  res.sendFile(path.join(__dirname, 'styleguide.html'));
 });
 
 // ─── Admin UI redirect ───────────────────────────────────────────────────────
