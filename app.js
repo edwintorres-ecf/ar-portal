@@ -6495,12 +6495,24 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
   // Intacct's customer hierarchy. Changes only when someone edits a customer,
   // so daily is plenty — but it must be populated or family lookups fall back
   // to the single record.
-  function doFamilyRefresh(why) {
+  // It failed on EVERY pass between 2026-09-15 and 2026-09-16 with "Sage request
+  // timeout", so the hierarchy behind the contact picker was frozen at whatever
+  // the first successful run left. The query itself is fine (499 customers in
+  // 3.6s when run alone) — the boot pass simply landed four minutes in, on top
+  // of the 1,211-page Amazon PO detail scrape, and starved.
+  //
+  // So: start well clear of the boot storm, and retry rather than wait a whole
+  // day. A stale hierarchy is silent — nothing looks broken, the picker just
+  // stops offering the parent's contacts.
+  function doFamilyRefresh(why, attempt = 1) {
     require('./customer-family').refresh(sage)
       .then(r => console.log(`[customer-family] ${r.count} customers, ${r.parents} with a parent (${why})`))
-      .catch(e => console.error('[customer-family] refresh failed:', e.message));
+      .catch(e => {
+        console.error(`[customer-family] refresh failed (${why}, attempt ${attempt}):`, e.message);
+        if (attempt < 3) setTimeout(() => doFamilyRefresh(why, attempt + 1), 5 * 60 * 1000);
+      });
   }
-  setTimeout(() => doFamilyRefresh('boot'), 4 * 60 * 1000);
+  setTimeout(() => doFamilyRefresh('boot'), 20 * 60 * 1000);
   setInterval(() => doFamilyRefresh('daily'), 24 * 60 * 60 * 1000);
 
   // One snapshot a day, plus one shortly after boot so a restart never leaves a
