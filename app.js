@@ -162,6 +162,20 @@ const CLIENT_ID     = process.env.AZURE_CLIENT_ID;
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
 const REDIRECT_URI  = process.env.REDIRECT_URI || 'https://ar.eastcoastfacilities.com/auth/callback';
 
+// ─── Staging mode ────────────────────────────────────────────────────────────
+// A second copy of this app runs against a COPY of the database so the UI
+// redesign can be built and reviewed without touching live AR. The danger is
+// not the database — it is that a second instance holds the same production
+// credentials and would happily email a customer, transmit an invoice, or eat
+// the shared invoices@ inbox out from under production.
+//
+// So staging is made structurally incapable rather than merely configured not
+// to: outbound routes are refused before they reach a handler, and every
+// background job that touches shared external state is never scheduled.
+// Inert in production, where STAGING is unset.
+const STAGING = process.env.STAGING === '1';
+if (STAGING) console.log('[ar-portal] ⚠ STAGING MODE — outbound disabled, background jobs off');
+
 if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
   throw new Error('AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET must be set in .env');
 }
@@ -203,6 +217,31 @@ app.use(session({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Anything that leaves the building is refused in staging, before it reaches a
+// handler. Listed by what they DO, not by permission: a redesign reviewer is an
+// admin, so every permission check would pass.
+if (STAGING) {
+  const NO_OUTBOUND = [
+    /^\/api\/comms\/send/,                    // customer email
+    /^\/api\/amazon\/rejections\/notify/,     // per-site rejection notices
+    /^\/api\/amazon\/rejections\/poll-replies/,
+    /^\/api\/amazon\/statements\/request/,
+    /^\/api\/statements\/run/,                // statement blast
+    /^\/api\/dunning\/runs\/[^/]+\/execute/,  // dunning send
+    /^\/api\/dunning\/generate/,
+    /^\/api\/po\/edi\//,                      // EDI 810 to Amazon
+    /^\/api\/velocity\//,                     // InterNex/Velocity uploads
+    /^\/api\/ai\/draft-email/,                // hits the local model, harmless, but noisy
+  ];
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && NO_OUTBOUND.some(re => re.test(req.path))) {
+      console.log(`[staging] refused ${req.method} ${req.path}`);
+      return res.status(403).json({ error: 'Staging environment — outbound actions are disabled.' });
+    }
+    next();
+  });
+}
 
 // ─── Request Logger ──────────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -388,6 +427,25 @@ async function denyIfOutOfScope(req, res, { recordNo, invoiceId }) {
 }
 
 // ─── Auth Routes ────────────────────────────────────────────────────────────
+
+// Staging cannot complete Microsoft sign-in: the redirect URI is registered
+// against the production hostname and adding another is an Azure admin change.
+// So staging gets its own door. It is safe only because of where staging lives:
+// bound to the Tailscale address, never added to the Cloudflare tunnel, so it
+// is unreachable from the internet. Guarded by STAGING so this route does not
+// exist in production at all.
+if (STAGING) {
+  app.get('/staging-login', (req, res) => {
+    const email = String(req.query.as || 'edwin.torres@eastcoastfacilities.com');
+    const u = db.getUserRole(email);
+    if (!u) return res.status(404).send(`No portal user for ${email}`);
+    req.session.user = {
+      email: u.email, name: u.name, oid: 'staging',
+      role: u.role, location_filter: u.location_filter || null, customer_filter: u.customer_filter || null,
+    };
+    req.session.save(() => res.redirect('/'));
+  });
+}
 
 app.get('/auth/login', async (req, res) => {
   try {
@@ -6385,8 +6443,24 @@ app.get('*', (req, res) => {
   // Don't serve SPA for /auth routes
   if (req.path.startsWith('/auth/')) return res.status(404).send('Not found');
   if (req.path.startsWith('/api/'))  return res.status(404).json({ error: 'Not found' });
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Staging wears a label. Two near-identical portals open in two tabs is how
+  // someone ends up believing they actioned something that they did not.
+  if (STAGING) {
+    const file = path.join(__dirname, 'public', 'index.html');
+    return fs.readFile(file, 'utf8', (err, html) => {
+      if (err) return res.status(500).send('index.html unreadable');
+      res.type('html').send(html.replace('</body>', `
+<div style="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#b45309;color:#fff;
+            font:600 12px/1.6 system-ui,sans-serif;text-align:center;padding:5px 12px;letter-spacing:.02em">
+  STAGING — copy of the database, outbound disabled. Nothing here reaches a customer.
+</div>
+<script>window.__STAGING__ = true;</script>
+</body>`));
+    });
+  }
+  res.sendFile(file_index_html());
 });
+function file_index_html() { return path.join(__dirname, 'public', 'index.html'); }
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
 const httpsServer = require('https');
@@ -6399,6 +6473,17 @@ const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
 (tlsOpts ? server : app).listen(PORT, () => {
   console.log(`[ar-portal] ECF AR Aging Portal running on port ${PORT}`);
   console.log(`[ar-portal] Started at ${new Date().toISOString()}`);
+
+  // Staging serves the data that was copied with it and schedules NOTHING.
+  // Every job below either reaches outside the box or writes state production
+  // also writes: the Payee scraper takes a browser lock production needs, the
+  // inbound poller would consume invoices@ mail before production sees it, and
+  // the ops alerter would double every notification. On-demand reads still work,
+  // so the UI stays populated — it is simply as of the copy.
+  if (STAGING) {
+    console.log('[ar-portal] STAGING — no background jobs scheduled');
+    return;
+  }
 
   // Pre-warm Sage cache on startup — this also warms Omnia token via fetchOmniaInvoices
   sage.getInvoices().then(invoices => {
