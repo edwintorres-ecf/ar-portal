@@ -6470,7 +6470,11 @@ const tlsOpts = (() => {
   } catch(e) { return null; }
 })();
 const server = tlsOpts ? httpsServer.createServer(tlsOpts, app) : app;
-(tlsOpts ? server : app).listen(PORT, () => {
+// Staging binds to the Tailscale address only, so it is reachable by the team
+// and by nothing else. Production leaves this unset and binds every interface,
+// because Cloudflare reaches it over loopback.
+const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [PORT];
+(tlsOpts ? server : app).listen(...LISTEN_ARGS, () => {
   console.log(`[ar-portal] ECF AR Aging Portal running on port ${PORT}`);
   console.log(`[ar-portal] Started at ${new Date().toISOString()}`);
 
