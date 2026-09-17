@@ -270,8 +270,12 @@ app.use((req, res, next) => {
   });
   next();
 });
+// In staging the shell is rewritten on the way out to carry the banner, so the
+// static handler must not answer for it first — `index: false` stops it serving
+// index.html for "/" and leaves that to the SPA route at the bottom.
 // Serve static files but force no-cache on HTML so updates are always picked up
 app.use(express.static(path.join(__dirname, 'public'), {
+  index: STAGING ? false : 'index.html',
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
