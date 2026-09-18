@@ -263,10 +263,26 @@ async function scanPoDocs(opts = {}) {
     const entry = byPo[poNumber];
     entry.files.push(rec);
     entry.versionCount = entry.files.length;
-    // Higher version wins; same version across year folders → later doc date wins.
-    if (version > entry.latestVersion || (version === entry.latestVersion && (!entry.latestFile || (rec.docDate || '') >= (entry.latestFile.docDate || '')))) {
-      entry.latestVersion = version; entry.latestFile = rec;
+    // DATE first, then the filename version as the tie-break.
+    //
+    // This used to lead on the "v" number in the filename, on the assumption
+    // that it counts revisions. It does not. 2D-20300544 has a v2 dated
+    // 2026-02-06 saying $25,975 and a v1 dated 2026-05-08 saying $42,487.50 —
+    // and the May file's own internal PURCHASE ORDER VERSION is 3. We were
+    // reading February's value for a PO Amazon had since raised, and reporting
+    // the gap as a discrepancy against Amazon rather than as our own stale read
+    // (Edwin 2026-09-18: "search for the latest pdf and see if this auto
+    // resolves" — it did).
+    //
+    // Same date still falls back to the higher version, because that is a
+    // genuine same-day revision rather than a later document.
+    const better = !entry.latestFile
+      || (rec.docDate || '') > (entry.latestFile.docDate || '')
+      || ((rec.docDate || '') === (entry.latestFile.docDate || '') && version > (entry.latestFile.version || 0));
+    if (better) {
+      entry.latestFile = rec;
     }
+    entry.latestVersion = Math.max(entry.latestVersion, version);
   }
   for (const e of Object.values(byPo)) e.revised = e.latestVersion > 1;
 
