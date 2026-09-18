@@ -156,7 +156,8 @@ function build(invoices, { snowOnly = false, docCheck = null } = {}) {
 
   // ── Sheet 4: the exceptions, checked against every document we hold ──────
   if (docCheck && docCheck.length) {
-    const s4 = wb.addWorksheet('Exceptions checked', { views: [{ state: 'frozen', ySplit: 6 }] });
+    // Header lands on row 5 (title, blurb, count, blank, header).
+    const s4 = wb.addWorksheet('Exceptions checked', { views: [{ state: 'frozen', ySplit: 5 }] });
     s4.columns = [{ width: 4 }, { width: 18 }, { width: 9 }, { width: 15 }, { width: 15 },
       { width: 15 }, { width: 13 }, { width: 34 }, { width: 62 }];
     const t4 = s4.addRow(['', 'Ceiling discrepancies — checked against every document on file']);
