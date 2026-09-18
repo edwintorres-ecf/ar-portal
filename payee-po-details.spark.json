@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-18T14:24:39.237Z",
+  "generatedAt": "2026-09-18T15:30:11.669Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1228,
-  "scraped": 1212,
-  "ok": 1212,
+  "openTotal": 1229,
+  "scraped": 1,
+  "ok": 1,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -55718,6 +55718,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-18T06:24:39.166Z",
+      "stale": false
+    },
+    "2D-22697192": {
+      "available": 39972.94,
+      "poAmount": 39972.94,
+      "status": "Open",
+      "site": "WWV8",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-18T15:30:11.669Z",
       "stale": false
     }
   }

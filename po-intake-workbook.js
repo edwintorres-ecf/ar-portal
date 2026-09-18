@@ -37,7 +37,14 @@ function styleHeader(row, from = 1, to = 12) {
   }
 }
 
-function build(invoices, { snowOnly = false } = {}) {
+/**
+ * `docCheck` is an optional per-PO document comparison for the ceiling
+ * discrepancies: what Amazon says, what document the portal is reading, and
+ * what the NEWEST document we hold says. It is passed in rather than computed
+ * here because producing it means downloading and parsing PDFs from SharePoint,
+ * which is far too slow to sit behind a download button.
+ */
+function build(invoices, { snowOnly = false, docCheck = null } = {}) {
   const a = intake.analyse(invoices, { snowOnly });
   const wb = new ExcelJS.Workbook();
   wb.creator = 'ECF AR Portal';
@@ -146,6 +153,47 @@ function build(invoices, { snowOnly = false } = {}) {
     .getCell(2).font = { size: 10, italic: true, color: { argb: SOFT } };
   s3.addRow(['', 'The portal recomputes this hourly; this file is a point-in-time copy.'])
     .getCell(2).font = { size: 10, italic: true, color: { argb: SOFT } };
+
+  // ── Sheet 4: the exceptions, checked against every document we hold ──────
+  if (docCheck && docCheck.length) {
+    const s4 = wb.addWorksheet('Exceptions checked', { views: [{ state: 'frozen', ySplit: 6 }] });
+    s4.columns = [{ width: 4 }, { width: 18 }, { width: 9 }, { width: 15 }, { width: 15 },
+      { width: 15 }, { width: 13 }, { width: 34 }, { width: 62 }];
+    const t4 = s4.addRow(['', 'Ceiling discrepancies — checked against every document on file']);
+    t4.getCell(2).font = { bold: true, size: 14, color: { argb: INK } };
+    s4.addRow(['', 'For each of these the portal reported that the PO document disagrees with Amazon. '
+      + 'Every document we hold for the PO was re-read to see whether we are simply reading an older one.'])
+      .getCell(2).font = { size: 10, color: { argb: SOFT } };
+    const resolves = docCheck.filter(d => d.resolves).length;
+    s4.addRow(['', `${resolves} of ${docCheck.length} resolve by reading the newest document. `
+      + `The other ${docCheck.length - resolves} genuinely disagree with Amazon and need reconciling.`])
+      .getCell(2).font = { size: 10, bold: true, color: { argb: INK } };
+    s4.addRow([]);
+    const h4 = s4.addRow(['', 'PO number', 'Site', 'Amazon says', 'Portal reads',
+      'Newest doc says', 'Gap', 'Newest document', 'What to do']);
+    styleHeader(h4, 2, 9);
+
+    for (const d of docCheck) {
+      const gap = (d.amazon != null && d.newest != null) ? d.amazon - d.newest : null;
+      const r = s4.addRow(['', d.poNumber, d.site || '', d.amazon, d.portal, d.newest,
+        gap, d.newestFile || '', d.action]);
+      for (const c of [4, 5, 6, 7]) r.getCell(c).numFmt = MONEY;
+      r.getCell(9).alignment = { wrapText: true, vertical: 'top' };
+      r.getCell(8).font = { size: 9, color: { argb: SOFT } };
+      if (d.resolves) {
+        for (let c = 2; c <= 9; c++) {
+          r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF3E7' } };
+        }
+        r.getCell(2).font = { bold: true, color: { argb: 'FF3F7238' } };
+      }
+      if (d.stale) r.getCell(8).font = { size: 9, bold: true, color: { argb: 'FFB45309' } };
+      for (let c = 2; c <= 9; c++) r.getCell(c).border = { bottom: { style: 'thin', color: { argb: LINE } } };
+    }
+    s4.addRow([]);
+    const n4 = s4.addRow(['', 'Shaded rows resolve by reading the newest document. '
+      + 'A bolded file name means the portal is not currently reading that file.']);
+    n4.getCell(2).font = { size: 10, italic: true, color: { argb: SOFT } };
+  }
 
   return { wb, analysis: a };
 }
