@@ -78,6 +78,18 @@ function doPayeeRefresh() {
       ops.ok('openpos-feed', `${r.openpos.total} POs`, r.openpos.total);
       ops.ok('openpos-refresh', `${r.openpos.total} POs`, r.openpos.total);
       console.log(`[ar-portal] Open-PO refresh: ${r.openpos.total} POs (child)`);
+      // Record arrivals and value changes against the freshly-invalidated feed.
+      // Purely additive: its own table, no existing row touched. A PO's arrival
+      // previously left no trace and an increase overwrote the old figure with
+      // no record it had moved (Edwin 2026-09-20).
+      try {
+        const poSeen = require('./po-seen');
+        const ev = poSeen.sync({ payee });
+        if (ev.arrived.length || ev.increased.length || ev.decreased.length) {
+          console.log(`[po-seen] ${ev.arrived.length} arrived, ${ev.increased.length} increased,`
+            + ` ${ev.decreased.length} decreased of ${ev.total}`);
+        }
+      } catch (e) { console.error('[po-seen] sync failed:', e.message); }
     } else {
       console.warn(`[ar-portal] Open-PO refresh error: ${r.openpos.error}`);
       ops.raise('openpos-refresh', 'Open-PO scrape failed', r.openpos.error, { minIntervalHours: 12, status: 'warn' }).catch(() => {});

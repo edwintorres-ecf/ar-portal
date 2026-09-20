@@ -628,6 +628,9 @@ function _buildPoLedger(invoices) {
   const { byPo: pendingByPo } = buildPendingUpload(amazonInvoices);
   const siteCodeByPo = buildSiteCodeByPo(amazonInvoices);
   const openPoMap = payee.getOpenPoMap().byPo;
+  // One lookup for the whole build rather than a query per row.
+  let poSeenMap = {};
+  try { poSeenMap = require('./po-seen').map(); } catch (e) { poSeenMap = {}; }
   const poDocsMap = getPoDocsMap();
   const poDetailsMap = getPoDetailsMap();
 
@@ -652,6 +655,7 @@ function _buildPoLedger(invoices) {
     const pendingUpload = pendingByPo[poNumber]?.pendingUpload || 0;
     const scraped = openPoMap[poNumber.toUpperCase()];
     const scrapedCeiling = scraped && scraped.amount > 0 ? scraped.amount : null;
+    const seen = poSeenMap[poNumber] || null;
 
     // Ceiling priority: a manually-entered ceiling wins (someone deliberately
     // set it); otherwise use Payee Central's authoritative open-PO amount.
@@ -752,6 +756,17 @@ function _buildPoLedger(invoices) {
       poStatus: scraped ? scraped.status : null,
       // Amazon's PO issue date (SearchOpenPOs orderDate, e.g. "Aug 4, 2026").
       orderDate: scraped ? (scraped.orderDate || null) : null,
+      // When WE first saw this PO, and whether its value has moved since.
+      // Distinct from orderDate: Amazon's issue date is when they raised it,
+      // firstSeenAt is when it reached us. The gap between the two is how long
+      // a PO sat before we could bill against it (Edwin 2026-09-20).
+      firstSeenAt: seen ? seen.first_seen_at : null,
+      firstAmount: seen ? seen.first_amount : null,
+      previousAmount: seen ? seen.prev_amount : null,
+      amountChangedAt: seen ? seen.last_change_at : null,
+      amountChangeCount: seen ? seen.change_count : 0,
+      amountDelta: (seen && seen.first_amount != null && ceiling != null)
+        ? Math.round((ceiling - seen.first_amount) * 100) / 100 : null,
       // Doc date, most-authoritative first: the PDF's internal "REVISED DATE:"
       // field (real revision date — filenames often just repeat the order date,
       // 215/312 revised POs verified), then the internal "ORDER DATE:" for
