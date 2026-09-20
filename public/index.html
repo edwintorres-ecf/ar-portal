@@ -6099,8 +6099,8 @@ function exportCsv(filenameBase, header, dataRows) {
 // Each tab stashes exactly what it's showing (post-filter/sort) so exports match the view.
 let _shownLedger = [], _shownUploaded = [], _shownNeedsUpload = [];
 function exportLedgerCsv() {
-  exportCsv('po-ledger', ['PO #', 'Site', 'Business Unit', 'Location', 'Snow', 'Ceiling', 'Ceiling Source', 'PDF Amount', 'Consumed', 'Pending Upload', 'Available', 'Status', 'PO Doc'],
-    _shownLedger.map(r => [r.poNumber, r.siteCode || '', r.businessUnit || '', r.locationId || '', r.isSnow ? 'Y' : '', r.ceilingAmount ?? '', r.ceilingSource || '', r.docAmount ?? '', (r.consumed||0).toFixed(2), (r.pendingUpload||0).toFixed(2), r.available ?? '', r.status || '', r.docVersion != null ? 'v'+r.docVersion : '']));
+  exportCsv('po-ledger', ['PO #', 'Site', 'Business Unit', 'Location', 'Snow', 'Ceiling', 'Ceiling Source', 'PDF Amount', 'First Seen', 'Amount Change', 'Consumed', 'Pending Upload', 'Available', 'Status', 'PO Doc'],
+    _shownLedger.map(r => [r.poNumber, r.siteCode || '', r.businessUnit || '', r.locationId || '', r.isSnow ? 'Y' : '', r.ceilingAmount ?? '', r.ceilingSource || '', r.docAmount ?? '', r.firstSeenAt ? r.firstSeenAt.slice(0,10) : '', (r.amountChangeCount && r.amountDelta != null) ? r.amountDelta.toFixed(2) : '', (r.consumed||0).toFixed(2), (r.pendingUpload||0).toFixed(2), r.available ?? '', r.status || '', r.docVersion != null ? 'v'+r.docVersion : '']));
 }
 function exportUploadedCsv() {
   exportCsv('po-uploaded', ['Invoice', 'Customer', 'Site', 'Business Unit', 'PO on Record', 'Submitted PO', 'Submitted As', 'Amount', 'Entry Date', 'Status'],
@@ -6365,12 +6365,49 @@ const PO_LEDGER_COLUMNS = [
   { field: 'siteCode',      label: 'Site / BU' },
   { field: 'locationId',    label: 'Location' },
   { field: 'ceilingAmount', label: 'Ceiling' },
+  { field: 'firstSeenAt',   label: 'First seen' },
   { field: 'consumed',      label: 'Consumed' },
   { field: 'pendingUpload', label: 'Pending Upload' },
   { field: 'available',     label: 'Available' },
   { field: 'status',        label: 'Status' },
   { field: 'docVersion',    label: 'PO Doc' },
 ];
+
+// When WE first saw the PO, against Amazon's own order date. They are different
+// facts: orderDate is when Amazon raised it, firstSeenAt is when it reached us,
+// and the gap is how long the PO sat before anyone could bill against it.
+function renderFirstSeenCell(row) {
+  if (!row.firstSeenAt) {
+    return '<span style="color:var(--gray-400)" title="Not in Amazon\'s open-PO feed — placeholder, closed, or tracked by hand">—</span>';
+  }
+  const d = new Date(row.firstSeenAt);
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  const shown = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+  const age = days === 0 ? 'today' : days === 1 ? 'yesterday' : days + 'd ago';
+  const lag = (() => {
+    if (!row.orderDate) return '';
+    const od = new Date(row.orderDate);
+    if (isNaN(od)) return '';
+    const gap = Math.round((d.getTime() - od.getTime()) / 86400000);
+    if (gap <= 1) return '';
+    return `<div style="font-size:10px;color:#8a6d1a" title="Amazon raised this PO on ${escHtml(row.orderDate)}; we first saw it ${gap} days later">+${gap}d after issue</div>`;
+  })();
+  return `<span title="First seen ${escHtml(row.firstSeenAt)}${row.orderDate ? ' · Amazon order date ' + escHtml(row.orderDate) : ''}">${shown}</span>
+    <div style="font-size:11px;color:var(--gray-400)">${age}</div>${lag}`;
+}
+
+// A PO whose value has moved since we first saw it. Increases are the norm —
+// 37% of POs with a document have been revised — and an increase is what
+// unblocks invoices sitting in the would-exceed bucket.
+function renderAmountChange(row) {
+  if (!row.amountChangeCount || row.amountDelta == null || Math.abs(row.amountDelta) < 0.01) return '';
+  const up = row.amountDelta > 0;
+  const when = row.amountChangedAt ? new Date(row.amountChangedAt).toLocaleDateString('en-US',
+    { timeZone: 'America/New_York', month: 'short', day: 'numeric' }) : '';
+  return `<div style="font-size:11px;font-weight:600;color:${up ? '#3f7238' : '#b32020'}"
+    title="First seen at ${fmt$(row.firstAmount)}${row.previousAmount != null ? ', previously ' + fmt$(row.previousAmount) : ''} · last changed ${escHtml(row.amountChangedAt || '')}">
+    ${up ? '▲' : '▼'} ${fmt$(Math.abs(row.amountDelta))}${when ? ' ' + when : ''}</div>`;
+}
 
 function renderDocCell(row) {
   if (!row.hasDoc) return '<span style="color:var(--gray-400)" title="No PO document found in SharePoint">—</span>';
@@ -6443,7 +6480,8 @@ function renderPoLedger() {
       <td style="padding:10px 14px;font-weight:600;color:var(--navy)">${escHtml(row.poNumber)}${snowTag}</td>
       <td style="padding:10px 14px">${poSiteCell(row)}</td>
       <td style="padding:10px 14px">${escHtml(row.locationId || '—')}</td>
-      <td style="padding:10px 14px" class="amount">${renderCeilingCell(row)}${discrepancy}</td>
+      <td style="padding:10px 14px" class="amount">${renderCeilingCell(row)}${discrepancy}${renderAmountChange(row)}</td>
+      <td style="padding:10px 14px">${renderFirstSeenCell(row)}</td>
       <td style="padding:10px 14px" class="amount">${fmt$(row.consumed)}${row.reconGap != null && Math.abs(row.reconGap) > 500 ? ` <span title="Ledger consumed differs from Amazon's implied consumed (PO amount − Available) by ${fmt$(row.reconGap)} — matched-invoice scrape or backfill will reconcile" style="cursor:help">⚠</span>` : ''}<div style="font-size:11px;color:var(--gray-400)">${row.consumedInvoiceCount} invoice${row.consumedInvoiceCount!==1?'s':''}${row.consumedBackfill ? ` <span title="includes ${fmt$(row.consumedBackfill)} of pre-feed history backfilled from Amazon's own figure (settled invoices that aged off the feed)" style="cursor:help;color:#8a6d1a">+hist</span>` : ''}</div></td>
       <td style="padding:10px 14px" class="amount">${fmt$(row.pendingUpload)}<div style="font-size:11px;color:var(--gray-400)">${row.pendingUploadInvoiceCount} invoice${row.pendingUploadInvoiceCount!==1?'s':''}</div></td>
       <td style="padding:10px 14px">${available}</td>
