@@ -6642,6 +6642,18 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
     try {
       const inv = sage.getCachedInvoices();
       if (!inv.length) return;
+      // Pull Amazon's own rejection emails first, so the watcher can say WHY an
+      // invoice never landed instead of only that it did not. Amazon sends these
+      // within minutes; 93 were sitting unread before this existed.
+      require('./edi-reject-mail').ingest()
+        .then(r => { if (r.stored) console.log(`[edi-reject-mail] ${r.stored} new rejection email(s) of ${r.scanned} scanned`); })
+        .catch(e => console.error('[edi-reject-mail] ingest failed:', e.message))
+        .finally(() => doEdiWatchSweep(inv));
+    } catch (e) { console.error('[edi-watch] sweep failed:', e.message); }
+  }
+
+  function doEdiWatchSweep(inv) {
+    try {
       const { newly, resolved, analysis } = require('./edi-watch').sweep(inv, { payee });
       const t = analysis.totals;
       if (resolved.length) {

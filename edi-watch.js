@@ -78,6 +78,22 @@ function init() {
 function check(invoices, { payee } = {}) {
   const p = payee || require('./payee');
   const byRec = new Map((invoices || []).map(i => [i.recordNo, i]));
+  // Amazon emails the reason within minutes of an EDI rejection. If we have one
+  // for this invoice, say WHY rather than "no confirmation" — the reason is the
+  // difference between "re-send it" and "it needs a bigger PO".
+  let rejMail = {}, rejKey = (x) => x;
+  try {
+    const m = require('./edi-reject-mail');
+    rejMail = m.map(); rejKey = m.keyOf;
+  } catch (e) {}
+  const rejectionFor = (invoiceId) => {
+    const k = rejKey(invoiceId);
+    if (!k) return null;
+    if (rejMail[k]) return rejMail[k];
+    // A resubmission is quoted with a letter suffix (AST003664A).
+    const hit = Object.keys(rejMail).find(x => x.startsWith(k));
+    return hit ? rejMail[hit] : null;
+  };
 
   // The LAST attempt per invoice decides. An invoice that failed and was then
   // re-sent successfully is not a failure, and vice versa.
@@ -106,14 +122,22 @@ function check(invoices, { payee } = {}) {
       transmittedAt: row.created_at, hoursAgo: Math.round(hours),
       detail: String(row.detail || '').slice(0, 200),
     };
+    const rej = rejectionFor(inv.invoiceId);
+    const amazonSaid = rej ? (rej.resolution || rej.error) : null;
+    const withReason = { ...base,
+      amazonReason: amazonSaid || null,
+      amazonRejectedAt: rej ? rej.received_at : null,
+      amazonSentAs: rej ? rej.invoice_sent : null };
     if (!ok) {
       // Superseded resolution is already handled: `last` is the invoice's most
       // recent attempt, so a failure followed by a success is never reported as
       // failed. It simply has to earn its confirmation like any other send.
-      failed.push({ ...base, reason: 'transmit failed' });
+      failed.push({ ...withReason, reason: 'transmit failed' });
     } else if (hours > GRACE_HOURS) {
       // Sent, acknowledged, and still invisible well past the feed's lag.
-      missing.push({ ...base, reason: 'no confirmation from Amazon' });
+      // Amazon may already have told us why it never landed.
+      missing.push({ ...withReason,
+        reason: amazonSaid ? `Amazon rejected it — ${amazonSaid}` : 'no confirmation from Amazon' });
     }
   }
 
@@ -125,6 +149,7 @@ function check(invoices, { payee } = {}) {
   return {
     notInPayee, failed, missing,
     totals: { count: notInPayee.length, amount: sum(notInPayee),
+              withAmazonReason: notInPayee.filter(x => x.amazonReason).length,
               failedCount: failed.length, failedAmount: sum(failed),
               missingCount: missing.length, missingAmount: sum(missing),
               graceHours: GRACE_HOURS },
