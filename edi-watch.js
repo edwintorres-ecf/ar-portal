@@ -1,22 +1,39 @@
 'use strict';
 // ─── edi-watch.js ───────────────────────────────────────────────────────────
-// An invoice can leave the portal and never arrive at Amazon in two ways, and
-// until now neither one told anybody.
+// THE RULE (Edwin, 2026-09-20):
+//   "All transmissions must be confirmed in Payee. If it does not exist in
+//    Payee it does not exist and should be considered failed or needing upload.
+//    A failed transmission later superseded by a successful one is resolved."
 //
-//   FAILED    the transmitter reported an error. Already retried twice (30s,
+// So there is ONE state that matters — not in Payee — and one action: upload it.
+// What our transmit log says is a CAUSE, never a verdict. An invoice we believe
+// we sent successfully is in exactly the same position as one that errored:
+// Amazon does not have it.
+//
+// The portal already works this way and I verified it rather than assuming:
+// Needs Upload includes an invoice unless Payee shows it live, Uploaded refuses
+// to list anything without a Payee entry (1,251 rows, 0 unconfirmed), and
+// recentTransmitAt only decorates a row, it never removes one. This module adds
+// the missing piece — telling someone — and nothing else.
+//
+// An invoice can reach that state two ways, and until now neither told anybody.
+//
+//   failed    the transmitter reported an error. Already retried twice (30s,
 //             60s) before it is logged, so a logged FAIL is a real failure, not
 //             a blip. One hid among 44 successes on 2026-09-18 and was found
 //             two days later by reading the audit log.
 //
-//   MISSING   the transmitter reported OK and Amazon has no record of it. This
-//             is the quieter and worse case: 21 invoices worth $440,457 were
-//             sitting in it, the oldest sent 65 days earlier. Checked three
-//             ways against the raw feed — base number, the number actually
-//             sent, and any suffixed resubmission variant — so a resubmission
-//             under a new number is not mistaken for a disappearance.
+//   no-confirmation
+//             the transmitter reported OK and Amazon has no record of it. The
+//             quieter and worse case: 21 invoices worth $440,457, the oldest
+//             sent 65 days earlier. Checked three ways against the raw feed —
+//             base number, the number actually sent, and any suffixed
+//             resubmission variant — so a resubmission under a new number is
+//             never mistaken for a disappearance.
 //
-// Both self-heal in the sense that the invoice stays on Needs Upload, but
-// silence is the problem: nobody knew to go and look (Edwin 2026-09-20).
+// The grace window delays the ALERT, never the classification. The invoice is
+// on Needs Upload from the moment Amazon does not have it; we simply do not
+// shout for 48h, because the feed legitimately lags a fresh submission.
 //
 // READ-ONLY against Amazon. This never transmits, never retries, never touches
 // an invoice. It reads the audit log and the feed, and raises an alert.
@@ -63,6 +80,8 @@ function check(invoices, { payee } = {}) {
                         WHERE b.action='edi_transmit' AND b.record_no = a.record_no)
     ORDER BY created_at DESC`).all();
 
+  // Both lists are the same state — not in Payee — kept apart only so the alert
+  // can say WHY, and so a fresh send is not shouted about during feed lag.
   const failed = [], missing = [];
   for (const row of last) {
     const inv = byRec.get(row.record_no);
@@ -80,19 +99,25 @@ function check(invoices, { payee } = {}) {
       detail: String(row.detail || '').slice(0, 200),
     };
     if (!ok) {
-      failed.push(base);
+      // Superseded resolution is already handled: `last` is the invoice's most
+      // recent attempt, so a failure followed by a success is never reported as
+      // failed. It simply has to earn its confirmation like any other send.
+      failed.push({ ...base, reason: 'transmit failed' });
     } else if (hours > GRACE_HOURS) {
       // Sent, acknowledged, and still invisible well past the feed's lag.
-      missing.push(base);
+      missing.push({ ...base, reason: 'no confirmation from Amazon' });
     }
   }
 
   const sum = l => Math.round(l.reduce((t, x) => t + (x.amount || 0), 0) * 100) / 100;
   failed.sort((a, b) => b.amount - a.amount);
   missing.sort((a, b) => b.hoursAgo - a.hoursAgo);
+  // The single list the rule actually cares about.
+  const notInPayee = [...failed, ...missing].sort((a, b) => b.amount - a.amount);
   return {
-    failed, missing,
-    totals: { failedCount: failed.length, failedAmount: sum(failed),
+    notInPayee, failed, missing,
+    totals: { count: notInPayee.length, amount: sum(notInPayee),
+              failedCount: failed.length, failedAmount: sum(failed),
               missingCount: missing.length, missingAmount: sum(missing),
               graceHours: GRACE_HOURS },
     generatedAt: new Date().toISOString(),
