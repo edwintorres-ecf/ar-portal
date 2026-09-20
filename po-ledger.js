@@ -761,6 +761,8 @@ function _buildPoLedger(invoices) {
       // firstSeenAt is when it reached us. The gap between the two is how long
       // a PO sat before we could bill against it (Edwin 2026-09-20).
       firstSeenAt: seen ? seen.first_seen_at : null,
+      // true = recorded when tracking began, not an observed arrival
+      firstSeenIsBaseline: !!(seen && seen.baseline),
       firstAmount: seen ? seen.first_amount : null,
       previousAmount: seen ? seen.prev_amount : null,
       amountChangedAt: seen ? seen.last_change_at : null,

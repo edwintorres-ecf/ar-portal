@@ -29,10 +29,23 @@ function init() {
     last_change_at TEXT,
     change_count   INTEGER NOT NULL DEFAULT 0,
     order_date     TEXT,
+    baseline       INTEGER NOT NULL DEFAULT 0,
     site_code      TEXT,
     business_unit  TEXT,
     last_seen_at   TEXT NOT NULL
   )`);
+  // The table shipped before `baseline` existed, so add it in place. Every row
+  // already present was written by the first sync and IS a backfill, so it is
+  // marked as such — otherwise the UI would report a months-long arrival lag
+  // that never happened.
+  try {
+    const cols = d.prepare('PRAGMA table_info(po_seen)').all().map(c => c.name);
+    if (!cols.includes('baseline')) {
+      d.exec('ALTER TABLE po_seen ADD COLUMN baseline INTEGER NOT NULL DEFAULT 0');
+      d.exec('UPDATE po_seen SET baseline=1');
+      console.log('[po-seen] added baseline column; marked existing rows as backfill');
+    }
+  } catch (e) { console.error('[po-seen] migration:', e.message); }
   d.exec(`CREATE INDEX IF NOT EXISTS idx_po_seen_first ON po_seen(first_seen_at DESC)`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_po_seen_change ON po_seen(last_change_at DESC)`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_po_seen_site ON po_seen(site_code)`);
@@ -58,9 +71,14 @@ function sync({ payee, siteOf } = {}) {
   const prev = {};
   for (const r of d.prepare('SELECT po_number, current_amount FROM po_seen').all()) prev[r.po_number] = r.current_amount;
 
+  // The FIRST run records the entire existing book. Those rows are a backfill,
+  // not arrivals: their first_seen_at is when tracking began, not when the PO
+  // reached us. Marking them stops the UI claiming we were 196 days late seeing
+  // a PO Amazon raised in March (caught in test, 2026-09-20).
+  const isBaseline = Object.keys(prev).length === 0;
   const ins = d.prepare(`INSERT INTO po_seen
-      (po_number, first_seen_at, first_amount, current_amount, prev_amount, last_change_at, change_count, order_date, site_code, business_unit, last_seen_at)
-      VALUES (?,?,?,?,NULL,NULL,0,?,?,?,?)`);
+      (po_number, first_seen_at, first_amount, current_amount, prev_amount, last_change_at, change_count, order_date, site_code, business_unit, baseline, last_seen_at)
+      VALUES (?,?,?,?,NULL,NULL,0,?,?,?,?,?)`);
   const bump = d.prepare(`UPDATE po_seen SET current_amount=?, prev_amount=?, last_change_at=?,
       change_count=change_count+1, site_code=COALESCE(?,site_code), business_unit=COALESCE(?,business_unit), last_seen_at=?
       WHERE po_number=?`);
@@ -74,8 +92,8 @@ function sync({ payee, siteOf } = {}) {
     if (!(po in prev)) {
       // First sighting. On the very first run this is the whole book, which is
       // why callers should treat a large `arrived` as a baseline, not news.
-      ins.run(po, now, amt, amt, row.orderDate || null, s.siteCode || null, s.businessUnit || null, now);
-      arrived.push({ poNumber: po, amount: amt, orderDate: row.orderDate || null, siteCode: s.siteCode || null });
+      ins.run(po, now, amt, amt, row.orderDate || null, s.siteCode || null, s.businessUnit || null, isBaseline ? 1 : 0, now);
+      if (!isBaseline) arrived.push({ poNumber: po, amount: amt, orderDate: row.orderDate || null, siteCode: s.siteCode || null });
       continue;
     }
     const before = prev[po];
@@ -87,7 +105,9 @@ function sync({ payee, siteOf } = {}) {
       touch.run(now, s.siteCode || null, s.businessUnit || null, po);
     }
   }
-  return { arrived, increased, decreased, total: Object.keys(byPo).length, at: now };
+  return { arrived, increased, decreased, baseline: isBaseline,
+    baselineCount: isBaseline ? Object.keys(byPo).length : 0,
+    total: Object.keys(byPo).length, at: now };
 }
 
 /** Everything we know about one PO's history. */

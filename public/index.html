@@ -6384,6 +6384,12 @@ function renderFirstSeenCell(row) {
   const days = Math.floor((Date.now() - d.getTime()) / 86400000);
   const shown = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
   const age = days === 0 ? 'today' : days === 1 ? 'yesterday' : days + 'd ago';
+  // A baseline row's first_seen_at is when tracking started, so the gap to
+  // Amazon's order date is an artifact, not a lag we incurred.
+  if (row.firstSeenIsBaseline) {
+    return `<span style="color:var(--gray-500)" title="Recorded when PO tracking began on ${escHtml(String(row.firstSeenAt).slice(0, 10))}, not an observed arrival">tracked</span>
+      <div style="font-size:11px;color:var(--gray-400)">since ${shown}</div>`;
+  }
   const lag = (() => {
     if (!row.orderDate) return '';
     const od = new Date(row.orderDate);
