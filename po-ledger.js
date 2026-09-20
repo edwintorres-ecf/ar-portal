@@ -14,6 +14,10 @@
  */
 
 const db = require('./db');
+// One definition of "long enough for Amazon to have shown it" (see edi-watch).
+const EDI_GRACE_HOURS = (() => {
+  try { return require('./edi-watch').GRACE_HOURS; } catch (e) { return 24; }
+})();
 const payee = require('./payee');
 const fs = require('fs');
 const path = require('path');
@@ -840,10 +844,12 @@ function getNeedsUpload(invoices) {
   const recentTx = {};
   try {
     for (const r of db.all(
+      // Window imported from edi-watch so the badge, the preflight's
+      // duplicate-send warning and the alert cannot drift apart.
       `SELECT record_no, MAX(created_at) AS at FROM audit_log
        WHERE action='edi_transmit' AND detail LIKE '%-> OK%'
-         AND created_at >= datetime('now','-48 hours')
-       GROUP BY record_no`)) {
+         AND created_at >= datetime('now', ?)
+       GROUP BY record_no`, ['-' + EDI_GRACE_HOURS + ' hours'])) {
       recentTx[r.record_no] = r.at;
     }
   } catch (e) { /* audit table unavailable — degrade to no flags */ }

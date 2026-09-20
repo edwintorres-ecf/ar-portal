@@ -41,10 +41,18 @@
 const db = require('./db');
 
 // How long Amazon's feed is allowed to take before a successful send is
-// considered missing rather than merely in flight. The Payee feed refreshes
-// every 30 minutes; 48h is the same grace window recentTransmitAt already uses
-// to suppress re-sending, so the two agree.
-const GRACE_HOURS = Number(process.env.EDI_MISSING_GRACE_HOURS || 48);
+// considered unconfirmed rather than merely in flight.
+//
+// 24h (Edwin, 2026-09-20). Amazon's ingestion is "minutes to hours" and the
+// feed refreshes every 30 minutes, so a full day is already generous; anything
+// still invisible after that is not in flight.
+//
+// THIS IS THE ONLY DEFINITION. po-ledger imports it for the "🕓 Sent — awaiting
+// Payee" badge and for the EDI preflight's duplicate-send warning, because
+// those must agree with the alert. If the alert said "upload this" at 24h while
+// the preflight still said "do not re-send, it will bounce as a duplicate"
+// until 48h, there would be a full day where the portal contradicted itself.
+const GRACE_HOURS = Number(process.env.EDI_MISSING_GRACE_HOURS || 24);
 
 function init() {
   db.getDb().exec(`CREATE TABLE IF NOT EXISTS edi_watch (
