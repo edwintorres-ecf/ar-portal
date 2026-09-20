@@ -6647,7 +6647,7 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
       if (resolved.length) {
         console.log(`[edi-watch] ${resolved.length} cleared (arrived, re-sent or paid)`);
       }
-      if (!t.failedCount && !t.missingCount) {
+      if (!t.count) {
         try { require('./ops-alerts').ok('edi-watch', 'every transmitted invoice is visible in Payee'); } catch (e) {}
         return;
       }
@@ -6655,30 +6655,34 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
       // alerted, so a standing backlog does not re-send every hour.
       try {
         require('./ops-alerts').ok('edi-watch-standing',
-          `${t.failedCount} failed, ${t.missingCount} missing ($${Math.round(t.failedAmount + t.missingAmount).toLocaleString('en-US')})`);
+          `${t.count} not in Payee ($${Math.round(t.amount).toLocaleString('en-US')})`
+          + ` — ${t.failedCount} failed, ${t.missingCount} unconfirmed`);
       } catch (e) {}
       if (!newly.length) return;
 
+      // The rule: not in Payee means it does not exist. One state, one action.
+      // The cause is shown per line because it changes how you investigate, not
+      // what you do about it (Edwin 2026-09-20).
       const fmt = (x) => `  ${x.invoiceId}  ${x.poNumber || '(no PO)'}  `
-        + `$${Math.round(x.amount).toLocaleString('en-US')}  — ${x.kind === 'failed'
-          ? 'transmit failed'
-          : `sent ${Math.round(x.hoursAgo / 24)}d ago, Amazon has no record`}`;
+        + `$${Math.round(x.amount).toLocaleString('en-US')}  — ${x.reason || x.kind}`
+        + (x.kind === 'missing' ? `, sent ${Math.round(x.hoursAgo / 24)}d ago` : '');
+      const money = newly.reduce((a, x) => a + (x.amount || 0), 0);
       const nf = newly.filter(x => x.kind === 'failed');
       const nm = newly.filter(x => x.kind === 'missing');
-      const parts = [];
-      if (nf.length) parts.push(`${nf.length} transmit${nf.length === 1 ? '' : 's'} failed`);
-      if (nm.length) parts.push(`${nm.length} sent but not in Payee`);
-      const money = newly.reduce((a, x) => a + (x.amount || 0), 0);
 
       require('./ops-alerts').raise('edi-watch',
-        `${parts.join(' · ')} — $${Math.round(money).toLocaleString('en-US')}`,
-        `These invoices are not with Amazon.\n\n`
-        + (nf.length ? `TRANSMIT FAILED (already retried twice before logging)\n${nf.map(fmt).join('\n')}\n\n` : '')
-        + (nm.length ? `SENT BUT NEVER APPEARED (past the ${t.graceHours}h feed grace window)\n${nm.map(fmt).join('\n')}\n\n` : '')
-        + `They remain on PO Manager → Needs Upload, which is derived from Amazon's own feed, `
-        + `so nothing has been lost — but nothing will re-send them on its own.\n\n`
-        + `Standing total: ${t.failedCount} failed, ${t.missingCount} missing, `
-        + `$${Math.round(t.failedAmount + t.missingAmount).toLocaleString('en-US')}.`,
+        `${newly.length} invoice${newly.length === 1 ? '' : 's'} not in Payee — $${Math.round(money).toLocaleString('en-US')}`,
+        `Amazon does not have these invoices. Whatever our transmit log says, if it is not\n`
+        + `in Payee it does not exist — they need uploading.\n\n`
+        + newly.map(fmt).join('\n') + '\n\n'
+        + `Why they are not there:\n`
+        + `  ${nf.length} the transmit failed outright (already retried twice before logging)\n`
+        + `  ${nm.length} the transmit reported OK and Amazon never showed it `
+        + `(past the ${t.graceHours}h feed grace window)\n\n`
+        + `All of them are on PO Manager → Needs Upload, which is derived from Amazon's own\n`
+        + `feed, so nothing is lost — but nothing re-sends on its own.\n\n`
+        + `Standing total not in Payee: ${t.count}, `
+        + `$${Math.round(t.amount).toLocaleString('en-US')}.`,
         { minIntervalHours: 6 });
       require('./edi-watch').markAlerted(newly);
     } catch (e) { console.error('[edi-watch] sweep failed:', e.message); }
