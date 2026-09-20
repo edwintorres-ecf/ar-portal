@@ -3608,6 +3608,17 @@ app.post('/api/snapshots/take', requireAuth, requirePerm('refresh.data'), async 
 
 // PO intake health — every purchase order that cannot be safely billed against,
 // checked the day it arrives rather than when an invoice against it is held.
+// Invoices that left the portal and never reached Amazon — transmit failed, or
+// transmit succeeded and Amazon never showed it.
+app.get('/api/po/edi-watch', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    res.json(require('./edi-watch').check(invoices, { payee }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/po/intake-health', requireAuth, async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();
@@ -6622,6 +6633,60 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
         { minIntervalHours: 4 });
     } catch (e) { console.error('[intake-health] sweep failed:', e.message); }
   }
+  // An invoice that left the portal and never reached Amazon. Two ways that
+  // happens and neither used to tell anyone: the transmit FAILED (one hid among
+  // 44 successes on 2026-09-18), or it reported OK and Amazon never showed it
+  // (21 invoices, $440,457, oldest 65 days). Read-only: this alerts, it never
+  // re-transmits (Edwin 2026-09-20).
+  function doEdiWatch() {
+    try {
+      const inv = sage.getCachedInvoices();
+      if (!inv.length) return;
+      const { newly, resolved, analysis } = require('./edi-watch').sweep(inv, { payee });
+      const t = analysis.totals;
+      if (resolved.length) {
+        console.log(`[edi-watch] ${resolved.length} cleared (arrived, re-sent or paid)`);
+      }
+      if (!t.failedCount && !t.missingCount) {
+        try { require('./ops-alerts').ok('edi-watch', 'every transmitted invoice is visible in Payee'); } catch (e) {}
+        return;
+      }
+      // Always record the health state; only EMAIL about invoices not yet
+      // alerted, so a standing backlog does not re-send every hour.
+      try {
+        require('./ops-alerts').ok('edi-watch-standing',
+          `${t.failedCount} failed, ${t.missingCount} missing ($${Math.round(t.failedAmount + t.missingAmount).toLocaleString('en-US')})`);
+      } catch (e) {}
+      if (!newly.length) return;
+
+      const fmt = (x) => `  ${x.invoiceId}  ${x.poNumber || '(no PO)'}  `
+        + `$${Math.round(x.amount).toLocaleString('en-US')}  — ${x.kind === 'failed'
+          ? 'transmit failed'
+          : `sent ${Math.round(x.hoursAgo / 24)}d ago, Amazon has no record`}`;
+      const nf = newly.filter(x => x.kind === 'failed');
+      const nm = newly.filter(x => x.kind === 'missing');
+      const parts = [];
+      if (nf.length) parts.push(`${nf.length} transmit${nf.length === 1 ? '' : 's'} failed`);
+      if (nm.length) parts.push(`${nm.length} sent but not in Payee`);
+      const money = newly.reduce((a, x) => a + (x.amount || 0), 0);
+
+      require('./ops-alerts').raise('edi-watch',
+        `${parts.join(' · ')} — $${Math.round(money).toLocaleString('en-US')}`,
+        `These invoices are not with Amazon.\n\n`
+        + (nf.length ? `TRANSMIT FAILED (already retried twice before logging)\n${nf.map(fmt).join('\n')}\n\n` : '')
+        + (nm.length ? `SENT BUT NEVER APPEARED (past the ${t.graceHours}h feed grace window)\n${nm.map(fmt).join('\n')}\n\n` : '')
+        + `They remain on PO Manager → Needs Upload, which is derived from Amazon's own feed, `
+        + `so nothing has been lost — but nothing will re-send them on its own.\n\n`
+        + `Standing total: ${t.failedCount} failed, ${t.missingCount} missing, `
+        + `$${Math.round(t.failedAmount + t.missingAmount).toLocaleString('en-US')}.`,
+        { minIntervalHours: 6 });
+      require('./edi-watch').markAlerted(newly);
+    } catch (e) { console.error('[edi-watch] sweep failed:', e.message); }
+  }
+  // First pass well after boot so the Sage cache and Payee feed are both warm.
+  setTimeout(doEdiWatch, 12 * 60 * 1000);
+  setInterval(doEdiWatch, 60 * 60 * 1000);
+
   // Attachments a user uploaded but never sent. Anything a saved draft still
   // points at is spared the 6h TTL and held to the 30-day cap instead.
   setInterval(() => {
