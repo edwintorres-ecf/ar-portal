@@ -1,0 +1,22 @@
+const o = require('./omnia-site-centers');
+(async () => {
+  const rows = await o.parse('/tmp/omnia_sc.xlsx');
+  console.log('export rows            :', rows.length);
+  const p = o.plan(rows);
+  const n = k => String(p[k].length).padStart(4);
+  console.log('sites in the export    :', Object.values(p).reduce((t, a) => t + a.length, 0));
+  console.log('  already agree        :', n('agree'), '(' + p.agree.filter(x => x.respell).length + ' only a respelling)');
+  console.log('  fill a blank         :', n('fillBlank'));
+  console.log('  replace a guess      :', n('overrideDerived'));
+  console.log('  OVERRIDE a declared  :', n('overrideDeclared'));
+  console.log('  KEPT ours (FC bucket):', n('keptDeclared'));
+  console.log('  new site rows        :', n('newSite'));
+  console.log('  skipped              :', n('skipped'));
+  console.log('\nOverrides Omnia wins outright (branch beats what we had):');
+  for (const i of p.overrideDeclared) console.log('  ', i.site.padEnd(6), String(i.from).padEnd(16), '->', i.to);
+  console.log('\nKept ours — Omnia says FacilityCare, we have a named branch:');
+  const by = {};
+  for (const i of p.keptDeclared) (by[i.from] = by[i.from] || []).push(i.site);
+  for (const [k, v] of Object.entries(by)) console.log('  ', k.padEnd(16), v.length, ':', v.join(' '));
+  console.log('\nskipped:', p.skipped.map(s => s.rawSite + ' (' + s.why + ')').join(', ') || 'none');
+})();
