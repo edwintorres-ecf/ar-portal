@@ -13,17 +13,24 @@
 // Location Id uses a different namespace (LOC-002396) from our Sage locations
 // (L-ECF-BLT), so it cannot bridge them.
 //
-// The fix: WHICH ECF LOCATION BILLS THE SITE is evidence of who works it. A
-// site invoiced solely out of Trenton is a Trenton site. That derivation covers
-// 109 of the 165 unassigned sites and lifts PO coverage from 47% to 85%.
+// WHICH ECF LOCATION BILLS THE SITE is evidence of who works it. A site
+// invoiced solely out of Trenton is a Trenton site.
 //
-// Two rules, both load-bearing:
-//   1. A DERIVED value never overwrites a DECLARED one. A person's assignment
-//      always wins; this only fills blanks.
-//   2. Ambiguity is never guessed. A site genuinely split between two centres
-//      is left for a human and reported, because a wrong centre is worse than
-//      an empty one — it shows the PO to the wrong crew and hides it from the
-//      right one.
+// ─── PRECEDENCE (Edwin 2026-09-21) ──────────────────────────────────────────
+// "Use omnia as the base and then override as billings are generated."
+//
+//   manual   a person set it in the portal. Nothing overrides a person.
+//   billing  observed: this branch actually invoices the site. THIS FILE.
+//   omnia    the assignment Omnia holds (omnia-site-centers.js). The base.
+//
+// Billing outranks Omnia because an invoice is something that happened, while
+// Omnia's field is something somebody typed. As work is billed, the map
+// corrects itself.
+//
+// One rule survives from the earlier design, and it is load-bearing:
+// AMBIGUITY IS NEVER GUESSED. A site genuinely split between two branches
+// keeps whatever Omnia says, because a wrong centre is worse than a plain one
+// — it shows the PO to the wrong crew and hides it from the right one.
 
 const db = require('./db');
 
@@ -49,6 +56,15 @@ function ecfLocations(invoices) {
   return out;
 }
 
+// Lowest authority first. Anything not in this list (the historic 'declared',
+// which turned out to be Amazon land-RFP bid data rather than anyone's
+// decision) ranks below all of them and is freely replaced.
+const PRECEDENCE = ['omnia', 'billing', 'manual'];
+const rank = (src) => {
+  const i = PRECEDENCE.indexOf(String(src || ''));
+  return i < 0 ? -1 : i;
+};
+
 // ONE canonical spelling per centre, or the filter splits in half.
 // amazon_locations already uses short names ("Hartford"); Sage uses the long
 // form ("Hartford Service Center"). Writing the long form created BOTH —
@@ -64,7 +80,7 @@ function canonicalNames() {
   try {
     for (const r of db.getDb().prepare(`SELECT DISTINCT service_center AS sc FROM amazon_locations
         WHERE TRIM(COALESCE(service_center,''))<>''
-          AND COALESCE(service_center_source,'declared') IN ('declared','omnia')`).all()) {
+          AND COALESCE(service_center_source,'') IN ('omnia','manual')`).all()) {
       map[normSc(r.sc)] = String(r.sc).trim();
     }
   } catch (e) {}
@@ -89,16 +105,26 @@ function ensureColumn() {
     const cols = d.prepare('PRAGMA table_info(amazon_locations)').all().map(c => c.name);
     if (!cols.includes('service_center_source')) {
       d.exec("ALTER TABLE amazon_locations ADD COLUMN service_center_source TEXT");
-      // Everything already set was set by a person.
+      // 'declared' was the original guess that anything already set had been
+      // set by a person. It had not: 63 of 63 traced back to an Amazon land-RFP
+      // bid file, which is where the phantom "Atlanta" centre came from. The
+      // label is kept only so old rows are recognisable, and it ranks below
+      // every real source.
       d.exec("UPDATE amazon_locations SET service_center_source='declared' "
         + "WHERE TRIM(COALESCE(service_center,''))<>''");
-      console.log('[site-sc] added service_center_source; existing values marked declared');
+      console.log('[site-sc] added service_center_source; pre-existing values marked declared (unverified)');
     }
+    // 'derived' was this file's old label, back when it could only fill blanks.
+    // It is the same evidence, so it carries the same name as before.
+    const r = d.prepare("UPDATE amazon_locations SET service_center_source='billing' "
+      + "WHERE service_center_source='derived'").run();
+    if (r.changes) console.log(`[site-sc] renamed ${r.changes} 'derived' rows to 'billing'`);
   } catch (e) { console.error('[site-sc] migration:', e.message); }
 }
 
 /**
- * Work out a service centre for every site that lacks one, from who bills it.
+ * Work out a service centre for every site from who bills it. This no longer
+ * only fills blanks: an unambiguous billing observation OVERRIDES Omnia.
  * Pure — writes nothing. Returns { assign, ambiguous, noEvidence }.
  */
 function derive(invoices, { dominanceShare = 0.8 } = {}) {
@@ -109,8 +135,11 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
 
   const rows = d.prepare(`SELECT site_code, service_center, service_center_source
     FROM amazon_locations`).all();
-  const declared = new Set(rows.filter(r => String(r.service_center || '').trim()
-    && r.service_center_source !== 'derived').map(r => r.site_code));
+  // Only a person outranks billing.
+  const locked = new Set(rows.filter(r => String(r.service_center || '').trim()
+    && r.service_center_source === 'manual').map(r => r.site_code));
+  const current = {};
+  for (const r of rows) current[r.site_code] = String(r.service_center || '').trim();
   const inMasterSet = new Set(rows.map(r => r.site_code));
 
   // Who invoices each site, by volume.
@@ -126,20 +155,28 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
 
   const assign = [], ambiguous = [], noEvidence = [];
   for (const [site, counts] of Object.entries(billers)) {
-    if (declared.has(site)) continue;                 // a person already said
+    if (locked.has(site)) continue;                   // a person already said
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const total = entries.reduce((t, e) => t + e[1], 0);
-    const [top, second] = entries;
+    const [top] = entries;
     const sole = entries.length === 1;
     const dominant = !sole && top[1] >= total * dominanceShare;
     if (!sole && !dominant) {
-      ambiguous.push({ site, options: entries.map(([n, c]) => ({ location: n, invoices: c })), inMaster: inMasterSet.has(site) });
+      // Split between branches — leave Omnia's answer alone rather than pick.
+      ambiguous.push({
+        site, keeping: current[site] || '',
+        options: entries.map(([n, c]) => ({ location: n, invoices: c })),
+        inMaster: inMasterSet.has(site),
+      });
       continue;
     }
     const loc = locs[normSc(top[0])];
+    const serviceCenter = canonical(top[0], known);
     assign.push({
       site,
-      serviceCenter: canonical(top[0], known),
+      serviceCenter,
+      was: current[site] || '',
+      moves: !!current[site] && normSc(current[site]) !== normSc(serviceCenter),
       billedBy: top[0],
       locationId: loc ? loc.locationId : null,
       invoices: top[1],
@@ -160,24 +197,47 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
   return { assign, ambiguous, noEvidence };
 }
 
-/** Write the unambiguous derivations. Never touches a declared value. */
+/** Write the unambiguous billing observations. Only a manual override is safe. */
 function apply(invoices, opts) {
   const d = db.getDb();
   const r = derive(invoices, opts);
   const upd = d.prepare(`UPDATE amazon_locations
-    SET service_center=?, service_center_source='derived'
-    WHERE site_code=? AND (service_center_source IS NULL OR service_center_source='derived'
-                           OR TRIM(COALESCE(service_center,''))='')`);
+    SET service_center=?, service_center_source='billing'
+    WHERE site_code=? AND COALESCE(service_center_source,'') <> 'manual'`);
   const ins = d.prepare(`INSERT OR IGNORE INTO amazon_locations
     (site_code, service_center, service_center_source, loaded_at, source)
-    VALUES (?,?, 'derived', datetime('now'), 'billing-location')`);
-  let written = 0, created = 0;
+    VALUES (?,?, 'billing', datetime('now'), 'billing-location')`);
+  let written = 0, created = 0, moved = 0;
   for (const a of r.assign) {
     if (!a.inMaster) { ins.run(a.site, a.serviceCenter); created++; }
     const res = upd.run(a.serviceCenter, a.site);
-    if (res.changes) written++;
+    if (res.changes) { written++; if (a.moves) moved++; }
   }
-  return { ...r, written, created };
+  return { ...r, written, created, moved };
+}
+
+/**
+ * A person's override. The top of the precedence list, so nothing — not a
+ * fresh Omnia export, not next month's invoicing — moves it again.
+ * Pass an empty centre to release the site back to billing/Omnia.
+ */
+function setManual(site, serviceCenter) {
+  ensureColumn();
+  const d = db.getDb();
+  const code = String(site || '').toUpperCase().trim();
+  if (!code) throw new Error('site code required');
+  const name = String(serviceCenter || '').trim();
+  if (!name) {
+    d.prepare(`UPDATE amazon_locations SET service_center='', service_center_source=NULL
+      WHERE site_code=?`).run(code);
+    return { site: code, serviceCenter: '', released: true };
+  }
+  const want = canonical(name, canonicalNames());
+  d.prepare(`INSERT OR IGNORE INTO amazon_locations (site_code, loaded_at, source)
+    VALUES (?, datetime('now'), 'manual')`).run(code);
+  d.prepare(`UPDATE amazon_locations SET service_center=?, service_center_source='manual'
+    WHERE site_code=?`).run(want, code);
+  return { site: code, serviceCenter: want, released: false };
 }
 
 /**
@@ -239,4 +299,7 @@ function centres() {
   } catch (e) { return []; }
 }
 
-module.exports = { derive, apply, unassigned, centres, normSc, ensureColumn };
+module.exports = {
+  derive, apply, unassigned, centres, normSc, ensureColumn,
+  setManual, canonicalNames, canonical, isSiteCode, PRECEDENCE, rank,
+};

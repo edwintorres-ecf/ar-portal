@@ -2,15 +2,21 @@
 // ─── omnia-site-centers.js ──────────────────────────────────────────────────
 // Load the service-centre assignment for every Amazon site FROM OMNIA.
 //
-// Omnia is where operations actually decides who looks after a site, so it
-// outranks both of the sources we had before:
+// Omnia is THE BASE LAYER. Edwin, 2026-09-21: "use omnia as the base rn and
+// then override as billings are generated". Precedence, weakest first:
 //
-//   omnia    — exported from Omnia's location master (this file)
-//   declared — typed into amazon_locations by hand, over the years
-//   derived  — inferred from which ECF branch bills the site
-//              (see site-service-center.js)
+//   omnia    — Omnia's location master (this file). The base, for every site.
+//   billing  — observed: which ECF branch actually invoices the site, so the
+//              map corrects itself as work is billed (site-service-center.js).
+//   manual   — a person said so. Nothing overrides a person.
 //
-// Edwin supplied the export on 2026-09-21: 805 rows, 729 distinct sites.
+// Nothing else counts. In particular the old 'declared' tier was not a tier at
+// all: all 63 of its rows traced back to `amazon-land-rfp.json`, an Amazon LAND
+// RFP bid file ingested on 2026-09-09. That file is where the phantom "Atlanta"
+// service centre came from — ECF has never had one — along with the
+// "Cincinatti" misspelling. `purgeRfp()` takes those values back out.
+//
+// Edwin supplied the Omnia export on 2026-09-21: 805 rows, 729 distinct sites.
 //
 // Three things about the export that the naive read gets wrong:
 //
@@ -25,16 +31,16 @@
 //    whitespace token is taken, and accepted if it looks like a site code or is
 //    already in our master — which is what keeps "OSY", "FC", "YARD" out.
 //
-// 3. FacilityCare IS OMNIA'S DEFAULT BUCKET. 516 of 805 rows carry it — 64% —
-//    including all 20 sites we have against Atlanta. So it is treated as a
-//    weaker signal than a named branch:
-//      · a named branch from Omnia overwrites anything, including a declared
-//        value, because Omnia is the system of record;
-//      · FacilityCare fills a blank and replaces a derived guess, but it will
-//        NOT erase a branch a person declared. Overwriting there would hide
-//        those POs from the crew that actually works the site, which is the
-//        exact failure this whole feature exists to prevent.
-//    Every one of those is reported instead, so a person can confirm the move.
+// 3. ONE OMNIA LOCATION CAN DISAGREE WITH ITSELF. A site and its PKG rows
+//    occasionally carry different centres (DCA1, HGR6 — one named branch, one
+//    FacilityCare). The named branch wins; FacilityCare is Omnia's default
+//    bucket, 516 of 805 rows, so it says less.
+//
+//    Note that FacilityCare being a default is NOT a reason to hold it back
+//    from overwriting what we already had. An earlier version did that, to
+//    protect 54 'declared' sites — and every one of those turned out to be RFP
+//    bid data. Omnia is the base; if Omnia is wrong about a site we are
+//    actually working, billing will say so the moment we invoice it.
 
 const fs = require('fs');
 const db = require('./db');
@@ -206,8 +212,8 @@ function plan(rows) {
   const canon = (full) => names[normSc(full)] || shortName(full);
 
   const out = {
-    agree: [], fillBlank: [], overrideDerived: [], overrideDeclared: [],
-    keptDeclared: [], newSite: [], skipped: [],
+    agree: [], fillBlank: [], replaced: [], outrankedByBilling: [],
+    outrankedByManual: [], newSite: [], skipped: [],
   };
   for (const s of collapse(rows, known)) {
     if (!s.serviceCenter) { out.skipped.push({ ...s, why: 'no service centre in Omnia' }); continue; }
@@ -216,17 +222,54 @@ function plan(rows) {
     const item = { site: s.site, to: want, omniaId: s.omniaId, named: s.named, rawSite: s.rawSite };
     if (!c) { out.newSite.push(item); continue; }
     const have = String(c.service_center || '').trim();
-    const src = c.service_center_source || 'declared';
+    const src = c.service_center_source || '';
+    // Only the layers above Omnia stop it.
+    if (have && src === 'manual') { out.outrankedByManual.push({ ...item, from: have }); continue; }
+    if (have && src === 'billing') { out.outrankedByBilling.push({ ...item, from: have }); continue; }
     if (!have) out.fillBlank.push(item);
     else if (normSc(have) === normSc(want)) out.agree.push({ ...item, from: have, respell: have !== want });
-    else if (src === 'derived') out.overrideDerived.push({ ...item, from: have });
-    else if (s.named) out.overrideDeclared.push({ ...item, from: have });
-    else out.keptDeclared.push({ ...item, from: have });     // FacilityCare vs a declared branch
+    else out.replaced.push({ ...item, from: have });
   }
   return out;
 }
 
-/** Write it. Everything except `keptDeclared`, which is left for a person. */
+/**
+ * Take the Amazon land-RFP bid values back out. Anything still sitting on the
+ * unranked 'declared' tier whose value came verbatim from the RFP file is bid
+ * data, not an assignment: clear it and let Omnia or billing answer instead.
+ * Whatever neither of them claims is a site we do not actually service, and a
+ * blank is the honest answer.
+ */
+function purgeRfp(rfpFile = require('path').join(__dirname, 'amazon-land-rfp.json')) {
+  const d = db.getDb();
+  require('./site-service-center').ensureColumn();
+  let bids;
+  try { bids = JSON.parse(fs.readFileSync(rfpFile, 'utf8')); }
+  catch (e) { return { cleared: 0, kept: 0, reason: 'no RFP file: ' + e.message }; }
+
+  const byCode = new Map();
+  for (const r of bids) if (r && r.siteCode) byCode.set(String(r.siteCode).toUpperCase(), String(r.serviceCenter || '').trim());
+  const clear = d.prepare(`UPDATE amazon_locations SET service_center='', service_center_source=NULL
+    WHERE site_code=?`);
+
+  let cleared = 0, kept = 0;
+  const centres = {};
+  for (const r of d.prepare(`SELECT site_code, service_center FROM amazon_locations
+      WHERE TRIM(COALESCE(service_center,''))<>''
+        AND COALESCE(service_center_source,'') NOT IN ('omnia','billing','manual')`).all()) {
+    const bid = byCode.get(String(r.site_code).toUpperCase());
+    // normSc so the respelling this file already did ("Cincinatti" ->
+    // "Cincinnati") does not disguise a value's RFP origin.
+    if (bid && normSc(bid) === normSc(r.service_center)) {
+      centres[r.service_center] = (centres[r.service_center] || 0) + 1;
+      clear.run(r.site_code);
+      cleared++;
+    } else kept++;
+  }
+  return { cleared, kept, centres };
+}
+
+/** Write it. Billing and manual assignments are left where they are. */
 function apply(rows) {
   const d = db.getDb();
   const p = plan(rows);
@@ -235,13 +278,13 @@ function apply(rows) {
   const upd = d.prepare(`UPDATE amazon_locations
     SET service_center=?, service_center_source='omnia',
         omnia_loc_id=COALESCE(NULLIF(TRIM(COALESCE(omnia_loc_id,'')),''), ?)
-    WHERE site_code=?`);
+    WHERE site_code=? AND COALESCE(service_center_source,'') NOT IN ('billing','manual')`);
   const ins = d.prepare(`INSERT OR IGNORE INTO amazon_locations
     (site_code, service_center, service_center_source, omnia_loc_id, loaded_at, source)
     VALUES (?,?, 'omnia', ?, datetime('now'), 'omnia-export')`);
 
   let written = 0, created = 0;
-  for (const i of [...p.fillBlank, ...p.overrideDerived, ...p.overrideDeclared, ...p.agree]) {
+  for (const i of [...p.fillBlank, ...p.replaced, ...p.agree]) {
     if (upd.run(i.to, i.omniaId || null, i.site).changes) written++;
   }
   for (const i of p.newSite) { ins.run(i.site, i.to, i.omniaId || null); created++; }
@@ -259,4 +302,18 @@ function apply(rows) {
   return { ...p, written, created, respelled };
 }
 
-module.exports = { parse, plan, apply, collapse, codesIn, stripSuffix, FACILITY_CARE };
+/**
+ * The whole map, rebuilt in precedence order: drop the bid data, lay Omnia
+ * down as the base, then let billing correct it. Safe to re-run — that is the
+ * point, since billing evidence keeps arriving.
+ */
+async function load(file, invoices) {
+  const purged = purgeRfp();
+  const omnia = apply(await parse(file));
+  const billing = require('./site-service-center').apply(invoices);
+  return { purged, omnia, billing };
+}
+
+module.exports = {
+  parse, plan, apply, load, purgeRfp, collapse, codesIn, stripSuffix, FACILITY_CARE,
+};
