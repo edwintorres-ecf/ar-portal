@@ -55,11 +55,16 @@ function ecfLocations(invoices) {
 // "Hartford" 80 POs and "Hartford Service Center" 62 — so a field user picking
 // their centre would have seen less than half their work. Existing declared
 // spellings win; anything new is shortened the same way.
+//
+// Values loaded from the Omnia export count as declared here: Omnia is the
+// system of record for the assignment (omnia-site-centers.js), so a derivation
+// must land on Omnia's spelling, not invent a second one beside it.
 function canonicalNames() {
   const map = {};
   try {
     for (const r of db.getDb().prepare(`SELECT DISTINCT service_center AS sc FROM amazon_locations
-        WHERE TRIM(COALESCE(service_center,''))<>'' AND COALESCE(service_center_source,'declared')='declared'`).all()) {
+        WHERE TRIM(COALESCE(service_center,''))<>''
+          AND COALESCE(service_center_source,'declared') IN ('declared','omnia')`).all()) {
       map[normSc(r.sc)] = String(r.sc).trim();
     }
   } catch (e) {}
