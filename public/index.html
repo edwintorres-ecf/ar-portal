@@ -6107,8 +6107,10 @@ function exportUploadedCsv() {
     _shownUploaded.map(u => [u.invoiceId || u.recordNo, u.customerName || '', u.siteCode || '', u.businessUnit || '', u.poNumber || '', u.submittedPo || '', u.submittedAs || '', (u.amount||0).toFixed(2), u.entryDate || '', u.status || '']));
 }
 function exportNeedsUploadCsv() {
-  exportCsv('po-needs-upload', ['Invoice', 'Customer', 'Site', 'Business Unit', 'Invoice Date', 'PO on Record', 'Assigned PO', 'Amount', 'PO Available', 'Would Overage', 'Resubmission', 'Resubmit As'],
-    _shownNeedsUpload.map(i => [i.invoiceId || i.recordNo, i.customerName || '', i.siteCode || '', i.businessUnit || '', i.invoiceDate || '', i.poOnRecord || '', i.reassigned ? i.assignedPo : '', (i.amount||0).toFixed(2), i.poAvailable ?? '', i.wouldOverage ? 'Y' : '', i.isResubmission ? 'Y' : '', i.isResubmission ? (i.suggestedResubmitId||'') : '']));
+  const svc = {};
+  for (const r of (_poLedger || [])) svc[r.poNumber] = r.serviceType || '';
+  exportCsv('po-needs-upload', ['Invoice', 'Customer', 'Site', 'Business Unit', 'Invoice Date', 'PO on Record', 'Assigned PO', 'Service', 'Amount', 'PO Available', 'Would Overage', 'Resubmission', 'Resubmit As'],
+    _shownNeedsUpload.map(i => [i.invoiceId || i.recordNo, i.customerName || '', i.siteCode || '', i.businessUnit || '', i.invoiceDate || '', i.poOnRecord || '', i.reassigned ? i.assignedPo : '', svc[i.assignedPo] || 'unclassified', (i.amount||0).toFixed(2), i.poAvailable ?? '', i.wouldOverage ? 'Y' : '', i.isResubmission ? 'Y' : '', i.isResubmission ? (i.suggestedResubmitId||'') : '']));
 }
 function exportMismatchesCsv() {
   exportCsv('po-mismatches', ['Invoice', 'Customer', 'Site', 'Business Unit', 'Invoiced PO', 'Submitted PO', 'Submitted As', 'Amount', 'Status'],
@@ -6527,13 +6529,33 @@ function renderPoLedger() {
 }
 
 let _poNeedsUploadSiteFilter = '';
-let _poNeedsUploadSnowOnly = false;
+/* Needs Upload service filter: '' = everything, 'snow', 'nonsnow'.
+   Was a single "Snow only" toggle, which left no way to work the non-snow
+   backlog — it is the smaller pile (42 invoices, ~$204k against 362 snow) and
+   it disappears entirely behind a snow-shaped list (Edwin 2026-09-21). */
+let _poNuService = '';
 
 // Snow filter: an invoice is "snow" when its ASSIGNED PO's serviceType is snow
 // (manual service overrides honored) — same rule as the Pending by Site toggle.
-function togglePoNuSnow() {
-  _poNeedsUploadSnowOnly = !_poNeedsUploadSnowOnly;
+function setPoNuService(v) {
+  _poNuService = _poNuService === v ? '' : v;
   renderPoNeedsUpload();
+}
+
+/* The PO's service, in the words the PO document actually uses — snow,
+   landscape, cleaning, maintenance. "Non-snow" means exactly "not snow", so a
+   PO nobody has classified still shows up rather than being quietly dropped
+   from both halves of the filter. */
+const NU_SERVICE_CHIP = {
+  snow:        { icon: '\u2744\ufe0f', label: 'Snow',        bg: '#e0f2fe', fg: '#075985' },
+  landscape:   { icon: '\ud83c\udf31', label: 'Landscape',   bg: '#dcfce7', fg: '#166534' },
+  cleaning:    { icon: '\ud83e\uddf9', label: 'Cleaning',    bg: '#f3e8ff', fg: '#6b21a8' },
+  maintenance: { icon: '\ud83d\udd27', label: 'Maintenance', bg: '#fef3c7', fg: '#92400e' },
+};
+function nuServiceChip(svc) {
+  const s = NU_SERVICE_CHIP[svc];
+  if (!s) return `<span style="color:var(--gray-400);font-size:10px" title="No service classified on this PO document">unclassified</span>`;
+  return `<span style="background:${s.bg};color:${s.fg};border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600;white-space:nowrap">${s.icon} ${s.label}</span>`;
 }
 
 async function loadPoNeedsUpload() {
@@ -6649,13 +6671,17 @@ function renderPoNeedsUpload() {
     </div>`;
     return;
   }
-  // Snow lookup once per render (assigned PO's serviceType, override-aware).
-  const snowByPo = {};
-  for (const r of (_poLedger || [])) snowByPo[r.poNumber] = r.serviceType === 'snow';
+  // Service lookup once per render (assigned PO's serviceType, override-aware).
+  const svcByPo = {};
+  for (const r of (_poLedger || [])) svcByPo[r.poNumber] = r.serviceType || '';
+  const nuSvc = inv => svcByPo[inv.assignedPo] || '';
   let filtered = _poNeedsUploadSiteFilter
     ? _poNeedsUpload.filter(inv => inv.siteCode === _poNeedsUploadSiteFilter)
     : _poNeedsUpload;
-  if (_poNeedsUploadSnowOnly) filtered = filtered.filter(inv => snowByPo[inv.assignedPo]);
+  const svcCounts = { snow: 0, nonsnow: 0 };
+  for (const inv of filtered) svcCounts[nuSvc(inv) === 'snow' ? 'snow' : 'nonsnow']++;
+  if (_poNuService === 'snow') filtered = filtered.filter(inv => nuSvc(inv) === 'snow');
+  else if (_poNuService === 'nonsnow') filtered = filtered.filter(inv => nuSvc(inv) !== 'snow');
   _poNeedsUploadFilteredIds = filtered.map(inv => inv.recordNo);
   filtered = tblSortRows(filtered, 'needsupload');
   _shownNeedsUpload = filtered;
@@ -6675,9 +6701,10 @@ function renderPoNeedsUpload() {
     } else {
       overageBadge = `<span style="color:var(--gray-400)">PO not tracked</span>`;
     }
-    const poCell = inv.reassigned
+    const poCell = (inv.reassigned
       ? `<div style="color:var(--gray-400);text-decoration:line-through;font-size:11px">${escHtml(inv.poOnRecord)}</div><div style="color:#d97706;font-weight:600">→ ${escHtml(inv.assignedPo)}</div>`
-      : escHtml(inv.poOnRecord || '—');
+      : escHtml(inv.poOnRecord || '—'))
+      + `<div style="margin-top:2px">${nuServiceChip(nuSvc(inv))}</div>`;
     const resubmitBadge = inv.isResubmission
       ? `<div style="margin-top:2px"><span style="color:#b45309;background:#fef3c7;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600" title="Prior attempt was ${escHtml(inv.lastAttemptStatus || 'cancelled')} — Payee Central won't accept the same number twice">🔁 Resubmit as ${escHtml(inv.suggestedResubmitId || '')}</span></div>`
       : '';
@@ -6709,7 +6736,11 @@ function renderPoNeedsUpload() {
       <select onchange="setPoNeedsUploadSiteFilter(this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
         ${siteFilterOptions(_poNeedsUpload)}
       </select>
-      <button class="cust-pill${_poNeedsUploadSnowOnly ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Only invoices whose assigned PO is a snow PO (manual service overrides honored)" onclick="togglePoNuSnow()">❄️ Snow only</button>
+      <span style="display:inline-flex;gap:4px">
+        <button class="cust-pill${!_poNuService ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Every invoice waiting to be uploaded" onclick="setPoNuService('')">All ${_poNeedsUpload.length}</button>
+        <button class="cust-pill${_poNuService === 'snow' ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Only invoices whose assigned PO is a snow PO (manual service overrides honored)" onclick="setPoNuService('snow')">❄️ Snow ${svcCounts.snow}</button>
+        <button class="cust-pill${_poNuService === 'nonsnow' ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Everything that is not snow — landscape, cleaning, maintenance, and any PO with no service classified" onclick="setPoNuService('nonsnow')">🌱 Non-snow ${svcCounts.nonsnow}</button>
+      </span>
       <span style="font-size:12px;color:var(--gray-500)">${filtered.length} invoice${filtered.length!==1?'s':''} · ${fmt$(filtered.reduce((s,x)=>s+(x.amount||0),0))}</span>
       ${exportBtn('exportNeedsUploadCsv')}
     </div>
