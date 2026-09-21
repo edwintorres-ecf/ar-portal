@@ -99,27 +99,102 @@ function canonical(full, known) {
 const AMAZON_CUSTOMER = 'C-00403';
 const isSiteCode = (s) => /^[A-Z]{2,5}\d{1,2}$/.test(String(s || '').toUpperCase().trim());
 
+// ─── The three layers, each in its own column ───────────────────────────────
+// `service_center` is the RESOLVED value and stays exactly where every reader
+// already expects it; `service_center_source` says which layer won.
+//
+// Keeping the layers apart is what makes the model reversible. When manual
+// simply overwrote the one field, releasing an override could only blank the
+// site — the Omnia answer underneath it had already been destroyed, and the
+// only way back was to re-import the export. Now each layer is remembered, so
+// releasing a manual override falls straight back to billing, and billing back
+// to Omnia.
+const LAYER_COL = { omnia: 'sc_omnia', billing: 'sc_billing', manual: 'sc_manual' };
+
 function ensureColumn() {
   const d = db.getDb();
   try {
     const cols = d.prepare('PRAGMA table_info(amazon_locations)').all().map(c => c.name);
+
+    // 1. The source label. 'declared' was the original guess that anything
+    //    already set had been set by a person. It had not: 63 of 63 traced back
+    //    to an Amazon land-RFP bid file, which is where the phantom "Atlanta"
+    //    centre came from. The label is kept only so old rows stay
+    //    recognisable, and it ranks below every real layer.
     if (!cols.includes('service_center_source')) {
-      d.exec("ALTER TABLE amazon_locations ADD COLUMN service_center_source TEXT");
-      // 'declared' was the original guess that anything already set had been
-      // set by a person. It had not: 63 of 63 traced back to an Amazon land-RFP
-      // bid file, which is where the phantom "Atlanta" centre came from. The
-      // label is kept only so old rows are recognisable, and it ranks below
-      // every real source.
+      d.exec('ALTER TABLE amazon_locations ADD COLUMN service_center_source TEXT');
       d.exec("UPDATE amazon_locations SET service_center_source='declared' "
         + "WHERE TRIM(COALESCE(service_center,''))<>''");
       console.log('[site-sc] added service_center_source; pre-existing values marked declared (unverified)');
     }
-    // 'derived' was this file's old label, back when it could only fill blanks.
-    // It is the same evidence, so it carries the same name as before.
-    const r = d.prepare("UPDATE amazon_locations SET service_center_source='billing' "
+
+    // 2. 'derived' was this file's old label, from when it could only fill
+    //    blanks. Same evidence, so it keeps the same rows.
+    const ren = d.prepare("UPDATE amazon_locations SET service_center_source='billing' "
       + "WHERE service_center_source='derived'").run();
-    if (r.changes) console.log(`[site-sc] renamed ${r.changes} 'derived' rows to 'billing'`);
+    if (ren.changes) console.log(`[site-sc] renamed ${ren.changes} 'derived' rows to 'billing'`);
+
+    // 3. The per-layer columns, backfilled from whichever layer currently owns
+    //    the single field. Must come last: it reads service_center_source.
+    if (!cols.includes('sc_omnia')) {
+      for (const col of Object.values(LAYER_COL)) {
+        if (!cols.includes(col)) d.exec(`ALTER TABLE amazon_locations ADD COLUMN ${col} TEXT`);
+      }
+      for (const [layer, col] of Object.entries(LAYER_COL)) {
+        const r = d.prepare(`UPDATE amazon_locations SET ${col}=service_center
+          WHERE TRIM(COALESCE(service_center,''))<>'' AND service_center_source=?`).run(layer);
+        if (r.changes) console.log(`[site-sc] backfilled ${r.changes} rows into ${col}`);
+      }
+    }
   } catch (e) { console.error('[site-sc] migration:', e.message); }
+}
+
+/**
+ * Collapse the layers into `service_center` / `service_center_source` for every
+ * row. The single authority on what a site's centre IS.
+ *
+ * A value no layer claims is cleared. That is what finally removed the RFP bid
+ * data: it was never Omnia's, never billing's and nobody's decision, so once
+ * the layers became explicit it had nowhere to live.
+ */
+function resolveAll() {
+  ensureColumn();
+  const d = db.getDb();
+  const r = d.prepare(`UPDATE amazon_locations SET
+      service_center = COALESCE(NULLIF(TRIM(COALESCE(sc_manual,'')),''),
+                                NULLIF(TRIM(COALESCE(sc_billing,'')),''),
+                                NULLIF(TRIM(COALESCE(sc_omnia,'')),''), ''),
+      service_center_source = CASE
+        WHEN TRIM(COALESCE(sc_manual,''))  <> '' THEN 'manual'
+        WHEN TRIM(COALESCE(sc_billing,'')) <> '' THEN 'billing'
+        WHEN TRIM(COALESCE(sc_omnia,''))   <> '' THEN 'omnia'
+        ELSE NULL END
+    WHERE service_center IS NOT COALESCE(NULLIF(TRIM(COALESCE(sc_manual,'')),''),
+                                         NULLIF(TRIM(COALESCE(sc_billing,'')),''),
+                                         NULLIF(TRIM(COALESCE(sc_omnia,'')),''), '')
+       OR service_center_source IS NOT CASE
+        WHEN TRIM(COALESCE(sc_manual,''))  <> '' THEN 'manual'
+        WHEN TRIM(COALESCE(sc_billing,'')) <> '' THEN 'billing'
+        WHEN TRIM(COALESCE(sc_omnia,''))   <> '' THEN 'omnia'
+        ELSE NULL END`).run();
+  return { resolved: r.changes };
+}
+
+/** The three layers for one site, plus which one is in force. */
+function layersFor(site) {
+  ensureColumn();
+  const r = db.getDb().prepare(`SELECT site_code, service_center, service_center_source,
+      sc_omnia, sc_billing, sc_manual FROM amazon_locations WHERE site_code=?`)
+    .get(String(site || '').toUpperCase().trim());
+  if (!r) return null;
+  return {
+    site: r.site_code,
+    serviceCenter: r.service_center || '',
+    source: r.service_center_source || '',
+    omnia: r.sc_omnia || '',
+    billing: r.sc_billing || '',
+    manual: r.sc_manual || '',
+  };
 }
 
 /**
@@ -135,9 +210,10 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
 
   const rows = d.prepare(`SELECT site_code, service_center, service_center_source
     FROM amazon_locations`).all();
-  // Only a person outranks billing.
-  const locked = new Set(rows.filter(r => String(r.service_center || '').trim()
-    && r.service_center_source === 'manual').map(r => r.site_code));
+  // Note there is no "skip the ones a person set" list here. Billing is
+  // computed for every site and stored in its own layer; resolveAll() is what
+  // decides that a manual override sits above it. So releasing an override
+  // exposes billing's current answer rather than a blank.
   const current = {};
   for (const r of rows) current[r.site_code] = String(r.service_center || '').trim();
   const inMasterSet = new Set(rows.map(r => r.site_code));
@@ -155,7 +231,6 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
 
   const assign = [], ambiguous = [], noEvidence = [];
   for (const [site, counts] of Object.entries(billers)) {
-    if (locked.has(site)) continue;                   // a person already said
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const total = entries.reduce((t, e) => t + e[1], 0);
     const [top] = entries;
@@ -201,19 +276,31 @@ function derive(invoices, { dominanceShare = 0.8 } = {}) {
 function apply(invoices, opts) {
   const d = db.getDb();
   const r = derive(invoices, opts);
-  const upd = d.prepare(`UPDATE amazon_locations
-    SET service_center=?, service_center_source='billing'
-    WHERE site_code=? AND COALESCE(service_center_source,'') <> 'manual'`);
+  // Writes the billing LAYER only. What the site resolves to is decided by
+  // resolveAll(), so a manual override above it is untouched by construction
+  // rather than by remembering to exclude it here.
+  const upd = d.prepare('UPDATE amazon_locations SET sc_billing=? WHERE site_code=?');
   const ins = d.prepare(`INSERT OR IGNORE INTO amazon_locations
-    (site_code, service_center, service_center_source, loaded_at, source)
-    VALUES (?,?, 'billing', datetime('now'), 'billing-location')`);
+    (site_code, sc_billing, loaded_at, source)
+    VALUES (?,?, datetime('now'), 'billing-location')`);
   let written = 0, created = 0, moved = 0;
   for (const a of r.assign) {
     if (!a.inMaster) { ins.run(a.site, a.serviceCenter); created++; }
     const res = upd.run(a.serviceCenter, a.site);
     if (res.changes) { written++; if (a.moves) moved++; }
   }
-  return { ...r, written, created, moved };
+  // Billing evidence that has gone away should stop counting: a site we no
+  // longer invoice out of anywhere falls back to Omnia rather than keeping a
+  // stale branch forever.
+  const keep = new Set(r.assign.map(a => a.site));
+  let cleared = 0;
+  for (const row of d.prepare("SELECT site_code FROM amazon_locations WHERE TRIM(COALESCE(sc_billing,''))<>''").all()) {
+    if (!keep.has(row.site_code)) {
+      cleared += d.prepare('UPDATE amazon_locations SET sc_billing=NULL WHERE site_code=?').run(row.site_code).changes;
+    }
+  }
+  const res = resolveAll();
+  return { ...r, written, created, moved, cleared, ...res };
 }
 
 /**
@@ -227,17 +314,12 @@ function setManual(site, serviceCenter) {
   const code = String(site || '').toUpperCase().trim();
   if (!code) throw new Error('site code required');
   const name = String(serviceCenter || '').trim();
-  if (!name) {
-    d.prepare(`UPDATE amazon_locations SET service_center='', service_center_source=NULL
-      WHERE site_code=?`).run(code);
-    return { site: code, serviceCenter: '', released: true };
-  }
-  const want = canonical(name, canonicalNames());
+  const want = name ? canonical(name, canonicalNames()) : null;
   d.prepare(`INSERT OR IGNORE INTO amazon_locations (site_code, loaded_at, source)
     VALUES (?, datetime('now'), 'manual')`).run(code);
-  d.prepare(`UPDATE amazon_locations SET service_center=?, service_center_source='manual'
-    WHERE site_code=?`).run(want, code);
-  return { site: code, serviceCenter: want, released: false };
+  d.prepare('UPDATE amazon_locations SET sc_manual=? WHERE site_code=?').run(want, code);
+  resolveAll();
+  return { ...layersFor(code), released: !want };
 }
 
 /**
@@ -301,5 +383,6 @@ function centres() {
 
 module.exports = {
   derive, apply, unassigned, centres, normSc, ensureColumn,
-  setManual, canonicalNames, canonical, isSiteCode, PRECEDENCE, rank,
+  setManual, resolveAll, layersFor, canonicalNames, canonical, isSiteCode,
+  PRECEDENCE, rank, LAYER_COL,
 };

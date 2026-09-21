@@ -14,10 +14,6 @@
  */
 
 const db = require('./db');
-// One definition of "long enough for Amazon to have shown it" (see edi-watch).
-const EDI_GRACE_HOURS = (() => {
-  try { return require('./edi-watch').GRACE_HOURS; } catch (e) { return 24; }
-})();
 const payee = require('./payee');
 const fs = require('fs');
 const path = require('path');
@@ -611,6 +607,19 @@ let _ledgerEpoch = 0;
 /** Drop the memo. Call after writing purchase_orders or po_consumption. */
 function invalidatePoLedger() { _ledgerEpoch++; }
 
+/**
+ * Drop the site master cache too. Reassigning a site's service centre changes
+ * `siteServiceCenter` on every row, and that value is held behind TWO caches —
+ * the 5-minute siteMetaMap and the ledger memo. Busting only the memo leaves
+ * the move invisible for up to five minutes, which reads as the save having
+ * failed.
+ */
+function invalidateSiteMeta() {
+  _siteMetaCache = null;
+  _siteMetaTs = 0;
+  _ledgerEpoch++;
+}
+
 function getPoLedger(invoices) {
   const key = Array.isArray(invoices) ? invoices : null;
   if (key) {
@@ -632,9 +641,6 @@ function _buildPoLedger(invoices) {
   const { byPo: pendingByPo } = buildPendingUpload(amazonInvoices);
   const siteCodeByPo = buildSiteCodeByPo(amazonInvoices);
   const openPoMap = payee.getOpenPoMap().byPo;
-  // One lookup for the whole build rather than a query per row.
-  let poSeenMap = {};
-  try { poSeenMap = require('./po-seen').map(); } catch (e) { poSeenMap = {}; }
   const poDocsMap = getPoDocsMap();
   const poDetailsMap = getPoDetailsMap();
 
@@ -659,7 +665,6 @@ function _buildPoLedger(invoices) {
     const pendingUpload = pendingByPo[poNumber]?.pendingUpload || 0;
     const scraped = openPoMap[poNumber.toUpperCase()];
     const scrapedCeiling = scraped && scraped.amount > 0 ? scraped.amount : null;
-    const seen = poSeenMap[poNumber] || null;
 
     // Ceiling priority: a manually-entered ceiling wins (someone deliberately
     // set it); otherwise use Payee Central's authoritative open-PO amount.
@@ -760,19 +765,6 @@ function _buildPoLedger(invoices) {
       poStatus: scraped ? scraped.status : null,
       // Amazon's PO issue date (SearchOpenPOs orderDate, e.g. "Aug 4, 2026").
       orderDate: scraped ? (scraped.orderDate || null) : null,
-      // When WE first saw this PO, and whether its value has moved since.
-      // Distinct from orderDate: Amazon's issue date is when they raised it,
-      // firstSeenAt is when it reached us. The gap between the two is how long
-      // a PO sat before we could bill against it (Edwin 2026-09-20).
-      firstSeenAt: seen ? seen.first_seen_at : null,
-      // true = recorded when tracking began, not an observed arrival
-      firstSeenIsBaseline: !!(seen && seen.baseline),
-      firstAmount: seen ? seen.first_amount : null,
-      previousAmount: seen ? seen.prev_amount : null,
-      amountChangedAt: seen ? seen.last_change_at : null,
-      amountChangeCount: seen ? seen.change_count : 0,
-      amountDelta: (seen && seen.first_amount != null && ceiling != null)
-        ? Math.round((ceiling - seen.first_amount) * 100) / 100 : null,
       // Doc date, most-authoritative first: the PDF's internal "REVISED DATE:"
       // field (real revision date — filenames often just repeat the order date,
       // 215/312 revised POs verified), then the internal "ORDER DATE:" for
@@ -844,12 +836,10 @@ function getNeedsUpload(invoices) {
   const recentTx = {};
   try {
     for (const r of db.all(
-      // Window imported from edi-watch so the badge, the preflight's
-      // duplicate-send warning and the alert cannot drift apart.
       `SELECT record_no, MAX(created_at) AS at FROM audit_log
        WHERE action='edi_transmit' AND detail LIKE '%-> OK%'
-         AND created_at >= datetime('now', ?)
-       GROUP BY record_no`, ['-' + EDI_GRACE_HOURS + ' hours'])) {
+         AND created_at >= datetime('now','-48 hours')
+       GROUP BY record_no`)) {
       recentTx[r.record_no] = r.at;
     }
   } catch (e) { /* audit table unavailable — degrade to no flags */ }
@@ -1388,4 +1378,4 @@ function getPayeeAging(opts = {}) {
 
 module.exports = {
   getPayeeAging,
-  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites, poSiteIndex, invalidatePoLedger };
+  getConsumptionRecon, runConsumptionBackfill, syncConsumptionFromIndex, applyMatchedFromDetails, getPoLedger, getNeedsUpload, getOverages, getExcessCapacity, getPoMismatches, getUploaded, getResubmissionMonitor, getDataFreshness, getTransmissionExceptions, getOrphanInvoices, getPendingBySite, attachSiteMeta, attachSiteMetaAll, siteForInvoice, poLineSites, poSiteIndex, invalidatePoLedger, invalidateSiteMeta };

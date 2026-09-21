@@ -233,58 +233,22 @@ function plan(rows) {
   return out;
 }
 
-/**
- * Take the Amazon land-RFP bid values back out. Anything still sitting on the
- * unranked 'declared' tier whose value came verbatim from the RFP file is bid
- * data, not an assignment: clear it and let Omnia or billing answer instead.
- * Whatever neither of them claims is a site we do not actually service, and a
- * blank is the honest answer.
- */
-function purgeRfp(rfpFile = require('path').join(__dirname, 'amazon-land-rfp.json')) {
-  const d = db.getDb();
-  require('./site-service-center').ensureColumn();
-  let bids;
-  try { bids = JSON.parse(fs.readFileSync(rfpFile, 'utf8')); }
-  catch (e) { return { cleared: 0, kept: 0, reason: 'no RFP file: ' + e.message }; }
-
-  const byCode = new Map();
-  for (const r of bids) if (r && r.siteCode) byCode.set(String(r.siteCode).toUpperCase(), String(r.serviceCenter || '').trim());
-  const clear = d.prepare(`UPDATE amazon_locations SET service_center='', service_center_source=NULL
-    WHERE site_code=?`);
-
-  let cleared = 0, kept = 0;
-  const centres = {};
-  for (const r of d.prepare(`SELECT site_code, service_center FROM amazon_locations
-      WHERE TRIM(COALESCE(service_center,''))<>''
-        AND COALESCE(service_center_source,'') NOT IN ('omnia','billing','manual')`).all()) {
-    const bid = byCode.get(String(r.site_code).toUpperCase());
-    // normSc so the respelling this file already did ("Cincinatti" ->
-    // "Cincinnati") does not disguise a value's RFP origin.
-    if (bid && normSc(bid) === normSc(r.service_center)) {
-      centres[r.service_center] = (centres[r.service_center] || 0) + 1;
-      clear.run(r.site_code);
-      cleared++;
-    } else kept++;
-  }
-  return { cleared, kept, centres };
-}
-
-/** Write it. Billing and manual assignments are left where they are. */
+/** Write the Omnia LAYER. Billing and manual sit above it and are untouched. */
 function apply(rows) {
   const d = db.getDb();
   const p = plan(rows);
   const names = canonicalNames();
 
   const upd = d.prepare(`UPDATE amazon_locations
-    SET service_center=?, service_center_source='omnia',
-        omnia_loc_id=COALESCE(NULLIF(TRIM(COALESCE(omnia_loc_id,'')),''), ?)
-    WHERE site_code=? AND COALESCE(service_center_source,'') NOT IN ('billing','manual')`);
+    SET sc_omnia=?, omnia_loc_id=COALESCE(NULLIF(TRIM(COALESCE(omnia_loc_id,'')),''), ?)
+    WHERE site_code=?`);
   const ins = d.prepare(`INSERT OR IGNORE INTO amazon_locations
-    (site_code, service_center, service_center_source, omnia_loc_id, loaded_at, source)
-    VALUES (?,?, 'omnia', ?, datetime('now'), 'omnia-export')`);
+    (site_code, sc_omnia, omnia_loc_id, loaded_at, source)
+    VALUES (?,?,?, datetime('now'), 'omnia-export')`);
 
   let written = 0, created = 0;
-  for (const i of [...p.fillBlank, ...p.replaced, ...p.agree]) {
+  for (const i of [...p.fillBlank, ...p.replaced, ...p.agree,
+    ...p.outrankedByBilling, ...p.outrankedByManual]) {
     if (upd.run(i.to, i.omniaId || null, i.site).changes) written++;
   }
   for (const i of p.newSite) { ins.run(i.site, i.to, i.omniaId || null); created++; }
@@ -293,13 +257,16 @@ function apply(rows) {
   // row still on an old spelling — including sites Omnia never mentioned —
   // moves with the rest.
   let respelled = 0;
-  const ren = d.prepare('UPDATE amazon_locations SET service_center=? WHERE service_center=?');
-  for (const r of d.prepare(`SELECT DISTINCT service_center AS sc FROM amazon_locations
-      WHERE TRIM(COALESCE(service_center,''))<>''`).all()) {
-    const want = names[normSc(r.sc)];
-    if (want && want !== r.sc) respelled += ren.run(want, r.sc).changes;
+  for (const col of Object.values(require('./site-service-center').LAYER_COL)) {
+    const ren = d.prepare(`UPDATE amazon_locations SET ${col}=? WHERE ${col}=?`);
+    for (const r of d.prepare(`SELECT DISTINCT ${col} AS sc FROM amazon_locations
+        WHERE TRIM(COALESCE(${col},''))<>''`).all()) {
+      const want = names[normSc(r.sc)];
+      if (want && want !== r.sc) respelled += ren.run(want, r.sc).changes;
+    }
   }
-  return { ...p, written, created, respelled };
+  const resolved = require('./site-service-center').resolveAll();
+  return { ...p, written, created, respelled, ...resolved };
 }
 
 /**
@@ -308,12 +275,11 @@ function apply(rows) {
  * point, since billing evidence keeps arriving.
  */
 async function load(file, invoices) {
-  const purged = purgeRfp();
   const omnia = apply(await parse(file));
   const billing = require('./site-service-center').apply(invoices);
-  return { purged, omnia, billing };
+  return { omnia, billing };
 }
 
 module.exports = {
-  parse, plan, apply, load, purgeRfp, collapse, codesIn, stripSuffix, FACILITY_CARE,
+  parse, plan, apply, load, collapse, codesIn, stripSuffix, FACILITY_CARE,
 };
