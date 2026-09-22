@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-21T19:24:49.311Z",
+  "generatedAt": "2026-09-21T23:21:49.623Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1233,
-  "scraped": 1,
-  "ok": 1,
+  "openTotal": 1235,
+  "scraped": 2,
+  "ok": 2,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -55980,6 +55980,30 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-21T17:56:17.195Z",
+      "stale": false
+    },
+    "2D-22715148": {
+      "available": 10637,
+      "poAmount": 10637,
+      "status": "Open",
+      "site": "SSF3",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-21T23:21:49.623Z",
+      "stale": false
+    },
+    "2D-22721527": {
+      "available": 8909.22,
+      "poAmount": 8909.22,
+      "status": "Open",
+      "site": "KJAX",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-21T23:21:49.623Z",
       "stale": false
     }
   }
