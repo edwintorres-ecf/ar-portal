@@ -534,7 +534,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 <link rel="stylesheet" href="/styles.css?v=20260814a">
 <!-- Redesign Phase 1: token layer + components. Loaded AFTER styles.css,
      which it extends rather than replaces. -->
-<link rel="stylesheet" href="/ds.css?v=20260921promote">
+<link rel="stylesheet" href="/ds.css?v=20260922bar">
 <script src="/ds.js?v=20260921promote"></script>
 <script src="/dashboard.js?v=20260921promote"></script>
 <script src="/explorer.js?v=20260921promote"></script>
@@ -5402,26 +5402,33 @@ async function loadPoFreshness() {
       ['Payee Central', m.payeeFeed],
       ['Open POs', m.openPos],
       ['PO documents', m.poDocs],
-    ].map(([label, ts]) => `${label}: <strong style="color:var(--gray-600)">${agoLabel(ts)}</strong>`).join(' · ');
+    ].map(([label, ts]) => `<span class="pofresh-stamp"><i>${escHtml(label)}</i><b>${agoLabel(ts)}</b></span>`).join('');
     let btn = '';
     if (m.refreshRunning) {
-      btn = ' &nbsp; <span style="color:#d97706;font-weight:600">↻ Refreshing Payee Central… (~3–5 min)</span>';
+      btn = '<span class="pofresh-running">↻ Refreshing Payee Central… (~3–5 min)</span>';
     } else if (canRefresh) {
-      btn = ` &nbsp; <button class="btn-sm" onclick="refreshPayee()">↻ Refresh Payee Central</button>`;
+      btn = `<button class="btn-sm" onclick="refreshPayee()">↻ Refresh Payee Central</button>`;
     }
-    // Reliability health strip: one dot per monitored check (ops_health)
+
+    // Reliability health. This used to be one anonymous dot per check — 18 of
+    // them, wrapping onto a second line because each dot was its own flex item,
+    // and you had to hover all 18 to find the 2 that were red. A monitor you
+    // have to interrogate is not a monitor. Now it names what is broken and
+    // the detail is one click away (Edwin 2026-09-22).
     let healthHtml = '';
     try {
       const h = await apiFetch('/api/health/data');
-      const dots = (h.checks || []).map(c => {
-        const col = c.status === 'ok' ? '#16a34a' : c.status === 'warn' ? '#d97706' : '#dc2626';
-        return `<span title="${escHtml(c.check_key)}: ${escHtml(c.status)}${c.detail ? ' — ' + escHtml(c.detail) : ''} (${escHtml(c.updated_at)} UTC)" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${col};margin-left:4px;vertical-align:middle;cursor:default"></span>`;
-      }).join('');
-      const anyBad = (h.checks || []).some(c => c.status === 'fail');
-      const anyWarn = (h.checks || []).some(c => c.status === 'warn');
-      healthHtml = dots ? ` &nbsp;·&nbsp; <span style="font-size:11px;color:${anyBad ? '#dc2626' : anyWarn ? '#d97706' : 'var(--gray-500)'};font-weight:${anyBad || anyWarn ? '700' : '400'}">${anyBad ? '⛔ data issue' : anyWarn ? '⚠️ check data' : 'health'}</span>${dots}` : '';
-    } catch (e) { /* health endpoint unavailable — omit strip */ }
-    el.innerHTML = '🕑 Last updated — ' + stamps + btn + healthHtml;
+      _poHealth = (h.checks || []).slice().sort((a, b) => RANK[a.status] - RANK[b.status]
+        || String(a.check_key).localeCompare(String(b.check_key)));
+      healthHtml = poHealthPill(_poHealth);
+    } catch (e) { _poHealth = null; /* health endpoint unavailable — omit */ }
+
+    el.innerHTML = `<div class="pofresh-top">
+        <span class="pofresh-stamps"><span class="pofresh-clock" aria-hidden="true">🕑</span>${stamps}</span>
+        <span class="pofresh-actions">${btn}${healthHtml}</span>
+      </div>
+      <div id="po-health-detail" hidden></div>`;
+    if (_poHealthOpen) poHealthRenderDetail();
 
     // Poll while a refresh is running; when it finishes, reload the data once.
     if (m.refreshRunning) {
@@ -5434,6 +5441,60 @@ async function loadPoFreshness() {
       loadPoLedger(); loadPoUploaded(); loadPoNeedsUpload(); loadPoMismatches(); loadPoResubmissions();
     }
   } catch (e) { el.textContent = ''; }
+}
+
+/* Worst first, so the one line that is always visible is the one that matters. */
+const RANK = { fail: 0, warn: 1, ok: 2 };
+let _poHealth = null;
+let _poHealthOpen = false;
+
+function poHealthPill(checks) {
+  if (!checks || !checks.length) return '';
+  const bad = checks.filter(c => c.status === 'fail');
+  const warn = checks.filter(c => c.status === 'warn');
+  const broken = bad.concat(warn);
+  const kind = bad.length ? 'is-fail' : warn.length ? 'is-warn' : 'is-ok';
+  // Name them. "data issue" told you something was wrong but not what, so the
+  // next move was always to hover a row of identical dots.
+  const names = broken.slice(0, 2).map(c => c.check_key).join(', ')
+    + (broken.length > 2 ? ` +${broken.length - 2}` : '');
+  const label = bad.length
+    ? `⛔ ${bad.length} failing: ${escHtml(names)}`
+    : warn.length ? `⚠️ ${warn.length} to check: ${escHtml(names)}`
+    : `✓ all ${checks.length} checks OK`;
+  return `<button class="pofresh-health ${kind}" onclick="poHealthToggle()"
+    aria-expanded="${_poHealthOpen}" aria-controls="po-health-detail"
+    title="Data reliability checks — click for detail">${label}<span class="pofresh-caret">${_poHealthOpen ? '▴' : '▾'}</span></button>`;
+}
+
+function poHealthToggle() {
+  _poHealthOpen = !_poHealthOpen;
+  const btn = document.querySelector('.pofresh-health');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(_poHealthOpen));
+    const caret = btn.querySelector('.pofresh-caret');
+    if (caret) caret.textContent = _poHealthOpen ? '▴' : '▾';
+  }
+  poHealthRenderDetail();
+}
+
+function poHealthRenderDetail() {
+  const el = document.getElementById('po-health-detail');
+  if (!el) return;
+  if (!_poHealthOpen || !_poHealth) { el.hidden = true; el.innerHTML = ''; return; }
+  const rows = _poHealth.map(c => {
+    // self-test packs a multi-line report into detail; one line is enough here
+    // and the full text stays on the title attribute.
+    const first = String(c.detail || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
+    return `<div class="pohealth-row is-${escHtml(c.status)}">
+      <span class="pohealth-dot"></span>
+      <span class="pohealth-key">${escHtml(c.check_key)}</span>
+      <span class="pohealth-detail" title="${escHtml(c.detail || '')}">${escHtml(first.slice(0, 110))}${first.length > 110 ? '…' : ''}</span>
+      <span class="pohealth-age" title="${escHtml(c.updated_at)} UTC">${agoLabel(c.updated_at)}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = rows;
+  el.hidden = false;
 }
 
 async function refreshPayee() {

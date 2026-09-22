@@ -511,8 +511,13 @@ kbd {
   font: 700 var(--fs-xl)/1.2 var(--ds-font) !important;
   color: var(--ink, #1a1814) !important;
 }
+/* The freshness + health strip.
+   It is `block`, not `flex`: the health readout used to emit one <span> per
+   monitored check, and as direct children of a wrapping flex row those 18 dots
+   broke onto a second line and left the strip ragged. Layout now lives in the
+   two inner rows, so the number of checks cannot change the shape of it. */
 #po-funds-freshness {
-  display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); align-items: center;
+  display: block;
   background: var(--card, #fff); border: 1px solid var(--line, #e7e1d4);
   border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
   font: 500 var(--fs-xs)/1.5 var(--ds-font) !important;
@@ -520,6 +525,56 @@ kbd {
   margin-bottom: var(--sp-3) !important;
 }
 #po-funds-freshness strong { color: var(--ink, #1a1814); font-weight: 700; }
+
+.pofresh-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+.pofresh-stamps { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
+.pofresh-clock { opacity: .6; }
+/* Label above value would cost a line; side by side with a weight change reads
+   as one unit and still scans, because the bold value is the thing you want. */
+.pofresh-stamp { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.pofresh-stamp i { font-style: normal; color: var(--ink-soft, #6b6458); }
+.pofresh-stamp b { color: var(--ink, #1a1814); font-weight: 700; font-variant-numeric: tabular-nums; }
+.pofresh-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
+.pofresh-running { color: #b45309; font-weight: 700; }
+
+.pofresh-health {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: var(--r-pill); padding: 4px 11px; cursor: pointer;
+  font: 700 var(--fs-xs)/1.4 var(--ds-font);
+  border: 1px solid transparent; background: var(--surface, #f5f2eb); color: var(--ink-soft, #6b6458);
+}
+.pofresh-health:hover { filter: brightness(.97); }
+.pofresh-health.is-ok { background: #e8f3e5; border-color: #cfe3c9; color: #2f5c2a; }
+.pofresh-health.is-warn { background: #fdf3e0; border-color: #f0dcb4; color: #8a5a10; }
+.pofresh-health.is-fail { background: #fbe9e7; border-color: #f0c9c3; color: #9b2c20; }
+.pofresh-caret { opacity: .7; font-size: 9px; }
+
+#po-health-detail { margin-top: var(--sp-2); border-top: 1px solid var(--line, #e7e1d4); padding-top: var(--sp-2); }
+.pohealth-row {
+  display: grid; grid-template-columns: 10px 168px 1fr auto;
+  align-items: baseline; gap: var(--sp-2); padding: 3px 0;
+}
+.pohealth-dot { width: 7px; height: 7px; border-radius: 50%; background: #5c9150; align-self: center; }
+.pohealth-row.is-warn .pohealth-dot { background: #c98a2e; }
+.pohealth-row.is-fail .pohealth-dot { background: #c0392b; }
+.pohealth-key { font-weight: 700; color: var(--ink, #1a1814); }
+.pohealth-row.is-fail .pohealth-key { color: #9b2c20; }
+.pohealth-detail { color: var(--ink-soft, #6b6458); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pohealth-age { color: var(--ink-soft, #6b6458); opacity: .8; font-variant-numeric: tabular-nums; }
+
+[data-theme="dark"] .pofresh-health { background: #26221d; color: #b8b0a2; }
+[data-theme="dark"] .pofresh-health.is-ok { background: #1e2b1c; border-color: #33492e; color: #9ccd8e; }
+[data-theme="dark"] .pofresh-health.is-warn { background: #2e2517; border-color: #4d3c1d; color: #e0b56a; }
+[data-theme="dark"] .pofresh-health.is-fail { background: #2e1c1a; border-color: #4d2a25; color: #e59386; }
+[data-theme="dark"] .pohealth-key { color: #ece7dd; }
+[data-theme="dark"] .pohealth-row.is-fail .pohealth-key { color: #e59386; }
+[data-theme="dark"] #po-health-detail { border-top-color: #35302a; }
+
+@media (max-width: 820px) {
+  .pofresh-actions { margin-left: 0; }
+  .pohealth-row { grid-template-columns: 10px 1fr auto; }
+  .pohealth-detail { grid-column: 2 / -1; white-space: normal; }
+}
 #po-funds-count { font: 600 var(--fs-sm) var(--ds-font) !important; color: var(--ink-soft, #6b6458) !important; }
 [data-theme="dark"] #po-funds-freshness { background: #201d19; border-color: #35302a; }
 [data-theme="dark"] #view-po-funds > div > div:first-child h2 { color: #ece7dd !important; }
