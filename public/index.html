@@ -5376,6 +5376,18 @@ function renderPoExceptions() {
     </div>` : ''}`;
 }
 
+/* SQLite writes datetime('now') as "2026-09-22 14:06:14" with no zone, and it
+   is UTC. V8 parses that bare form as LOCAL time, so on an ET host every
+   ops_health stamp landed 4 hours in the FUTURE and every check read "just
+   now" — including one that had not run in 28 hours. Normalise to ISO before
+   parsing. The ISO stamps from /api/po/meta already carry a Z and pass through
+   this untouched. */
+function agoLabelUtc(ts) {
+  if (!ts) return 'n/a';
+  const s = String(ts);
+  return agoLabel(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) ? s.replace(' ', 'T') + 'Z' : s);
+}
+
 function agoLabel(ts) {
   if (!ts) return 'n/a';
   const d = new Date(ts); if (isNaN(d)) return String(ts);
@@ -5490,7 +5502,7 @@ function poHealthRenderDetail() {
       <span class="pohealth-dot"></span>
       <span class="pohealth-key">${escHtml(c.check_key)}</span>
       <span class="pohealth-detail" title="${escHtml(c.detail || '')}">${escHtml(first.slice(0, 110))}${first.length > 110 ? '…' : ''}</span>
-      <span class="pohealth-age" title="${escHtml(c.updated_at)} UTC">${agoLabel(c.updated_at)}</span>
+      <span class="pohealth-age" title="${escHtml(c.updated_at)} UTC">${agoLabelUtc(c.updated_at)}</span>
     </div>`;
   }).join('');
   el.innerHTML = rows;
