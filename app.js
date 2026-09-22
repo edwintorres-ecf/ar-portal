@@ -297,6 +297,30 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+// ─── site_ops is DENY-BY-DEFAULT ─────────────────────────────────────────────
+// Registered HERE, above every /api route. Express runs middleware in
+// registration order, and the first placement sat below /api/invoices and
+// /api/po/ledger — both still answered 200 to a field user.
+// The promise made to this role is "you see purchase orders and nothing else".
+// Adding requirePerm to the routes they must not reach would mean finding every
+// one of them, and the first version of this missed /api/invoices,
+// /api/overview, /api/po/ledger and /api/customer-page — all of which answered
+// 200 to a field user in testing. So the posture is inverted: for this role
+// everything under /api is refused unless it is on this list. A route added
+// tomorrow is closed to them by default rather than open (Edwin 2026-09-21).
+const SITE_OPS_ALLOWED = [
+  /^\/api\/site-pos$/,
+  /^\/api\/me\//,
+  /^\/api\/health/,
+];
+app.use('/api', (req, res, next) => {
+  const u = req.session && req.session.user;
+  if (!u || u.role !== 'site_ops') return next();
+  const full = req.baseUrl + (req.path === '/' ? '' : req.path);
+  if (SITE_OPS_ALLOWED.some(re => re.test(full))) return next();
+  return res.status(403).json({ error: 'Not available for your role.' });
+});
+
 // ─── Auth Middleware ────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) {
@@ -336,16 +360,25 @@ const CAPABILITIES = [
   'po.edit', 'po.admin', 'edi.transmit', 'invoices.create',
   'customers.manage', 'collectors.assign', 'refresh.data',
   'invites.send', 'users.admin', 'templates.admin', 'regions.admin',
+  // Read-only sight of Amazon POs for the sites a person's service centre
+  // works. Deliberately its own capability rather than a slice of po.edit:
+  // the holder sees POs and NOTHING else — no invoices, no AR, no balances
+  // (Edwin 2026-09-21).
+  'po.view',
 ];
 const ROLE_DEFAULT_CAPS = {
   viewer: [],
+  // Operations staff at a service centre. They check a PO arrived and carries
+  // enough value before starting work, so they can ask for an uplift rather
+  // than find out at billing.
+  site_ops: ['po.view'],
   ar_specialist: ['notes.write', 'status.set', 'contacts.manage', 'attachments.manage',
-    'email.send', 'triage.manage', 'statements.manage', 'po.edit', 'refresh.data', 'collectors.assign'],
+    'email.send', 'triage.manage', 'statements.manage', 'po.edit', 'refresh.data', 'collectors.assign', 'po.view'],
   manager: ['notes.write', 'status.set', 'contacts.manage', 'attachments.manage',
     'email.send', 'triage.manage', 'statements.manage', 'statements.run',
     'dunning.run', 'finance.view', 'finance.transmit', 'po.edit', 'po.admin',
     'edi.transmit', 'invoices.create', 'customers.manage', 'collectors.assign',
-    'refresh.data', 'invites.send'],
+    'refresh.data', 'invites.send', 'po.view'],
   admin: null,   // null = everything
 };
 
@@ -3628,6 +3661,167 @@ app.get('/api/po/intake-health', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Site POs — for the people doing the work ────────────────────────────────
+// Operations staff need to confirm a PO exists and carries enough value BEFORE
+// they start, so they can request an uplift instead of discovering the shortfall
+// at billing. They also need the line description, to check it matches the
+// service they are actually providing (Edwin 2026-09-21).
+//
+// Scope is decided HERE, from the user's own record. A site_ops user sees only
+// the service centres they cover; asking for another centre returns nothing
+// rather than an error, because the existence of a centre is not theirs to
+// learn. Accounting roles see everything.
+function serviceCentresFor(user) {
+  if (['admin', 'manager', 'ar_specialist'].includes(user.role)) return null;   // null = all
+  const out = new Set();
+  try {
+    const locs = user.location_filter ? JSON.parse(user.location_filter) : [];
+    const sc = require('./site-service-center');
+    // location_filter holds Sage location ids (L-ECF-HCT). Map each to the
+    // service-centre name the PO ledger uses.
+    const names = db.all(`SELECT DISTINCT service_center AS sc FROM amazon_locations
+      WHERE TRIM(COALESCE(service_center,''))<>''`).map(r => r.sc);
+    let invs = sage.getCachedInvoices();
+    const byLoc = {};
+    for (const i of invs) if (i.locationId) byLoc[i.locationId] = i.locationName;
+    for (const l of locs) {
+      const full = byLoc[l];
+      if (!full) continue;
+      const hit = names.find(n => sc.normSc(n) === sc.normSc(full));
+      if (hit) out.add(hit);
+    }
+  } catch (e) {}
+  return [...out];
+}
+
+app.get('/api/site-pos', requireAuth, requirePerm('po.view'), async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    const ledger = poLedger.getPoLedger(invoices);
+    const mine = serviceCentresFor(req.session.user);
+
+    const site = String(req.query.site || '').toUpperCase().trim();
+    const po = String(req.query.po || '').toUpperCase().trim();
+    const centre = String(req.query.serviceCenter || '').trim();
+    const svc = String(req.query.service || '').trim();
+    const openOnly = req.query.openOnly === '1';
+
+    let rows = ledger.filter(p => p.siteCode);
+    if (mine) rows = rows.filter(p => mine.includes(p.siteServiceCenter));
+    if (centre) rows = rows.filter(p => p.siteServiceCenter === centre);
+    if (site) {
+      const terms = site.split(/[\s,]+/).filter(Boolean);
+      rows = rows.filter(p => terms.some(t => String(p.siteCode).toUpperCase().includes(t)));
+    }
+    if (po) rows = rows.filter(p => String(p.poNumber).toUpperCase().includes(po));
+    if (svc) rows = rows.filter(p => p.serviceType === svc);
+    if (openOnly) rows = rows.filter(p => !p.poStatus || p.poStatus === 'OPEN_FOR_INVOICING');
+
+    // Only what a field user needs. No consumed-by-invoice detail, no customer
+    // balances, nothing about AR.
+    const out = rows.map(p => ({
+      poNumber: p.poNumber,
+      siteCode: p.siteCode,
+      businessUnit: p.businessUnit || '',
+      serviceCenter: p.siteServiceCenter || '',
+      serviceType: p.serviceType || '',
+      description: p.docDescription || '',
+      value: p.ceilingAmount,
+      spent: p.consumed || 0,
+      pending: p.pendingUpload || 0,
+      remaining: p.available,
+      status: p.poStatus || '',
+      orderDate: p.orderDate || null,
+      docDate: p.docDate || null,
+      docUrl: p.docUrl || null,
+      hasDoc: !!p.hasDoc,
+    })).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode))
+      || String(a.poNumber).localeCompare(String(b.poNumber)));
+
+    // Who may move a site between centres. Deliberately NOT site_ops: the
+    // service centre IS their access boundary, so letting a field user set it
+    // would let them pull any site in the company into their own scope.
+    const canReassign = ['admin', 'manager', 'ar_specialist'].includes(req.session.user.role);
+
+    res.json({
+      pos: out,
+      scope: mine === null ? 'all service centers' : (mine.length ? mine.join(', ') : 'none assigned to you'),
+      serviceCenters: mine === null
+        ? [...new Set(ledger.map(p => p.siteServiceCenter).filter(Boolean))].sort()
+        : mine,
+      canReassign,
+      // Every centre that exists, not just the ones with POs in this result —
+      // otherwise a site can never be moved to a quiet centre.
+      allServiceCenters: canReassign
+        ? [...new Set(require('./site-service-center').centres().map(c => c.name))].sort() : [],
+      // The whole layer stack per site, so the control can show what is in
+      // force, why, and what releasing an override would fall back to.
+      siteServiceCenters: canReassign ? (() => {
+        const m = {};
+        for (const r of db.all(`SELECT site_code, service_center, service_center_source,
+            sc_omnia, sc_billing, sc_manual FROM amazon_locations
+            WHERE TRIM(COALESCE(service_center,''))<>''`)) {
+          m[r.site_code] = {
+            centre: r.service_center, source: r.service_center_source || '',
+            omnia: r.sc_omnia || '', billing: r.sc_billing || '', manual: r.sc_manual || '',
+          };
+        }
+        return m;
+      })() : {},
+      sites: [...new Set(out.map(p => p.siteCode))].sort(),
+      totals: {
+        pos: out.length,
+        value: Math.round(out.reduce((t, p) => t + (p.value || 0), 0) * 100) / 100,
+        remaining: Math.round(out.reduce((t, p) => t + Math.max(0, p.remaining || 0), 0) * 100) / 100,
+      },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Move a site to a different service centre, by hand.
+//
+// This writes the TOP of the precedence list (site-service-center.js): omnia is
+// the base, billing overrides it as work is invoiced, and a person overrides
+// both. So this is the one assignment that a fresh Omnia export will not undo —
+// which is exactly why it is restricted, logged, and releasable.
+//
+// site_ops cannot reach this: the service centre is their access boundary, and
+// the deny-by-default guard above every /api route only admits the exact path
+// `/api/site-pos`, not this one.
+app.post('/api/site-pos/service-center', requireAuth, requirePerm('po.view'), (req, res) => {
+  try {
+    if (!['admin', 'manager', 'ar_specialist'].includes(req.session.user.role)) {
+      return res.status(403).json({ error: 'Not available for your role.' });
+    }
+    const ssc = require('./site-service-center');
+    const site = String(req.body.site || '').toUpperCase().trim();
+    const want = String(req.body.serviceCenter || '').trim();
+    if (!site) return res.status(400).json({ error: 'site is required' });
+
+    // Free text would fracture the vocabulary — "Hartford SC" beside
+    // "Hartford" shows a field user half their work. Only a centre that
+    // already exists, or blank to release the site.
+    const known = ssc.centres().map(c => c.name);
+    if (want && !known.some(n => ssc.normSc(n) === ssc.normSc(want))) {
+      return res.status(400).json({ error: `Unknown service center. Known: ${known.join(', ')}` });
+    }
+
+    const was = ssc.layersFor(site);
+    const now = ssc.setManual(site, want);
+    poLedger.invalidateSiteMeta();
+
+    db.auditLog(req.session.user.email, 'site_service_center', null,
+      now.released
+        ? `${site}: released the override; falls back to ${now.serviceCenter || '(none)'} (${now.source || 'nothing'})`
+        : `${site}: ${(was && was.serviceCenter) || '(blank)'} -> ${now.serviceCenter}`);
+
+    // The whole stack goes back, so the UI can say what a release would expose
+    // instead of implying the site would go blank.
+    res.json({ ...now, was: (was && was.serviceCenter) || '' });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // The intake list as a worklist someone can take away and work through. The
 // screen answers "how bad is it"; this answers "what do I do next, in what
 // order" (built for Vincenzo, 2026-09-17).
@@ -4876,7 +5070,7 @@ app.get('/api/overview', requireAuth, async (req, res) => {
 });
 
 // ─── API: Invite a user (pre-provision + invitation email) ───────────────────
-const PORTAL_ROLES = ['admin', 'manager', 'ar_specialist', 'viewer'];
+const PORTAL_ROLES = ['admin', 'manager', 'ar_specialist', 'viewer', 'site_ops'];
 
 // Seed users WITHOUT telling them. Access is provisioned so they can be
 // assigned work and tested against; the invitation is a separate, later act

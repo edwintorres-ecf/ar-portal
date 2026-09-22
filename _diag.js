@@ -1,0 +1,21 @@
+const { chromium } = require('./node_modules/playwright-core');
+const stub = (o) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+const R = {
+  '/auth/me': { email: 'smoke@test', name: 'Smoke Test', role: 'admin' },
+  '/api/invoices': { invoices: [], count: 0, cacheInfo: {} },
+  '/api/mentions': { mentions: [], unseenCount: 0 },
+};
+(async () => {
+  const b = await chromium.launch(require('./browser-path').launchOptions({ headless: true, args: ['--disable-gpu'] }));
+  const p = await (await b.newContext({ viewport: { width: 1400, height: 900 }, ignoreHTTPSErrors: true })).newPage();
+  p.on('pageerror', e => console.log('--- PAGE ERROR ---\n' + (e.stack || e.message)));
+  await p.route('**/*', r => {
+    const u = new URL(r.request().url());
+    if (R[u.pathname] !== undefined) return r.fulfill(stub(R[u.pathname]));
+    if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/auth/')) return r.fulfill(stub({}));
+    r.continue();
+  });
+  await p.goto('https://localhost:3600/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await p.waitForTimeout(2500);
+  await b.close();
+})();

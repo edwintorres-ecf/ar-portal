@@ -1,0 +1,697 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   ds.css — AR Portal design system, redesign Phase 1
+   Loaded AFTER styles.css, which it extends rather than replaces.
+
+   WHY A SECOND FILE. styles.css is the live emulation of the team's
+   reconciliation platform (Geist, warm cream surface, sc-chips, age-pills) and
+   it already carries a working dark mode. Overwriting it would have thrown all
+   of that away. So the surface language stays where it is, and this file adds
+   the layer the plan actually calls for and that nothing yet defines: a type
+   scale, a spacing grid, radii, z-layers, a chart palette, and the components
+   every later phase is built from.
+
+   TWO RULES:
+   1. Colour comes from the tokens styles.css already owns — --surface, --card,
+      --ink, --ink-soft, --line, --brand. Components inherit the theme for free,
+      including dark mode, instead of hard-coding a second palette that would
+      drift.
+   2. Components are prefixed `ds-`. index.html, comms.js and amazon.js carry
+      13,000 lines using .card, .btn, .chip and .tile; an unprefixed name here
+      would silently restyle screens nobody meant to touch.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Type scale ───────────────────────────────────────────────────────────
+     Geist is the platform face, set in styles.css. Money is always tabular:
+     this portal is read by scanning columns of figures and proportional digits
+     make that measurably harder. */
+  --ds-font: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --fs-xs: 11px;  --fs-sm: 12px;  --fs-base: 13px;  --fs-md: 15px;
+  --fs-lg: 18px;  --fs-xl: 24px;  --fs-2xl: 32px;
+  --lh-tight: 1.25;  --lh-base: 1.5;
+
+  /* ── Spacing, 4px grid ────────────────────────────────────────────────── */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;  --sp-10: 40px;
+
+  /* ── Radii. 10/12/14 are the values styles.css already uses. ──────────── */
+  --r-sm: 9px;  --r-md: 10px;  --r-lg: 14px;  --r-pill: 999px;
+
+  /* ── Elevation, in the warm ink of this theme rather than neutral black ── */
+  --ds-shadow:    0 1px 2px rgba(26,24,20,.04);
+  --ds-shadow-md: 0 4px 14px rgba(26,24,20,.10);
+  --ds-shadow-lg: 0 12px 32px rgba(26,24,20,.14);
+
+  /* ── Z layers, named so nothing is ever "9999" again ──────────────────── */
+  --z-sticky: 100; --z-nav: 200; --z-drawer: 300; --z-modal: 400; --z-toast: 500;
+
+  /* ── Chart palette ────────────────────────────────────────────────────────
+     Five categorical hues drawn from the same muted family as the sc-chips, so
+     charts look like they belong to this product. Kept deliberately separate
+     from the status colours: a bar must never read as a warning. */
+  --c1: #3f7238;  --c2: #3763a0;  --c3: #8a6535;  --c4: #6f4d92;  --c5: #b0472a;
+  /* Sequential ramp for magnitude — aging buckets, concentration. */
+  --ramp-1: #e8efe6; --ramp-2: #c4d8bf; --ramp-3: #9cbf94;
+  --ramp-4: #6fa066; --ramp-5: #3f7238;
+  /* Diverging pair for variance. */
+  --div-neg: #b32020; --div-pos: #3f7238;
+  /* Aging severity, matching the age-pill vocabulary already in styles.css. */
+  --age-1: #e3c86a; --age-2: #d99a52; --age-3: #c86a45; --age-4: #b32020;
+
+  /* --brand (#45893f) measures 4.28:1 on white — fine as a 3:1 graphic accent,
+     SHORT of the 4.5:1 body-text threshold. This is the same green darkened to
+     5.71:1 for anywhere it is used as TEXT (2026-09-18). */
+  --brand-text: #3f7238;
+
+  /* Row height drives the density toggle. explorer.js READS this value rather
+     than hard-coding 38, because a virtualized table positions rows by
+     arithmetic and would tear if CSS and JS disagreed. */
+  --row-h: 38px;
+}
+
+/* Compact density: tighter rows and padding, same type scale. Set on <html>. */
+[data-density="compact"] {
+  --row-h: 30px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+}
+
+[data-theme="dark"] {
+  --ds-shadow:    0 1px 2px rgba(0,0,0,.4);
+  --ds-shadow-md: 0 4px 14px rgba(0,0,0,.45);
+  --ds-shadow-lg: 0 12px 32px rgba(0,0,0,.55);
+  --ramp-1: #26322a; --ramp-2: #33463a; --ramp-3: #456b4f;
+  --ramp-4: #5c8f66; --ramp-5: #7db55a;
+
+  /* Chart palette RE-VALIDATED against the dark card (#201d19), per the plan.
+     The light-surface hues are too dark to sit on it: measured 2.94 / 2.76 /
+     3.19 / 2.52 / 3.02 against the 3:1 WCAG 1.4.11 threshold for graphics, so
+     three of five failed and two only scraped it. These lighten the same hues
+     to 5.3-6.9:1. Hue, not luminance, is what separates categorical series, so
+     they are deliberately of similar weight — no series should look heavier
+     than another (2026-09-18).                                              */
+  --c1: #7db55a;  --c2: #7fa6d9;  --c3: #c49a5e;  --c4: #a284c4;  --c5: #d4785a;
+  --div-pos: #7db55a; --div-neg: #e2725b;
+  /* --age-4 is the 91+ colour and the one that matters most. At #b32020 it
+     measured 2.51:1 on dark — the most severe bucket was the hardest to see. */
+  --age-4: #e2725b;
+  --brand-text: #7db55a;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Toasts — the replacement for alert()
+   There are 100 alert() calls across index.html, comms.js and amazon.js. Each
+   blocks the page and none can say whether the news is good or bad.
+   ─────────────────────────────────────────────────────────────────────────── */
+#ds-toasts {
+  position: fixed; right: var(--sp-5); bottom: 68px;   /* clear of #theme-toggle */
+  z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  pointer-events: none;
+}
+.ds-toast {
+  pointer-events: auto; min-width: 260px; max-width: 420px;
+  background: var(--ink, #1a1814); color: #f7f4ee;
+  font: 600 var(--fs-base)/var(--lh-base) var(--ds-font);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md);
+  box-shadow: var(--ds-shadow-lg);
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  border-left: 4px solid var(--ink-soft, #6b6458);
+  animation: ds-toast-in .18s ease-out;
+}
+.ds-toast.is-success { border-left-color: #3f7238; }
+.ds-toast.is-error   { border-left-color: #b32020; }
+.ds-toast.is-warn    { border-left-color: #a05c22; }
+.ds-toast.is-info    { border-left-color: #3763a0; }
+.ds-toast-x {
+  margin-left: auto; cursor: pointer; opacity: .6;
+  background: none; border: 0; color: inherit; font-size: var(--fs-md); line-height: 1; padding: 0;
+}
+.ds-toast-x:hover { opacity: 1; }
+.ds-toast.is-leaving { animation: ds-toast-out .16s ease-in forwards; }
+[data-theme="dark"] .ds-toast { background: #2a2622; color: #ece7dd; }
+@keyframes ds-toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ds-toast-out { to   { opacity: 0; transform: translateY(8px); } }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Stat tile
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-tiles { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.ds-tile {
+  background: var(--card, #fff); border: 1px solid var(--line, #e7e1d4);
+  border-radius: var(--r-lg); padding: var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-1);
+  position: relative; overflow: hidden; box-shadow: var(--ds-shadow);
+}
+.ds-tile.is-clickable { cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.ds-tile.is-clickable:hover { border-color: var(--ink, #1a1814); box-shadow: var(--ds-shadow-md); }
+.ds-tile-label {
+  font: 600 var(--fs-xs)/1.3 var(--ds-font); letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ink-soft, #6b6458);
+}
+.ds-tile-value {
+  font: 700 var(--fs-xl)/var(--lh-tight) var(--ds-font);
+  color: var(--ink, #1a1814); font-variant-numeric: tabular-nums;
+}
+.ds-tile-value.is-sm { font-size: var(--fs-lg); }
+.ds-tile-sub { font: 500 var(--fs-sm)/1.4 var(--ds-font); color: var(--ink-soft, #6b6458); }
+.ds-tile-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--brand, #45893f); }
+[data-theme="dark"] .ds-tile { background: #201d19; border-color: #35302a; }
+[data-theme="dark"] .ds-tile-value { color: #ece7dd; }
+[data-theme="dark"] .ds-tile-label, [data-theme="dark"] .ds-tile-sub { color: #b0a89a; }
+
+/* Direction of travel. On an AR book, up is bad. */
+.ds-delta { font: 700 var(--fs-sm)/1 var(--ds-font); font-variant-numeric: tabular-nums; }
+.ds-delta.is-up   { color: #b32020; }
+.ds-delta.is-down { color: #3f7238; }
+.ds-delta.is-flat { color: var(--ink-soft, #6b6458); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Card
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-card {
+  background: var(--card, #fff); border: 1px solid var(--line, #e7e1d4);
+  border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--ds-shadow);
+}
+.ds-card-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line, #e7e1d4);
+}
+.ds-card-title { font: 700 var(--fs-md)/1.3 var(--ds-font); color: var(--ink, #1a1814); }
+.ds-card-sub { font: 500 var(--fs-sm)/1.3 var(--ds-font); color: var(--ink-soft, #6b6458); }
+.ds-card-actions { margin-left: auto; display: flex; gap: var(--sp-2); }
+.ds-card-body { padding: var(--sp-4); }
+.ds-card-body.is-flush { padding: 0; }
+[data-theme="dark"] .ds-card { background: #201d19; border-color: #35302a; }
+[data-theme="dark"] .ds-card-head { border-color: #35302a; }
+[data-theme="dark"] .ds-card-title { color: #ece7dd; }
+[data-theme="dark"] .ds-card-sub { color: #b0a89a; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Buttons — light outlined default, dark filled primary, as the platform does
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-btn {
+  font: 600 var(--fs-base)/1 var(--ds-font);
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm);
+  border: 1px solid transparent; cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  transition: background .12s, border-color .12s, color .12s; white-space: nowrap;
+}
+.ds-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ds-btn-primary { background: var(--ink, #1a1814); color: #fff; }
+.ds-btn-primary:hover:not(:disabled) { background: #000; }
+.ds-btn-secondary { background: var(--card, #fff); color: var(--ink, #1a1814); border-color: var(--line, #e7e1d4); }
+.ds-btn-secondary:hover:not(:disabled) { border-color: var(--ink, #1a1814); }
+.ds-btn-ghost { background: transparent; color: var(--ink-soft, #6b6458); }
+.ds-btn-ghost:hover:not(:disabled) { background: var(--surface, #f5f2eb); }
+.ds-btn-danger { background: #b32020; color: #fff; }
+.ds-btn-danger:hover:not(:disabled) { background: #8f1a1a; }
+.ds-btn.is-sm { font-size: var(--fs-sm); padding: 5px var(--sp-3); }
+[data-theme="dark"] .ds-btn-primary { background: #ece7dd; color: #1a1814; }
+[data-theme="dark"] .ds-btn-secondary { background: #201d19; color: #ece7dd; border-color: #35302a; }
+[data-theme="dark"] .ds-btn-secondary:hover:not(:disabled) { border-color: #ece7dd; }
+[data-theme="dark"] .ds-btn-ghost { color: #b0a89a; }
+[data-theme="dark"] .ds-btn-ghost:hover:not(:disabled) { background: #2a2622; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Chip — the generic one. sc-chip / age-pill / cs-chip in styles.css stay the
+   vocabulary for service centres, aging and collection status.
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  font: 600 var(--fs-xs)/1 var(--ds-font);
+  padding: 4px var(--sp-2); border-radius: var(--r-pill);
+  background: var(--surface, #f5f2eb); color: var(--ink, #1a1814);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.ds-chip.is-button { cursor: pointer; }
+.ds-chip.is-button:hover { border-color: var(--line, #e7e1d4); }
+.ds-chip.is-active { background: var(--ink, #1a1814); color: #fff; }
+.ds-chip.is-green  { background: #ddefd9; color: #3f7238; }
+.ds-chip.is-red    { background: #f6d3d3; color: #b32020; }
+.ds-chip.is-orange { background: #fbe6d4; color: #a05c22; }
+.ds-chip.is-blue   { background: #d9e7f5; color: #3763a0; }
+.ds-chip.is-yellow { background: #fdf4d5; color: #8a6d1a; }
+[data-theme="dark"] .ds-chip { background: #2a2622; color: #ece7dd; }
+[data-theme="dark"] .ds-chip.is-active { background: #ece7dd; color: #1a1814; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Data table
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-table-wrap { overflow: auto; max-height: 70vh; }
+.ds-table { width: 100%; border-collapse: collapse; font: 500 var(--fs-base)/1.45 var(--ds-font); }
+.ds-table thead th {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  background: #faf8f3; color: var(--ink-soft, #6b6458);
+  font: 700 var(--fs-xs)/1.3 var(--ds-font); letter-spacing: .04em; text-transform: uppercase;
+  text-align: left; padding: var(--sp-3); border-bottom: 1px solid var(--line, #e7e1d4); white-space: nowrap;
+}
+.ds-table tbody td { padding: var(--sp-3); border-bottom: 1px solid var(--line, #e7e1d4); color: var(--ink, #1a1814); }
+.ds-table tbody tr:hover { background: #faf8f3; }
+.ds-table .is-num, .ds-table th.is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.ds-table .is-money { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ds-table tfoot td {
+  position: sticky; bottom: 0; background: #faf8f3; font-weight: 700;
+  border-top: 1px solid var(--line, #e7e1d4); padding: var(--sp-3); font-variant-numeric: tabular-nums;
+}
+[data-theme="dark"] .ds-table thead th, [data-theme="dark"] .ds-table tfoot td { background: #26221d; color: #b0a89a; border-color: #35302a; }
+[data-theme="dark"] .ds-table tbody td { color: #ece7dd; border-color: #35302a; }
+[data-theme="dark"] .ds-table tbody tr:hover { background: #2a2622; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Empty state — say what to do, not merely that there is nothing
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-empty { text-align: center; padding: var(--sp-10) var(--sp-5); color: var(--ink-soft, #6b6458); }
+.ds-empty-icon { font-size: var(--fs-2xl); opacity: .45; margin-bottom: var(--sp-2); }
+.ds-empty-title { font: 700 var(--fs-md)/1.3 var(--ds-font); color: var(--ink, #1a1814); margin-bottom: var(--sp-1); }
+.ds-empty-body { font: 500 var(--fs-base)/var(--lh-base) var(--ds-font); max-width: 44ch; margin: 0 auto; }
+[data-theme="dark"] .ds-empty-title { color: #ece7dd; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Bars and sparklines
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-bar { display: flex; width: 100%; height: 26px; border-radius: var(--r-sm); overflow: hidden; background: var(--surface, #f5f2eb); }
+.ds-bar-seg { height: 100%; transition: filter .12s; }
+.ds-bar-seg:hover { filter: brightness(1.08); }
+.ds-bar-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-3); }
+.ds-legend-item { display: flex; align-items: center; gap: var(--sp-2); font: 500 var(--fs-sm)/1 var(--ds-font); color: var(--ink-soft, #6b6458); }
+.ds-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ds-legend-val { font-weight: 700; color: var(--ink, #1a1814); font-variant-numeric: tabular-nums; }
+[data-theme="dark"] .ds-legend-val { color: #ece7dd; }
+.ds-spark { display: block; width: 100%; height: 28px; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Nav badge + narrow-screen tab strip
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 5px;
+  border-radius: var(--r-pill); background: #b32020; color: #fff;
+  font: 700 var(--fs-xs)/1 var(--ds-font); font-variant-numeric: tabular-nums;
+}
+.ds-nav-badge.is-quiet { background: var(--ink-soft, #6b6458); }
+@media (max-width: 1100px) {
+  nav .nav-tabs { overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+  nav .nav-tabs::-webkit-scrollbar { height: 3px; }
+  nav .nav-tabs::-webkit-scrollbar-thumb { background: var(--line, #e7e1d4); border-radius: 3px; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Utilities
+   ─────────────────────────────────────────────────────────────────────────── */
+.ds-money { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ds-muted { color: var(--ink-soft, #6b6458); }
+.ds-row { display: flex; align-items: center; gap: var(--sp-3); }
+.ds-grid-2 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.ds-skeleton {
+  background: linear-gradient(90deg, var(--surface,#f5f2eb) 25%, var(--surface-deep,#ebe5d7) 37%, var(--surface,#f5f2eb) 63%);
+  background-size: 400% 100%; animation: ds-shimmer 1.2s ease-in-out infinite;
+  border-radius: var(--r-sm); height: 1em;
+}
+@keyframes ds-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+[data-theme="dark"] .ds-skeleton { background: linear-gradient(90deg,#201d19 25%,#2a2622 37%,#201d19 63%); background-size: 400% 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-toast, .ds-skeleton, .ds-bar-seg { animation: none !important; transition: none !important; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Invoice explorer (Phase 3)
+   The table is a CSS grid per row rather than a <table>, because a virtualized
+   table needs every row to be the same height and positioned by transform, and
+   table layout will not cooperate with either.
+   ─────────────────────────────────────────────────────────────────────────── */
+.exp-input {
+  padding: 7px 9px; border: 1px solid var(--line, #e7e1d4); border-radius: var(--r-sm);
+  font: 500 var(--fs-base) var(--ds-font); background: var(--card, #fff); color: var(--ink, #1a1814);
+  min-width: 132px;
+}
+[data-theme="dark"] .exp-input { background: #171512; color: #ece7dd; border-color: #35302a; }
+
+.exp-head { overflow: hidden; border-bottom: 1px solid var(--line, #e7e1d4); background: #faf8f3; }
+[data-theme="dark"] .exp-head { background: #26221d; border-color: #35302a; }
+
+.exp-viewport {
+  position: relative; overflow: auto; height: 62vh; min-height: 320px;
+  outline: none;
+}
+.exp-viewport:focus-visible { box-shadow: inset 0 0 0 2px var(--brand, #45893f); }
+#exp-spacer { position: relative; }
+.exp-body { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+
+.exp-row {
+  display: grid; align-items: center; height: var(--row-h, 38px);
+  border-bottom: 1px solid var(--line, #e7e1d4);
+  font: 500 var(--fs-base)/1.2 var(--ds-font); color: var(--ink, #1a1814);
+  cursor: pointer; white-space: nowrap;
+}
+.exp-row:hover { background: #faf8f3; }
+.exp-row.is-selected { background: #eef4ec; }
+.exp-row.is-cursor { box-shadow: inset 3px 0 0 var(--brand, #45893f); }
+.exp-row.is-head {
+  height: 34px; cursor: default; background: transparent; border-bottom: 0;
+  font: 700 var(--fs-xs)/1.3 var(--ds-font); letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink-soft, #6b6458);
+}
+.exp-row.is-head:hover { background: transparent; }
+[data-theme="dark"] .exp-row { color: #ece7dd; border-color: #35302a; }
+[data-theme="dark"] .exp-row:hover { background: #2a2622; }
+[data-theme="dark"] .exp-row.is-selected { background: #23301f; }
+
+.exp-cell {
+  padding: 0 10px; overflow: hidden; text-overflow: ellipsis;
+}
+.exp-cell.is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.exp-cell.is-check { padding: 0 0 0 10px; }
+.exp-cell.is-sortable { cursor: pointer; user-select: none; }
+.exp-cell.is-sortable:hover { color: var(--ink, #1a1814); }
+.exp-caret { margin-left: 4px; font-size: 9px; }
+
+/* The invoice number stays put when the table is scrolled sideways. */
+.exp-row > .exp-cell:nth-child(2) {
+  position: sticky; left: 34px; z-index: 2;
+  background: inherit;
+}
+.exp-row:not(.is-head) > .exp-cell:nth-child(2) { background: var(--card, #fff); }
+.exp-row:hover > .exp-cell:nth-child(2) { background: #faf8f3; }
+.exp-row.is-selected > .exp-cell:nth-child(2) { background: #eef4ec; }
+.exp-row > .exp-cell.is-check { position: sticky; left: 0; z-index: 3; background: var(--card, #fff); }
+.exp-row.is-head > .exp-cell.is-check, .exp-row.is-head > .exp-cell:nth-child(2) { background: #faf8f3; }
+[data-theme="dark"] .exp-row:not(.is-head) > .exp-cell:nth-child(2),
+[data-theme="dark"] .exp-row > .exp-cell.is-check { background: #201d19; }
+[data-theme="dark"] .exp-row.is-head > .exp-cell.is-check,
+[data-theme="dark"] .exp-row.is-head > .exp-cell:nth-child(2) { background: #26221d; }
+[data-theme="dark"] .exp-row:hover > .exp-cell:nth-child(2) { background: #2a2622; }
+[data-theme="dark"] .exp-row.is-selected > .exp-cell:nth-child(2) { background: #23301f; }
+
+.exp-foot {
+  padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line, #e7e1d4);
+  font: 500 var(--fs-sm) var(--ds-font); background: #faf8f3;
+}
+[data-theme="dark"] .exp-foot { background: #26221d; border-color: #35302a; }
+
+kbd {
+  font: 600 10px var(--font-mono, ui-monospace, monospace);
+  background: var(--surface, #f5f2eb); border: 1px solid var(--line, #e7e1d4);
+  border-radius: 4px; padding: 1px 5px; color: var(--ink, #1a1814);
+}
+[data-theme="dark"] kbd { background: #2a2622; border-color: #35302a; color: #ece7dd; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Drawer right-rail tabs (Phase 3, item 7)
+   Wraps the existing drawer: #drawer-body is the Overview pane and keeps its
+   own styling, so nothing about the current invoice detail changes.
+   ─────────────────────────────────────────────────────────────────────────── */
+.rail-tabs {
+  display: flex; gap: 2px; flex: none;
+  padding: 0 var(--sp-3); background: #faf8f3;
+  border-bottom: 1px solid var(--line, #e7e1d4);
+}
+.rail-tab {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 10px var(--sp-3); cursor: pointer;
+  font: 600 var(--fs-base)/1 var(--ds-font); color: var(--ink-soft, #6b6458);
+}
+.rail-tab:hover { color: var(--ink, #1a1814); }
+.rail-tab.is-on { color: var(--ink, #1a1814); border-bottom-color: var(--brand, #45893f); }
+.rail-tab-n { font-weight: 700; font-size: var(--fs-xs); opacity: .65; }
+.rail-pane { flex: 1; overflow-y: auto; }
+[data-theme="dark"] .rail-tabs { background: #26221d; border-color: #35302a; }
+[data-theme="dark"] .rail-tab { color: #b0a89a; }
+[data-theme="dark"] .rail-tab.is-on { color: #ece7dd; }
+
+/* Activity timeline */
+.rail-timeline { padding: var(--sp-4) var(--sp-4) var(--sp-8); }
+.rail-event { display: grid; grid-template-columns: 14px 1fr; gap: var(--sp-3); padding-bottom: var(--sp-4); position: relative; }
+.rail-event::before {
+  content: ''; position: absolute; left: 6px; top: 14px; bottom: 0; width: 1px;
+  background: var(--line, #e7e1d4);
+}
+.rail-event:last-child::before { display: none; }
+.rail-dot {
+  width: 9px; height: 9px; border-radius: 50%; margin-top: 4px;
+  background: var(--brand, #45893f); box-shadow: 0 0 0 3px var(--card, #fff); z-index: 1;
+}
+.rail-event-head { font: 600 var(--fs-base)/1.4 var(--ds-font); color: var(--ink, #1a1814); text-transform: capitalize; }
+.rail-event-detail { font: 500 var(--fs-sm)/1.45 var(--ds-font); color: var(--ink, #1a1814); margin-top: 1px; word-break: break-word; }
+.rail-event-meta { font: 500 var(--fs-xs)/1.4 var(--ds-font); color: var(--ink-soft, #6b6458); margin-top: 2px; }
+[data-theme="dark"] .rail-event-head, [data-theme="dark"] .rail-event-detail { color: #ece7dd; }
+[data-theme="dark"] .rail-dot { box-shadow: 0 0 0 3px #201d19; }
+
+/* Comms */
+.rail-msg { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line, #e7e1d4); cursor: pointer; }
+.rail-msg:hover { background: #faf8f3; }
+.rail-msg-head { display: flex; justify-content: space-between; gap: var(--sp-3); font: 500 var(--fs-base)/1.4 var(--ds-font); color: var(--ink, #1a1814); }
+.rail-msg-meta { font: 500 var(--fs-xs)/1.5 var(--ds-font); color: var(--ink-soft, #6b6458); margin-top: 2px; }
+.rail-msg-body { display: none; margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px dashed var(--line, #e7e1d4); font: 500 var(--fs-sm)/1.55 var(--ds-font); }
+.rail-msg.is-open .rail-msg-body { display: block; }
+.rail-msg-body img { max-width: 100%; height: auto; }
+[data-theme="dark"] .rail-msg:hover { background: #2a2622; }
+[data-theme="dark"] .rail-msg-head { color: #ece7dd; }
+
+/* Documents */
+.rail-docs { padding: var(--sp-3) 0; }
+.rail-doc {
+  display: grid; grid-template-columns: 26px 1fr 18px; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); text-decoration: none; color: inherit;
+  border-bottom: 1px solid var(--line, #e7e1d4);
+}
+.rail-doc:hover { background: #faf8f3; }
+.rail-doc.is-muted { opacity: .55; }
+.rail-doc-icon { font-size: 18px; }
+.rail-doc-title { display: block; font: 600 var(--fs-base)/1.4 var(--ds-font); color: var(--ink, #1a1814); }
+.rail-doc-sub { display: block; font: 500 var(--fs-xs)/1.4 var(--ds-font); color: var(--ink-soft, #6b6458); }
+.rail-doc-go { color: var(--ink-soft, #6b6458); font-size: var(--fs-md); text-align: right; }
+[data-theme="dark"] .rail-doc:hover { background: #2a2622; }
+[data-theme="dark"] .rail-doc-title { color: #ece7dd; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Customer page + reports (Phase 4)
+   ─────────────────────────────────────────────────────────────────────────── */
+.cust-pane .ds-card { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Small multiples. Every panel shares one axis maximum, set in JS — panels
+   scaled to themselves would compare nothing. */
+.rep-mults {
+  display: grid; gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
+.rep-mult {
+  border: 1px solid var(--line, #e7e1d4); border-radius: var(--r-md);
+  padding: var(--sp-3); background: var(--card, #fff);
+}
+.rep-mult-head { margin-bottom: var(--sp-2); }
+.rep-mult .ds-bar { background: var(--surface, #f5f2eb); border-radius: 3px; }
+.rep-mult-val {
+  font: 700 var(--fs-lg)/1.2 var(--ds-font); color: var(--ink, #1a1814);
+  font-variant-numeric: tabular-nums; margin-top: var(--sp-2);
+}
+.rep-mult-sub { font: 500 var(--fs-xs)/1.4 var(--ds-font); color: var(--ink-soft, #6b6458); }
+[data-theme="dark"] .rep-mult { background: #201d19; border-color: #35302a; }
+[data-theme="dark"] .rep-mult-val { color: #ece7dd; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   PO Manager (Phase 5)
+
+   RESKIN ONLY, and scoped hard to #view-po-funds. This screen carries the EDI
+   transmit path, PO reassignment, rejection notices and site-contact edits —
+   thirteen sub-tabs of live money actions. The plan says "EDI transmit flows
+   unchanged, only reskinned", and its own guardrail requires manual regression
+   here, so NOT ONE LINE of the renderers or handlers is touched. Everything
+   below is appearance, applied to markup those functions already emit, which is
+   why setPoFundsSubtab, the badge counts and every action keep working exactly
+   as they did.
+
+   Scoped because .cust-pill and bare `table` are used elsewhere in the portal.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Header: title at the shared scale, freshness as a strip rather than grey
+   8px text lost above the filters. */
+#view-po-funds > div > div:first-child h2 {
+  font: 700 var(--fs-xl)/1.2 var(--ds-font) !important;
+  color: var(--ink, #1a1814) !important;
+}
+#po-funds-freshness {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); align-items: center;
+  background: var(--card, #fff); border: 1px solid var(--line, #e7e1d4);
+  border-radius: var(--r-md); padding: var(--sp-2) var(--sp-3);
+  font: 500 var(--fs-xs)/1.5 var(--ds-font) !important;
+  color: var(--ink-soft, #6b6458) !important;
+  margin-bottom: var(--sp-3) !important;
+}
+#po-funds-freshness strong { color: var(--ink, #1a1814); font-weight: 700; }
+#po-funds-count { font: 600 var(--fs-sm) var(--ds-font) !important; color: var(--ink-soft, #6b6458) !important; }
+[data-theme="dark"] #po-funds-freshness { background: #201d19; border-color: #35302a; }
+[data-theme="dark"] #view-po-funds > div > div:first-child h2 { color: #ece7dd !important; }
+
+/* Sub-tab bar as chips. Same buttons, same onclick, same .active toggling.
+   Targeted by id prefix, NOT by .cust-pill: the Pending by Site pane renders
+   five MORE .cust-pill buttons of its own (All sites / With pending / Surplus
+   funds / Unassigned / Snow only). Styling those the same way made an in-pane
+   filter look exactly like navigation, and showed two chips "active" at once. */
+#view-po-funds .cust-pill[id^="po-subtab-"] {
+  background: var(--surface, #f5f2eb) !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--r-pill) !important;
+  padding: 6px 13px !important;
+  font: 600 var(--fs-sm)/1 var(--ds-font) !important;
+  color: var(--ink-soft, #6b6458) !important;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+#view-po-funds .cust-pill[id^="po-subtab-"]:hover {
+  border-color: var(--line, #e7e1d4) !important; color: var(--ink, #1a1814) !important;
+}
+#view-po-funds .cust-pill[id^="po-subtab-"].active {
+  background: var(--ink, #1a1814) !important; color: #fff !important; border-color: var(--ink, #1a1814) !important;
+}
+#view-po-funds .cust-pill[id^="po-subtab-"] span { font-variant-numeric: tabular-nums; font-weight: 700; }
+#view-po-funds .cust-pill[id^="po-subtab-"].active span { color: #fff !important; }
+[data-theme="dark"] #view-po-funds .cust-pill[id^="po-subtab-"] { background: #2a2622 !important; color: #b0a89a !important; }
+[data-theme="dark"] #view-po-funds .cust-pill[id^="po-subtab-"].active { background: #ece7dd !important; color: #1a1814 !important; border-color: #ece7dd !important; }
+[data-theme="dark"] #view-po-funds .cust-pill[id^="po-subtab-"].active span { color: #1a1814 !important; }
+
+/* Filters INSIDE a pane read as filters: outlined, never inked. A filter and a
+   navigation tab must not look like the same control. */
+#view-po-funds [id$="-content"] .cust-pill {
+  background: var(--card, #fff) !important;
+  border: 1px solid var(--line, #e7e1d4) !important;
+  border-radius: var(--r-pill) !important;
+  padding: 5px 12px !important;
+  font: 600 var(--fs-xs)/1 var(--ds-font) !important;
+  color: var(--ink-soft, #6b6458) !important;
+}
+#view-po-funds [id$="-content"] .cust-pill.active {
+  border-color: var(--brand-text, #3f7238) !important;
+  color: var(--brand-text, #3f7238) !important;
+  background: #eef4ec !important;
+}
+[data-theme="dark"] #view-po-funds [id$="-content"] .cust-pill { background: #201d19 !important; border-color: #35302a !important; color: #b0a89a !important; }
+[data-theme="dark"] #view-po-funds [id$="-content"] .cust-pill.active { background: #23301f !important; color: #7db55a !important; border-color: #7db55a !important; }
+
+/* Tables take the shared look without any renderer changing. */
+#view-po-funds table { font: 500 var(--fs-base)/1.45 var(--ds-font); border-collapse: collapse; width: 100%; }
+#view-po-funds thead th {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  background: #faf8f3 !important; color: var(--ink-soft, #6b6458) !important;
+  font: 700 var(--fs-xs)/1.3 var(--ds-font) !important;
+  letter-spacing: .04em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line, #e7e1d4) !important;
+  white-space: nowrap;
+}
+#view-po-funds tbody td { border-bottom: 1px solid var(--line, #e7e1d4); }
+#view-po-funds tbody tr:hover > td { background: #faf8f3; }
+/* Money columns are right-aligned by the renderers; make every figure tabular
+   so the columns actually line up. */
+#view-po-funds td, #view-po-funds th { font-variant-numeric: tabular-nums; }
+[data-theme="dark"] #view-po-funds thead th { background: #26221d !important; color: #b0a89a !important; border-color: #35302a !important; }
+[data-theme="dark"] #view-po-funds tbody td { border-color: #35302a; }
+[data-theme="dark"] #view-po-funds tbody tr:hover > td { background: #2a2622; }
+
+/* By Site already expands a row per site (togglePoSiteRow). Give the expanded
+   region a card edge so a drill-down reads as one thing rather than a run of
+   stripes. */
+#po-sites-content tr[data-expanded] > td,
+#po-sites-content .po-site-detail {
+  background: var(--surface, #f5f2eb);
+  box-shadow: inset 3px 0 0 var(--brand, #45893f);
+}
+[data-theme="dark"] #po-sites-content tr[data-expanded] > td,
+[data-theme="dark"] #po-sites-content .po-site-detail { background: #26221d; }
+
+/* Filters match the rest of the redesign. */
+#view-po-funds #po-filter-site {
+  padding: 7px 10px !important; border: 1px solid var(--line, #e7e1d4) !important;
+  border-radius: var(--r-sm) !important; font: 500 var(--fs-base) var(--ds-font) !important;
+  background: var(--card, #fff); color: var(--ink, #1a1814);
+}
+[data-theme="dark"] #view-po-funds #po-filter-site { background: #171512; color: #ece7dd; border-color: #35302a !important; }
+
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Phase 6 — density + accessibility
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Compact affects DENSITY, never type size. Shrinking the text to fit more in
+   makes a money table harder to read, which defeats the purpose. */
+[data-density="compact"] .ds-table tbody td,
+[data-density="compact"] .ds-table thead th,
+[data-density="compact"] .ds-table tfoot td { padding: 6px var(--sp-3); }
+[data-density="compact"] .ds-tile { padding: var(--sp-3); }
+[data-density="compact"] .ds-card-body { padding: var(--sp-3); }
+[data-density="compact"] .ds-card-head { padding: var(--sp-2) var(--sp-3); }
+[data-density="compact"] .rail-msg { padding: var(--sp-2) var(--sp-3); }
+[data-density="compact"] .rail-doc { padding: var(--sp-2) var(--sp-3); }
+[data-density="compact"] #view-po-funds tbody td { padding-top: 5px; padding-bottom: 5px; }
+[data-density="compact"] .exp-cell { padding: 0 8px; }
+
+.ds-density {
+  display: inline-flex; border: 1px solid var(--line, #e7e1d4); border-radius: var(--r-pill);
+  overflow: hidden; background: var(--card, #fff);
+}
+.ds-density button {
+  border: 0; background: none; cursor: pointer; padding: 5px 11px;
+  font: 600 var(--fs-xs)/1 var(--ds-font); color: var(--ink-soft, #6b6458);
+}
+.ds-density button.is-on { background: var(--ink, #1a1814); color: #fff; }
+[data-theme="dark"] .ds-density { background: #201d19; border-color: #35302a; }
+[data-theme="dark"] .ds-density button.is-on { background: #ece7dd; color: #1a1814; }
+
+/* ── Focus ────────────────────────────────────────────────────────────────
+   Every interactive thing shows a focus ring when reached by keyboard, and
+   nothing shows one on a mouse click. The portal previously relied on the
+   browser default, which the custom backgrounds made nearly invisible.
+   -------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--brand-text, #3f7238);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.ds-btn:focus-visible, .ds-chip:focus-visible, .rail-tab:focus-visible,
+.exp-viewport:focus-visible, .ds-density button:focus-visible {
+  outline: 2px solid var(--brand-text, #3f7238); outline-offset: 2px;
+}
+[data-theme="dark"] :focus-visible { outline-color: #7db55a; }
+
+/* A keyboard user must be able to reach the row actions in the explorer; the
+   rows are divs, so they need to advertise themselves. */
+.exp-row[data-idx] { scroll-margin-block: 60px; }
+
+/* Skip link — the nav is 13 items wide before the content starts. */
+.ds-skip {
+  position: absolute; left: -9999px; top: 0; z-index: var(--z-toast);
+  background: var(--ink, #1a1814); color: #fff; padding: 10px 16px;
+  font: 600 var(--fs-base) var(--ds-font); border-radius: 0 0 var(--r-sm) 0;
+}
+.ds-skip:focus { left: 0; }
+
+/* ── Reduced motion ───────────────────────────────────────────────────────
+   Honour the system setting everywhere, not just on the components that
+   happened to animate first.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* The Phase 4 reports own their own vertical rhythm, but #report-grid carries
+   `.report-grid` from index.html — a two-column auto-fit grid built for the
+   old .report-card tiles. Each of my sections became a grid ITEM, so the
+   headline row, the aging card and the small multiples were dealt into columns
+   with dead space beside them. Only visible on a full-page capture; a viewport
+   screenshot cropped it out (2026-09-18).
+
+   Scoped by :has() to the redesigned content, so if reports.js fails and the
+   previous screen renders into this container, its grid still applies. */
+#report-grid:has(> .ds-row) { display: block; }
+
+/* Site POs — remaining capacity is the number that decides whether to start. */
+.ds-table .is-money.is-over { color: #b32020; font-weight: 700; }
+.ds-table .is-money.is-none { color: #a05c22; font-weight: 700; }
+[data-theme="dark"] .ds-table .is-money.is-over { color: #e2725b; }
+[data-theme="dark"] .ds-table .is-money.is-none { color: #d99a52; }

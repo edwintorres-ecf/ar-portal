@@ -522,7 +522,10 @@ async function commsOpenCustomerPage(customerId) {
   _custPageId = customerId;
   try { history.replaceState(null, '', '#customer-page/' + encodeURIComponent(customerId)); } catch (e) {}
   if (typeof switchView === 'function') switchView('customer-page');
-  commsLoadCustomerPage();
+  // Redesign Phase 4: the account-centric page. The old renderer stays as the
+  // fallback so the customer view still works if customer.js fails to load.
+  if (typeof custLoad === 'function') custLoad();
+  else commsLoadCustomerPage();
 }
 
 async function commsLoadCustomerPage() {
@@ -1779,6 +1782,15 @@ function commsScChips(codes) {
     `<span class="sc-chip ${KNOWN.includes(c) ? 'sc-' + c : 'sc-unknown'}">${escHtml(c)}</span>`).join(' ');
 }
 
+
+// Redesign Phase 2: the landing view is dashboard.js. This shim keeps the old
+// renderer as a fallback, so a failure to load dashboard.js leaves the portal
+// with a working home page rather than a blank one.
+function dashOrOverview() {
+  if (typeof dashLoad === 'function') return dashLoad();
+  return commsLoadOverview();
+}
+
 async function commsLoadOverview() {
   const root = document.getElementById('overview-root');
   if (!root) return;
@@ -1999,13 +2011,13 @@ async function commsUpdateFooter() {
         navGo(last);
         return;
       }
-      commsLoadOverview();
+      dashOrOverview();
       return;
     }
     const [view, param] = h.split('/');
     if (view === 'customer-page' && param) { commsOpenCustomerPage(decodeURIComponent(param)); return; }
     if (document.getElementById('view-' + view)) { navGo(view); return; }
-    commsLoadOverview();
+    dashOrOverview();
   };
   setTimeout(restore, 900);
   window.addEventListener('hashchange', () => {

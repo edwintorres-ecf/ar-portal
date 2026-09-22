@@ -532,6 +532,15 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 </style>
 <link rel="stylesheet" href="/styles.css?v=20260814a">
+<!-- Redesign Phase 1: token layer + components. Loaded AFTER styles.css,
+     which it extends rather than replaces. -->
+<link rel="stylesheet" href="/ds.css?v=20260921sp">
+<script src="/ds.js?v=20260918p6"></script>
+<script src="/dashboard.js?v=20260916p2"></script>
+<script src="/explorer.js?v=20260919guard"></script>
+<script src="/customer.js?v=20260918p6"></script>
+<script src="/sitepos.js?v=20260921b"></script>
+<script src="/reports.js?v=20260918p4"></script>
 </head>
 <body>
 
@@ -566,6 +575,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="dashboard" onclick="navGo('dashboard')">🗂 Invoices (advanced)</div>
         <div class="nav-drop-item" data-view="customers" onclick="navGo('customers')">👥 All Customers</div>
         <div class="nav-drop-item" data-view="locations" onclick="navGo('locations')">📍 Locations</div>
+        <div class="nav-drop-item" data-view="sitepos" onclick="navGo('sitepos')">📋 Purchase Orders</div>
         <div class="nav-drop-item" data-view="search" onclick="navGo('search')">🔎 Search</div>
         <div class="nav-drop-item" data-view="service-centers" onclick="navGo('service-centers')">🏢 Service Centers</div>
       </div>
@@ -780,6 +790,10 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 <div id="view-invoices2" class="view">
   <div id="invoices2-root" style="padding:4px 8px"></div>
+</div>
+
+<div id="view-sitepos" class="view">
+  <div id="sitepos-root" style="padding:4px 8px"></div>
 </div>
 
 <div id="view-customer-page" class="view">
@@ -2598,15 +2612,30 @@ function switchView(name, el) {
   if (name === 'amazon-accruals' && typeof accrualsLoad === 'function') { accrualsLoad(); }
   if (name === 'activity') { loadActivityLog(); }
   if (name === 'ptp-board') { loadPtpBoard(); }
-  if (name === 'reports') { loadReports(); }
+  if (name === 'sitepos' && typeof spLoad === 'function') { spLoad(); }
+  if (name === 'reports') {
+    // Redesign Phase 4. loadReports stays as the fallback.
+    if (typeof repLoad === 'function') repLoad();
+    else loadReports();
+  }
   if (name === 'admin') { loadAdminUsers(); }
   if (name === 'po-funds' && typeof loadPoFunds === 'function') { loadPoFunds(); }
   if (name === 'comms-mailbox' && typeof commsLoadMailbox === 'function') { commsLoadMailbox(); }
   if (name === 'comms-triage' && typeof commsLoadTriage === 'function') { commsLoadTriage(); }
   if (name === 'comms-dunning' && typeof commsLoadDunning === 'function') { commsLoadDunning(); }
   if (name === 'comms-statements' && typeof commsLoadStatements === 'function') { commsLoadStatements(); }
-  if (name === 'overview' && typeof commsLoadOverview === 'function') { commsLoadOverview(); }
-  if (name === 'invoices2' && typeof commsLoadInvoices2 === 'function') { commsLoadInvoices2(); }
+  if (name === 'overview') {
+    // Redesign Phase 2. commsLoadOverview stays as the fallback so the
+    // landing page still renders if dashboard.js fails to load.
+    if (typeof dashLoad === 'function') dashLoad();
+    else if (typeof commsLoadOverview === 'function') commsLoadOverview();
+  }
+  if (name === 'invoices2') {
+    // Redesign Phase 3. commsLoadInvoices2 stays as the fallback so the
+    // most-used screen still works if explorer.js fails to load.
+    if (typeof expLoad === 'function') expLoad();
+    else if (typeof commsLoadInvoices2 === 'function') commsLoadInvoices2();
+  }
   if (name === 'locations' && typeof commsLoadLocations === 'function') { commsLoadLocations(); }
   if (name === 'search' && typeof commsLoadSearch === 'function') { commsLoadSearch(); }
   if (name === 'training' && typeof commsLoadTraining === 'function') { commsLoadTraining(); }
@@ -7577,7 +7606,7 @@ function openStatement(customerId) {
 
 </script>
 <div id="live-footer">Live data — connected to <strong>Sage Intacct</strong> + <strong>Amazon Payee Central</strong><span id="live-footer-age"></span> · no daily imports</div>
-<script src="/comms.js?v=20260916drafts"></script>
+<script src="/comms.js?v=20260921promote"></script>
 <script src="/amazon.js?v=20260910k"></script>
 </body>
 </html>
