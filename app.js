@@ -6863,6 +6863,16 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
         require('./ops-alerts').ok('edi-watch-standing',
           `${t.count} not in Payee ($${Math.round(t.amount).toLocaleString('en-US')})`
           + ` — ${t.failedCount} failed, ${t.missingCount} unconfirmed`);
+        // edi-watch is the RED one, and it has to be rewritten every sweep.
+        // The `newly` gate below returns before raise() is reached, and raise()
+        // is what used to write this row — so once a backlog had been alerted
+        // the row froze: 28.7h stale while this job ran hourly, still quoting a
+        // day-old detection. fail() records state without emailing; the email
+        // below stays gated on genuinely new invoices (Edwin 2026-09-22).
+        require('./ops-alerts').fail('edi-watch',
+          `${t.count} not in Payee ($${Math.round(t.amount).toLocaleString('en-US')})`
+          + ` — ${t.failedCount} failed, ${t.missingCount} unconfirmed.`
+          + ` Not in Payee means it does not exist; these need uploading.`);
       } catch (e) {}
       if (!newly.length) return;
 

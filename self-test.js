@@ -112,11 +112,40 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
   // self-sustaining: the run fails, writes a fail row, and the next run fails
   // on that row alone. This deadlock was cleared by hand on 2026-08-20 and came
   // straight back. The row is a summary of these checks, never new evidence.
+  //
+  // It does NOT re-raise the other checks' failures either. Every check reports
+  // itself, by name, on the PO Manager health strip, so re-raising made one
+  // problem light up two checks and held self-test red for something already
+  // tracked and owned — edi-watch's backlog kept self-test failing for days
+  // while telling nobody anything new (Edwin 2026-09-22: "scope it so it
+  // doesn't double count").
+  //
+  // What no other check CAN see is a check that has STOPPED RUNNING. The board
+  // only ever shows the last status a check wrote, so a dead background job is
+  // indistinguishable from a healthy one — it just keeps showing green. That
+  // silence is this check's job, and only this check's.
   check('ops-health-board', () => {
+    const STALE_H = Number(process.env.OPS_HEALTH_STALE_HOURS || 26);
+    // SQLite writes datetime('now') as "2026-09-22 11:00:40" — UTC, no zone —
+    // and Date.parse reads that bare form as LOCAL, which on an ET host lands
+    // 4 hours in the future and makes every row look freshly written.
+    const hoursOld = (ts) => {
+      const s = String(ts || '');
+      const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) ? s.replace(' ', 'T') + 'Z' : s;
+      const t = Date.parse(iso);
+      return isNaN(t) ? Infinity : (Date.now() - t) / 3600000;
+    };
     const rows = db.getHealth().filter(h => h.check_key !== 'self-test');
-    const bad = rows.filter(h => h.status === 'fail');
-    if (bad.length) throw new Error(bad.map(b => `${b.check_key}: ${b.detail || ''}`).join(' | ').slice(0, 200));
-    return `${rows.length} checks green/amber`;
+    if (!rows.length) throw new Error('no checks are reporting at all — the monitors are not running');
+    const stale = rows.filter(h => hoursOld(h.updated_at) > STALE_H);
+    if (stale.length) {
+      throw new Error(`${stale.length} check(s) have stopped updating (>${STALE_H}h): `
+        + stale.map(h => `${h.check_key} ${Math.round(hoursOld(h.updated_at))}h`).join(', '));
+    }
+    // Named, not re-raised: visible here without turning into a second failure.
+    const bad = rows.filter(h => h.status === 'fail').map(h => h.check_key);
+    return `all ${rows.length} checks reporting within ${STALE_H}h`
+      + (bad.length ? ` — ${bad.length} failing, each tracked on its own: ${bad.join(', ')}` : ', none failing');
   });
   // 5. Transmission reconciliation
   check('edi-reconciliation', () => {

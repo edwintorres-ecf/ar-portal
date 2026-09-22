@@ -79,4 +79,18 @@ function ok(key, detail, metric) {
   try { db.setHealth(key, 'ok', detail ? String(detail).slice(0, 500) : null, metric); } catch (e) {}
 }
 
-module.exports = { raise, ok, sendMail };
+/**
+ * Record a FAILING check without emailing — the counterpart of ok().
+ *
+ * Health and email are different things and were being conflated. A health row
+ * is CURRENT STATE and must be rewritten on every sweep; an email is NEWS and
+ * must not re-send every hour for a standing problem. Callers with a standing
+ * backlog used to skip raise() entirely once everything had been alerted, which
+ * froze the health row: edi-watch sat 28.7 hours stale while its job ran hourly,
+ * still showing whatever the last NEW detection had said (2026-09-22).
+ */
+function fail(key, detail, metric) {
+  try { db.setHealth(key, 'fail', detail ? String(detail).slice(0, 500) : null, metric); } catch (e) {}
+}
+
+module.exports = { raise, ok, fail, sendMail };

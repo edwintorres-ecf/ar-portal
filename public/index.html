@@ -6735,9 +6735,15 @@ async function poNuBulkTransmit() {
   const resubs = invs.filter(i => i.isResubmission).length;
   const overages = invs.filter(i => i.wouldOverage).length;
   const recent = invs.filter(i => i.recentTransmitAt).length;
-  const deadPo = invs.filter(i => i.poStatus !== 'OPEN_FOR_INVOICING' || i.poZeroFunds).length;
+  // A PO Amazon publishes no amount for is NOT dead — 14 such POs already hold
+  // $3.7M of accepted invoices and several are fully paid. Only two things
+  // genuinely stop a submission: a PO that is not open, and a PO Amazon is
+  // already holding invoices against for want of funds.
+  const deadPo = invs.filter(i => i.poStatus !== 'OPEN_FOR_INVOICING').length;
+  const heldPo = invs.filter(i => i.poStatus === 'OPEN_FOR_INVOICING' && i.poFundsHeld).length;
   let msg = `Transmit ${sel.length} invoice(s) to Amazon via EDI? This sends live.`;
-  if (deadPo) msg += `\n\n⛔ ${deadPo} of these target a PO that is NOT OPEN or has $0 funds — those submissions will vanish or sit unpaid (this is exactly what happened Jul 17). Reassign them first.`;
+  if (deadPo) msg += `\n\n⛔ ${deadPo} of these target a PO that is NOT OPEN for invoicing — those submissions vanish without an error (this is exactly what happened Jul 17). Reassign them first.`;
+  if (heldPo) msg += `\n\n⛔ ${heldPo} of these target a PO Amazon is already holding invoices against for insufficient funds — they will land but sit unpaid. Request funds or reassign.`;
   if (recent) msg += `\n\n🕓 ${recent} of these were ALREADY TRANSMITTED in the last 48h and are awaiting Payee ingestion — re-sending will create duplicates that Amazon rejects. Deselect them unless you're certain.`;
   if (resubs) msg += `\n\n${resubs} are resubmissions — each will use its auto-suggested suffix (…A). Use single Transmit if you need to set a specific suffix.`;
   if (overages) msg += `\n\n⚠️ ${overages} would overage their PO. Reassign those first if that's not intended.`;
@@ -6794,8 +6800,10 @@ function renderPoNeedsUpload() {
     let overageBadge;
     if (inv.poStatus !== 'OPEN_FOR_INVOICING') {
       overageBadge = `<span style="color:#dc2626;font-weight:700" title="${inv.poStatus ? 'PO status: ' + escHtml(inv.poStatus) : 'PO is not in Amazon\'s open-PO list'} — submissions to it vanish without an error. Reassign before transmitting.">⛔ PO not open</span>`;
-    } else if (inv.poZeroFunds) {
-      overageBadge = `<span style="color:#dc2626;font-weight:700" title="PO is open but has $0 remaining value — the submission will be dropped or held unpaid. Reassign or request funds.">⛔ PO $0 funds</span>`;
+    } else if (inv.poFundsHeld) {
+      // Observed, not inferred: Amazon is ALREADY holding invoices on this PO
+      // for insufficient funds. That is the PO telling us it cannot pay.
+      overageBadge = `<span style="color:#dc2626;font-weight:700" title="Amazon is already holding ${inv.poFundsHeld} invoice(s) on this PO for insufficient funds (${fmt$(inv.poFundsHeldAmount)}). Another submission joins the queue unpaid — request funds or reassign.">⛔ PO out of funds · ${inv.poFundsHeld} held</span>`;
     } else if (inv.wouldOverage) {
       overageBadge = `<span style="color:#dc2626;font-weight:600" title="Invoice ${fmt$(inv.amount)} vs ${fmt$(inv.poAvailable)} headroom before it">⚠️ Short by ${fmt$(shortBy)}</span>`;
     } else if (inv.poAvailable != null) {
@@ -7114,7 +7122,8 @@ function renderEdiPreflight(recordNo, x12) {
   else if (row.poStatus) checks.push(['bad', `PO ${escHtml(row.assignedPo)} status is ${escHtml(row.poStatus)} — Amazon will not accept invoices against it`]);
   else checks.push(['bad', `PO ${escHtml(row.assignedPo || '—')} is NOT in Amazon's open-PO list — submissions to it vanish without an error (the Jul 17 failure mode)`]);
   // Funds
-  if (row.poZeroFunds) checks.push(['bad', `PO has $0 remaining value — the submission will be dropped or held with no funds to pay it`]);
+  if (row.poFundsHeld) checks.push(['bad', `Amazon is already holding ${row.poFundsHeld} invoice(s) on this PO for insufficient funds (${fmt$(row.poFundsHeldAmount)}) — this one will land but sit unpaid until funds are added`]);
+  else if (row.poValueUnpublished) checks.push(['warn', `Amazon publishes no value for this PO ("--"). That is not a blocker on its own — POs in this state routinely accept and pay invoices — but headroom cannot be checked before sending`]);
   else if (overage) checks.push(['warn', `Invoice ${fmt$(chargeAmt)}${tax ? ' pre-tax (tax ' + fmt$(tax) + ' excluded)' : ''} exceeds the PO's ${row.poAvailable != null ? fmt$(row.poAvailable) : 'unknown'} headroom — expect Insufficient Amazon PO Manager Hold`]);
   else if (row.poAvailable != null) checks.push(['ok', `PO headroom ${fmt$(row.poAvailable)} covers this ${fmt$(chargeAmt)}${tax ? ' pre-tax invoice (tax ' + fmt$(tax) + ' rides on top, not charged to PO funds)' : ' invoice'}`]);
   else checks.push(['warn', 'PO ceiling untracked — funds coverage unknown']);

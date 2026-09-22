@@ -846,6 +846,25 @@ function getNeedsUpload(invoices) {
 
   const openPoMap = payee.getOpenPoMap().byPo;
 
+  // Which POs Amazon is currently holding invoices against for insufficient
+  // funds, counted once per call. This is the only trustworthy "this PO cannot
+  // pay" signal we have — the published PO amount is frequently "--" on POs
+  // that are paying perfectly well.
+  const fundsHeld = (() => {
+    const out = {};
+    try {
+      for (const v of Object.values(payee.getIndex())) {
+        if (!v || !v.po || !/insufficient po funds/i.test(String(v.status || ''))) continue;
+        const key = String(v.po).toUpperCase();
+        const amt = parseFloat(String(v.amount || '').replace(/[^0-9.-]/g, '')) || 0;
+        out[key] = out[key] || { count: 0, amount: 0 };
+        out[key].count++;
+        out[key].amount += amt;
+      }
+    } catch (e) { /* feed unavailable — degrade to no flags */ }
+    return out;
+  })();
+
   const rows = needsUpload.map(inv => {
     const poRow = ledgerByPo[inv.effectivePo];
     const openEntry = openPoMap[(inv.effectivePo || '').toUpperCase()];
@@ -890,12 +909,22 @@ function getNeedsUpload(invoices) {
       poCeiling: poRow?.ceilingAmount ?? null,
       poAvailable: availableBeforeThis,
       wouldOverage: availableBeforeThis != null ? (availableBeforeThis - amount) < 0 : null,
-      // Pre-flight signals for the transmit UI (the Jul-17 vanished batch went
-      // to $0-value POs — that must be visible BEFORE the send, not after).
-      // NB: read the RAW open-PO amount — the ledger nulls a $0 ceiling as
-      // "no data", which would hide exactly the POs that eat submissions.
+      // Pre-flight signals for the transmit UI.
       poStatus: poRow?.poStatus || null,                 // OPEN_FOR_INVOICING | CLOSED | null (not in Amazon's open list)
-      poZeroFunds: !!openEntry && (openEntry.amount === 0 || openEntry.amount == null),
+      // Amazon publishes no amount for this PO ("--"). INFORMATIONAL ONLY.
+      // This used to be read as "$0 funds, the submission will be dropped" and
+      // that is simply not true: of the 50 open POs Amazon reports as "--", 14
+      // already hold $3.7M of accepted invoices, and on 2D-19504100 /
+      // 2D-19506287 every invoice Amazon holds is PAID. The flag was warning
+      // people off POs that demonstrably pay (Edwin 2026-09-22: "no po value
+      // doesn't mean we can't use it").
+      poValueUnpublished: !!openEntry && (openEntry.amount === 0 || openEntry.amount == null),
+      poZeroFunds: !!openEntry && (openEntry.amount === 0 || openEntry.amount == null),  // deprecated alias
+      // THE REAL funds signal, and it is observed rather than inferred: Amazon
+      // is already holding invoices on this PO for insufficient funds. That is
+      // Amazon telling us the PO cannot pay, in its own words.
+      poFundsHeld: fundsHeld[(inv.effectivePo || '').toUpperCase()]?.count || 0,
+      poFundsHeldAmount: fundsHeld[(inv.effectivePo || '').toUpperCase()]?.amount || 0,
     };
   }).sort((a, b) => {
     if (a.wouldOverage === b.wouldOverage) return 0;
