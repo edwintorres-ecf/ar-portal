@@ -2292,7 +2292,17 @@ function renderAiFilterChip() {
 function matchesAiFilter(inv) {
   const f = _aiFilter;
   if (!f) return true;
-  if (f.amazonOnly && !/amazon/i.test(inv.customerName || '')) return false;
+  // Match the CUSTOMER, not the word. "CW Amazon Services" (C-00566) is a
+  // different company with 22 invoices of its own, and a name test swept it in
+  // every time someone asked the filter for Amazon. Every other Amazon surface
+  // keys on C-00403; this one did not (Edwin 2026-09-23: "i still see the CW
+  // Amazon PO"). The name is kept only as a fallback for rows with no id.
+  if (f.amazonOnly) {
+    const isAmazon = inv.customerId
+      ? inv.customerId === 'C-00403'
+      : /^amazon\.com\b/i.test(inv.customerName || '');
+    if (!isAmazon) return false;
+  }
   if (f.customer && !((inv.customerName || '').toLowerCase().includes(f.customer.toLowerCase()))) return false;
   if (f.locationText && !((inv.locationName || '').toLowerCase().includes(f.locationText.toLowerCase()))) return false;
   const dov = inv.daysOverdue > 0 ? inv.daysOverdue : 0;
