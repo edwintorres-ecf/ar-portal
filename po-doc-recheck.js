@@ -23,11 +23,17 @@
 // simply never been filed in SharePoint, and a drive-wide search finds only v0
 // and v1. Amazon was right (Edwin 2026-09-23).
 //
-// So when nothing matches, DIRECTION is the diagnosis. Amazon higher than our
-// newest filed document almost always means an upward revision we were never
-// sent — a filing gap, not a dispute. Amazon lower is the one worth a question.
-// Either way billing is unaffected: the ledger's ceiling already comes from
-// Amazon's own figure, never from the document.
+// AND WE WERE SENT IT. Checked on 2026-09-23 against all 12 discrepancies:
+// every one has the revised PO sitting in arclerk@ with the PDF attached, and
+// the emailed figure matches Amazon on 11 of 12. Amazon mails every revision
+// there; SharePoint only gets it if a person files it, and that has not kept
+// up. Direction is irrelevant to the diagnosis — 2D-19146445 and 2D-19196530
+// were revised DOWN and are equally just unfiled.
+//
+// So there is no dispute to raise with Amazon in ANY of these cases. The action
+// is always: find the email, file the newest PDF. Billing is unaffected
+// regardless — the ledger's ceiling comes from Amazon's own figure, never from
+// the document.
 //
 // It is deliberately NOT part of the hourly intake sweep. Each check means
 // downloading and parsing PDFs from SharePoint through Graph, which is far too
@@ -41,6 +47,10 @@ const path = require('path');
 const db = require('./db');
 
 const PO_DOCS_PATH = path.join(__dirname, 'po-docs.json');
+// Where Amazon actually sends revisions. po-email-backfill.js already reads
+// this mailbox for PO PDFs (to extract sites); the revised documents have been
+// arriving here all along.
+const REV_MAILBOX = process.env.PO_MAILBOX || 'arclerk@eastcoastfacilities.com';
 // Amazon and the document are allowed to differ by small change; $1 is the
 // same tolerance po-ledger uses to raise the discrepancy in the first place.
 const MATCH_TOLERANCE = 1;
@@ -163,16 +173,14 @@ async function run(invoices, { limit = 40, force = false } = {}) {
         ? (stale
           ? `Resolved: "${winner.name}" matches Amazon. The portal is reading a different file — no dispute to raise.`
           : 'Resolved: the document the portal already reads matches Amazon. The discrepancy has cleared.')
-        : direction === 'amazon-higher'
-          ? `Missing revision: Amazon shows ${$(amazon)}, the newest document we hold shows ${$(newestAmt)}${v}. `
-            + `The PO was almost certainly revised UP and we were never sent the new copy — ask Amazon for it and file it. `
-            + `Nothing is blocked meanwhile: the portal already bills against Amazon's figure, so the extra `
-            + `${$(amazon - newestAmt)} of headroom is available now.`
-          : direction === 'amazon-lower'
-            ? `Amazon shows LESS than our newest document: ${$(amazon)} against ${$(newestAmt)}${v}. `
-              + `Either the PO was reduced or the document we hold belongs to a different order. `
-              + `Confirm with Amazon before planning work to the document figure.`
-            : `No document on file matches Amazon's figure. Confirm with Amazon.`;
+        : `Unfiled revision: Amazon shows ${$(amazon)}, the newest document FILED shows ${$(newestAmt)}${v}`
+          + `${direction === 'amazon-higher' ? ` — revised UP by ${$(amazon - newestAmt)}`
+            : direction === 'amazon-lower' ? ` — revised DOWN by ${$(newestAmt - amazon)}` : ''}. `
+          + `Amazon emails every revision to ${REV_MAILBOX} with the PDF attached; search that mailbox for `
+          + `the PO number and file the newest copy in SharePoint. Checked against all 12 discrepancies on `
+          + `2026-09-23: the emailed PDF matched Amazon on 11 of 12, so this is a filing gap, NOT a dispute. `
+          + `Nothing is blocked meanwhile — the ledger's ceiling already comes from Amazon's figure, never `
+          + `from the document.`;
 
     save.run(p.poNumber, sig, amazon, p.docAmount ?? null,
       newestAmt, winner ? winner.name : null,
