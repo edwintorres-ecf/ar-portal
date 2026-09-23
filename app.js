@@ -3868,6 +3868,21 @@ app.post('/api/site-pos/service-center', requireAuth, requirePerm('po.view'), (r
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ─── API: Season readiness — the award against the POs that have arrived ────
+// Amazon awards a snow season months before it raises the purchase orders. The
+// portal only ever knew about POs that existed, so "we were awarded 283 sites
+// for $43M, where are they?" could not be answered and the gap stayed invisible
+// until invoices began holding for want of funds in February.
+app.get('/api/po/season-readiness', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    const award = require('./amazon-award');
+    const season = String(req.query.season || award.CURRENT_SEASON);
+    res.json({ ...award.readiness(invoices, { season }), seasons: award.seasons() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // The intake list as a worklist someone can take away and work through. The
 // screen answers "how bad is it"; this answers "what do I do next, in what
 // order" (built for Vincenzo, 2026-09-17).

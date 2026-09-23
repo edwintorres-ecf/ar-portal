@@ -26,6 +26,18 @@ const db = require('./db');
 
 const CURRENT_SEASON = process.env.SNOW_SEASON || '2026-27';
 
+// The award is the BASE seasonal commitment. Amazon raises that as a
+// "Snow Removal Maintenance" PO around 1 November; everything else that season
+// — Ancillary, Season Closure, EPO, ad-hoc "Snow Removal Services" — is
+// storm-driven work stacked on top.
+//
+// Comparing the award to a site's TOTAL snow POs is apples-to-oranges and makes
+// every site look wildly over-funded: 2025-26 was $20.4M of base across 112
+// sites and $67.0M of additional. The shortfall column is only honest against
+// the base (2026-09-23).
+const BASE_PO_RE = /snow\s*removal\s*maintenance/i;
+const isBasePo = (p) => BASE_PO_RE.test(String((p && p.docDescription) || ''));
+
 function ensureTable() {
   try {
     db.getDb().exec(`CREATE TABLE IF NOT EXISTS amazon_award (
@@ -139,9 +151,10 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     for (const p of ledger) {
       if (p.serviceType !== 'snow' || !p.siteCode) continue;
       if (seasonOfPo(p) !== prior) continue;
-      priorBySite[p.siteCode] = priorBySite[p.siteCode] || { pos: 0, value: 0 };
+      priorBySite[p.siteCode] = priorBySite[p.siteCode] || { pos: 0, base: 0, additional: 0 };
       priorBySite[p.siteCode].pos++;
-      priorBySite[p.siteCode].value += p.ceilingAmount || 0;
+      if (isBasePo(p)) priorBySite[p.siteCode].base += p.ceilingAmount || 0;
+      else priorBySite[p.siteCode].additional += p.ceilingAmount || 0;
     }
   }
 
@@ -153,8 +166,12 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
 
   const awarded = award.map(a => {
     const pos = bySite[a.siteCode] || [];
-    const anyValue = pos.some(p => p.ceilingAmount != null);
-    const poValue = anyValue ? pos.reduce((t, p) => t + (p.ceilingAmount || 0), 0) : null;
+    const basePos = pos.filter(isBasePo);
+    const addPos = pos.filter(p => !isBasePo(p));
+    const anyValue = basePos.some(p => p.ceilingAmount != null);
+    // The award is a BASE commitment, so it is compared against the base PO.
+    const poValue = anyValue ? basePos.reduce((t, p) => t + (p.ceilingAmount || 0), 0) : null;
+    const addValue = Math.round(addPos.reduce((t, p) => t + (p.ceilingAmount || 0), 0) * 100) / 100;
     // Only meaningful once a value is published; "--" POs are common and are
     // not a shortfall (see ar-portal-zero-value-po).
     const gap = (poValue != null && a.amount != null) ? Math.round((poValue - a.amount) * 100) / 100 : null;
@@ -164,16 +181,20 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       ...a,
       priorSeason: prior,
       priorPoCount: last ? last.pos : 0,
-      priorPoValue: last ? Math.round(last.value * 100) / 100 : null,
+      priorPoValue: last ? Math.round(last.base * 100) / 100 : null,
+      priorAdditionalValue: last ? Math.round(last.additional * 100) / 100 : null,
       // No PO last season either: a site we have not worked before.
       newToUs: !last,
       poCount: pos.length,
       poNumbers: pos.map(p => p.poNumber),
+      basePoCount: basePos.length,
       poValue,
-      poValueUnpublished: pos.length > 0 && !anyValue,
+      additionalPoCount: addPos.length,
+      additionalPoValue: addValue,
+      poValueUnpublished: basePos.length > 0 && !anyValue,
       gap,
       // Banded so the screen can sort by "worth a phone call".
-      status: pos.length === 0 ? 'no-po'
+      status: basePos.length === 0 ? 'no-po'
         : !anyValue ? 'po-no-value'
         : pct != null && pct < 0.9 ? 'short'
         : pct != null && pct > 1.1 ? 'over'
@@ -201,7 +222,7 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     .sort((a, b) => b.poValue - a.poValue);
 
   const sum = (rows, f) => Math.round(rows.reduce((t, r) => t + (f(r) || 0), 0) * 100) / 100;
-  const withPo = awarded.filter(a => a.poCount > 0);
+  const withPo = awarded.filter(a => a.basePoCount > 0);
   const byStatus = {};
   for (const a of awarded) byStatus[a.status] = (byStatus[a.status] || 0) + 1;
 
@@ -211,7 +232,7 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       const k = a[key] || '(none)';
       out[k] = out[k] || { sites: 0, awarded: 0, withPo: 0, poValue: 0 };
       out[k].sites++; out[k].awarded += a.amount || 0;
-      if (a.poCount) { out[k].withPo++; out[k].poValue += a.poValue || 0; }
+      if (a.basePoCount) { out[k].withPo++; out[k].poValue += a.poValue || 0; }
     }
     for (const v of Object.values(out)) {
       v.awarded = Math.round(v.awarded * 100) / 100;
@@ -234,7 +255,9 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       sitesWithPo: withPo.length,
       poValue: sum(withPo, a => a.poValue),
       awaitingPo: awarded.length - withPo.length,
-      awaitingValue: sum(awarded.filter(a => !a.poCount), a => a.amount),
+      awaitingValue: sum(awarded.filter(a => !a.basePoCount), a => a.amount),
+      additionalPoValue: sum(awarded, a => a.additionalPoValue),
+      priorAdditionalValue: sum(awarded, a => a.priorAdditionalValue),
       shortfall: sum(awarded.filter(a => a.status === 'short'), a => -a.gap),
       unawardedWithPo: unawarded.length,
       priorSeason: prior,
@@ -246,4 +269,4 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
   };
 }
 
-module.exports = { ensureTable, load, list, seasons, readiness, seasonOfPo, CURRENT_SEASON };
+module.exports = { ensureTable, load, list, seasons, readiness, seasonOfPo, isBasePo, CURRENT_SEASON };
