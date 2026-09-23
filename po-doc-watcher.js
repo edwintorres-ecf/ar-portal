@@ -53,6 +53,23 @@ const NON_SITE_TOKENS = new Set(['PO2', 'X12', 'W9', 'USD1', 'NET6', 'COVID1', '
 // PO-*_vN document always wins over the raw email drop.
 const LOOSE_RE = /(2D-\d{6,})[^/]*\.pdf$/i;
 
+// Site codes Omnia has registered that carry no trailing digit. Loaded lazily
+// and cached: a PDF parse must not depend on the database being reachable, so a
+// failure here degrades to "standard shapes only" rather than throwing.
+let _noDigitSites = null;
+function knownNoDigitSites() {
+  if (_noDigitSites) return _noDigitSites;
+  _noDigitSites = new Set();
+  try {
+    for (const r of require('./db').getDb()
+      .prepare("SELECT site_code FROM amazon_locations WHERE site_code GLOB '[A-Z][A-Z][A-Z]*'").all()) {
+      const c = String(r.site_code || '').toUpperCase().trim();
+      if (/^[A-Z]{3,5}$/.test(c)) _noDigitSites.add(c);
+    }
+  } catch (e) { /* master unreadable — standard shapes only */ }
+  return _noDigitSites;
+}
+
 let _token = null, _tokenExp = 0;
 async function getToken() {
   if (_token && Date.now() < _tokenExp - 60000) return _token;
@@ -176,22 +193,36 @@ async function extractFromPdf(buf) {
   // Site extraction — Amazon FC codes are 3-4 upper letters + 1 digit (DTW1,
   // MDW5, HMW3). Layouts vary; try in confidence order:
   const shipTo = (text.match(/SHIP\s*TO:[\s\S]{0,220}?SEND INVOICES/i) || text.match(/SHIP\s*TO:[\s\S]{0,220}/i) || [''])[0];
-  const isSite = (t) => t && /^[A-Z]{2,4}\d{1,2}$/.test(t) && !/^2D/.test(t) && !NON_SITE_TOKENS.has(t);
+  // Most Amazon sites are 2-4 letters + a digit (DTW1, MDW5). A minority carry
+  // NO trailing digit — air hubs (KJAX, KBWI, KCVG) and named sites (TOWN,
+  // IZON, RCER). Those are only trusted when Omnia has actually registered them
+  // as a location, which is what keeps ordinary words out: "SEND", "YARD" and
+  // "TOTAL" are all shaped like a site code and none is in the master.
+  // 2D-22721527 sat unattributable for want of this — its description reads
+  // "KJAX - 2026 Landscaping Maintenance" (Edwin 2026-09-23).
+  const isSite = (t) => {
+    if (!t || /^2D/.test(t) || NON_SITE_TOKENS.has(t)) return false;
+    if (/^[A-Z]{2,4}\d{1,2}$/.test(t)) return true;
+    return /^[A-Z]{3,5}$/.test(t) && knownNoDigitSites().has(t);
+  };
+  // Capture permissively and let isSite() judge, so every tier below widens
+  // together instead of drifting apart.
+  const ST = '[A-Z]{2,5}\\d{0,2}';
   let siteCode = null;
   //   1. Site is the FIRST token after "SHIP TO:" ("SHIP TO: MKE1 Non-Inventory",
   //      "SHIP TO: DVA5 11920 Balls Ford Rd") — the most common materials layout.
-  { const s = (shipTo.match(/SHIP\s*TO:\s*([A-Z]{2,4}\d{1,2})\b/i) || [])[1]; if (isSite(s)) siteCode = s; }
+  { const s = (shipTo.match(new RegExp(`SHIP\\s*TO:\\s*(${ST})\\b`, 'i')) || [])[1]; if (isSite(s)) siteCode = s; }
   //   2. "(DTW1)" or "(EWR9 NI)" parenthesized in the SHIP TO block
-  if (!isSite(siteCode)) { const p = (shipTo.match(/\(([A-Z]{2,4}\d{1,2})(?=[\s)])/) || [])[1]; siteCode = isSite(p) ? p : null; }
+  if (!isSite(siteCode)) { const p = (shipTo.match(new RegExp(`\\((${ST})(?=[\\s)])`)) || [])[1]; siteCode = isSite(p) ? p : null; }
   //   3. "Attn: MDW5" in the SHIP TO block — "Amazon.com Services LLC … Attn: MDW5"
-  if (!isSite(siteCode)) { const a = (shipTo.match(/Attn:\s*([A-Z]{2,4}\d{1,2})\b/i) || [])[1]; siteCode = a && isSite(a) ? a : null; }
+  if (!isSite(siteCode)) { const a = (shipTo.match(new RegExp(`Attn:\\s*(${ST})\\b`, 'i')) || [])[1]; siteCode = a && isSite(a) ? a : null; }
   //   3. "SITE - 20xx" leading the line-item description ("1 DUJ3 - 2026 - …")
-  if (!isSite(siteCode)) { const d = (text.match(/(?:^|\s)([A-Z]{2,4}\d{1,2})\s*-\s*20\d\d/) || [])[1]; siteCode = isSite(d) ? d : null; }
+  if (!isSite(siteCode)) { const d = (text.match(new RegExp(`(?:^|\\s)(${ST})\\s*-\\s*20\\d\\d`)) || [])[1]; siteCode = isSite(d) ? d : null; }
   //   4. any site-shaped token appearing in BOTH the description and elsewhere,
   //      or the most frequent site-shaped token (>=2) anywhere (last resort)
   if (!isSite(siteCode)) {
     const counts = {};
-    for (const mm of text.matchAll(/\b([A-Z]{2,4}\d{1,2})\b/g)) { const t = mm[1]; if (isSite(t)) counts[t] = (counts[t] || 0) + 1; }
+    for (const mm of text.matchAll(new RegExp(`\\b(${ST})\\b`, 'g'))) { const t = mm[1]; if (isSite(t)) counts[t] = (counts[t] || 0) + 1; }
     const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
     if (best && best[1] >= 2) siteCode = best[0];
   }
@@ -206,7 +237,7 @@ async function extractFromPdf(buf) {
   //  - descLeadSite: a site-shaped token leading the description ("HMW3 yard sweep")
   //  - shipToAddr: normalized street+city of the SHIP TO block, so a learned
   //    address→site map can attribute pure-materials POs (no site token at all).
-  const descLeadSite = description ? (description.match(/^\s*\d*\s*([A-Z]{2,4}\d{1,2})\b/) || [])[1] || null : null;
+  const descLeadSite = description ? (description.match(new RegExp(`^\\s*\\d*\\s*(${ST})\\b`)) || [])[1] || null : null;
   // Address between "Services LLC" and the Attn/SEND line. [\s\S] (not .) so it
   // spans the newlines present in raw PDF text; then collapse to a stable key.
   const addrM = shipTo.match(/Services LLC([\s\S]+?)(?:Attn:|SEND INVOICES)/i);

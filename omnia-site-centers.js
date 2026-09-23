@@ -64,14 +64,30 @@ function stripSuffix(code) {
 }
 
 /** The site codes a single Omnia row refers to. Usually one; sometimes two. */
-function codesIn(cell, known) {
+function codesIn(cell, known, coded) {
   const base = stripSuffix(cell);
   if (!base) return [];
   const tokens = base.split(/\s+/).filter(Boolean);
   const out = [];
   for (const t of tokens) {
     if (t === 'PKG') continue;
-    if (SHAPE.test(t) || known.has(t)) out.push(t);
+    if (SHAPE.test(t) || known.has(t)) { out.push(t); continue; }
+    // A minority of real sites carry NO trailing digit: air hubs (KJAX, KBWI,
+    // KCVG, KAFW, KLAL, KRFD) and named sites (TOWN, IZON, RCER, MOND). The
+    // original filter dropped all 12 of them, which is why 2D-22721527 — a
+    // KJAX landscaping PO — could not be attributed to a site at all.
+    //
+    // Two conditions keep this from admitting junk:
+    //  · it must be the ONLY token in the cell. "MIA1 OSY" and "FC OKC Yard"
+    //    are a real code plus noise; a lone "KJAX" is a site.
+    //  · it must not be a PREFIX of a properly-coded site in the same export.
+    //    "BOS PKG" and "DIL PKG" reduce to BOS and DIL, but BOS3/4/5/7 and
+    //    DIL3/5 all exist — those are parking lots for a site we cannot
+    //    identify, and guessing would file the PO against the wrong one.
+    if (tokens.length === 1 && /^[A-Z]{3,5}$/.test(t)
+        && coded && ![...coded].some(c => c !== t && c.startsWith(t))) {
+      out.push(t);
+    }
   }
   return [...new Set(out)];
 }
@@ -156,11 +172,20 @@ async function parse(file) {
  * (DCA1 and HGR6 each have one of each).
  */
 function collapse(rows, known) {
+  // Every properly-coded site in THIS export, needed before any cell is read:
+  // it is what decides whether a bare "BOS" is a site of its own or the parking
+  // lot of one of BOS3/4/5/7.
+  const coded = new Set();
+  for (const r of rows) {
+    if (!r.active) continue;
+    for (const t of stripSuffix(r.rawSite).split(/\s+/)) if (SHAPE.test(t)) coded.add(t);
+  }
+
   const bySite = new Map();
   for (const r of rows) {
     if (!r.active) continue;
     const named = r.serviceCenter && r.serviceCenter !== FACILITY_CARE;
-    for (const code of codesIn(r.rawSite, known)) {
+    for (const code of codesIn(r.rawSite, known, coded)) {
       const cur = bySite.get(code);
       if (!cur || (named && !cur.named)) {
         bySite.set(code, {

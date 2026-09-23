@@ -5651,7 +5651,10 @@ function poIntakeTable(pos) {
       <th style="padding:5px 8px;text-align:left">All defects</th></tr></thead>
     <tbody>${pos.slice(0, 60).map(p => `<tr style="border-top:1px solid var(--gray-100)">
       <td style="padding:5px 8px;font-weight:600">${p.docUrl ? `<a href="${escHtml(p.docUrl)}" target="_blank" rel="noopener">${escHtml(p.poNumber)}</a>` : escHtml(p.poNumber)}</td>
-      <td style="padding:5px 8px">${escHtml(p.siteCode || '—')}</td>
+      <td style="padding:5px 8px">${p.siteCode ? escHtml(p.siteCode)
+        : (canAssignPoSite()
+          ? `<button class="btn-sm" style="font-size:10px;padding:1px 7px;background:#ede9fe;color:#5b21b6;border:none;border-radius:5px;cursor:pointer" title="Assign this PO to a site" onclick="assignPoSite('${escHtml(p.poNumber)}')">🏷 Set site</button>`
+          : '—')}</td>
       <td style="padding:5px 8px;color:var(--gray-500)">${escHtml(p.businessUnit || '—')}</td>
       <td style="padding:5px 8px;color:var(--gray-500)">${escHtml(p.serviceType || '')}</td>
       <td style="padding:5px 8px;text-align:right">${p.value == null ? '<span style="color:#dc2626">none</span>' : fmt$(p.value)}</td>
@@ -5777,6 +5780,9 @@ async function assignPoSite(poNumber) {
     showToast(r.siteCode ? `${poNumber} → ${r.siteCode}` : `${poNumber} assignment cleared`, 'success');
     await loadPoLedger();
     renderPendingBySite();
+    // Intake health is where this is usually clicked from, and leaving the row
+    // sitting there reads as the save having failed.
+    if (typeof loadPoIntakeHealth === 'function') loadPoIntakeHealth();
   } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
