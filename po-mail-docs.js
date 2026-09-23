@@ -84,7 +84,14 @@ function ensureTable() {
  * POs and matched only 11 of 154 defects, which very nearly buried this whole
  * finding. Per-number search found an email for every one of them.
  */
+// Amazon PO numbers only. A placeholder like "NEEDED KRB5" or a work-order
+// stub like "WO #534482" is not something Amazon ever emailed, and its spaces
+// and "#" break the $search quoting — Graph answers 400 and the run logs a
+// failure every six hours for something that can never succeed.
+const IS_AMAZON_PO = (po) => /^[0-9A-Z]{1,3}-[0-9]{6,}$/i.test(String(po || '').trim());
+
 async function newestFor(poNumber) {
+  if (!IS_AMAZON_PO(poNumber)) return null;
   const res = await g(`/users/${MAILBOX}/messages?$search="${poNumber}"`
     + `&$top=25&$select=id,subject,receivedDateTime,hasAttachments,webLink`);
   const msgs = (res.value || [])
@@ -221,4 +228,4 @@ async function attachment(poNumber) {
   };
 }
 
-module.exports = { ingest, map, newestFor, attachment, ensureTable, MAILBOX };
+module.exports = { ingest, map, newestFor, attachment, ensureTable, IS_AMAZON_PO, MAILBOX };
