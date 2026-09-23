@@ -5726,7 +5726,7 @@ function renderPoSeason() {
       </div>` : ''}
 
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <table id="season-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
           ${sortTh([['Site', 'siteCode'], ['State', 'state'], ['Region', 'region'],
             ['Service center', 'serviceCenter'], ['Awarded', 'amount', 'right'],
