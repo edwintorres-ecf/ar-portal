@@ -21,13 +21,46 @@ const path = require('path');
 // Cached reader for the SharePoint PO-document scan (po-doc-watcher.js output).
 const PO_DOCS_PATH = path.join(__dirname, 'po-docs.json');
 let _poDocsCache = null, _poDocsTs = 0;
+// Which of two documents for the same PO is actually the current one.
+// Amazon stamps the version on the face of the PDF, so that is the first
+// authority; then the revision date, then the order date. Filenames are NOT
+// consulted — on 2D-20300544 the file called v2 is three months older than the
+// one called v1, which is exactly how the portal ended up reading a stale copy.
+function docRank(doc) {
+  if (!doc) return [-1, ''];
+  const v = doc.pdfVersion != null ? doc.pdfVersion
+    : (doc.latestVersion != null ? doc.latestVersion : -1);
+  return [v, String(doc.pdfRevisedDate || doc.pdfOrderDate || '')];
+}
+function docIsNewer(a, b) {
+  const [av, ad] = docRank(a), [bv, bd] = docRank(b);
+  if (av !== bv) return av > bv;
+  return ad > bd;
+}
+
 function getPoDocsMap() {
   const now = Date.now();
   if (_poDocsCache && (now - _poDocsTs) < 15 * 60 * 1000) return _poDocsCache;
+  let byPo = {};
   try {
     const d = JSON.parse(fs.readFileSync(PO_DOCS_PATH, 'utf8'));
-    _poDocsCache = d.byPo || {};
-  } catch (e) { _poDocsCache = {}; }
+    byPo = d.byPo || {};
+  } catch (e) { byPo = {}; }
+
+  // Amazon emails every PO revision to arclerk@; SharePoint only gets it if
+  // somebody files it, and it has not kept up. po-mail-docs.js ingests the
+  // mailbox, and a mail-sourced document is used ONLY when there is no filed
+  // one, or when it is genuinely newer by the version the PDF states about
+  // itself. A stale email can therefore never displace a good filed document.
+  try {
+    const mail = require('./po-mail-docs').map();
+    for (const [po, m] of Object.entries(mail)) {
+      const filed = byPo[po];
+      if (!filed || docIsNewer(m, filed)) byPo[po] = { ...(filed || {}), ...m, supersedesFiled: !!filed };
+    }
+  } catch (e) { /* not ingested yet — filed documents only */ }
+
+  _poDocsCache = byPo;
   _poDocsTs = now;
   return _poDocsCache;
 }

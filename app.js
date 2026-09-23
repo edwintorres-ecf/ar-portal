@@ -6982,8 +6982,22 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
         + `${r.skipped} unchanged · ${r.failed} unreadable · ${r.dropped} no longer flagged`))
       .catch(e => console.error('[po-doc-recheck] failed:', e.message));
   }
-  setTimeout(doDocRecheck, 20 * 60 * 1000);
-  setInterval(doDocRecheck, 6 * 60 * 60 * 1000);
+  // Pull Amazon's emailed PO revisions out of arclerk@ before the re-check
+  // runs, so the re-check is comparing against the current document rather than
+  // whatever was last filed by hand.
+  function doMailDocs() {
+    const inv = sage.getCachedInvoices();
+    if (!inv.length) return Promise.resolve();
+    return require('./po-mail-docs').ingest(null, { invoices: inv })
+      .then(r => {
+        console.log(`[po-mail-docs] ${r.targets} targets · ${r.ingested} ingested · `
+          + `${r.unchanged} unchanged · ${r.noEmail} no email · ${r.failed} failed`);
+        if (r.ingested) poLedger.invalidatePoLedger();
+      })
+      .catch(e => console.error('[po-mail-docs] failed:', e.message));
+  }
+  setTimeout(() => doMailDocs().then(doDocRecheck), 18 * 60 * 1000);
+  setInterval(() => doMailDocs().then(doDocRecheck), 6 * 60 * 60 * 1000);
 
   setTimeout(doSiteLedgerRebuild, 4 * 60 * 1000);
   setInterval(doSiteLedgerRebuild, 60 * 60 * 1000);

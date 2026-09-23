@@ -140,7 +140,6 @@ function extractPoContact(text) {
 }
 
 async function fetchAndExtract(fileName, folder) {
-  const { PDFParse } = require('pdf-parse');
   const enc = encodeURIComponent(folder || PO_DOCS_FOLDERS[PO_DOCS_FOLDERS.length - 1]).replace(/%2F/g, '/') + '/' + encodeURIComponent(fileName);
   // Graph throttles bulk downloads (observed: 910 straight 429s on a full
   // re-parse). Honor Retry-After and back off; a slow full pass beats a fast
@@ -158,6 +157,15 @@ async function fetchAndExtract(fileName, folder) {
     throw new Error('fetch ' + res.status);
   }
   const buf = Buffer.from(await res.arrayBuffer());
+  return extractFromPdf(buf);
+}
+
+// The parsing half, split out so a PDF that arrived by EMAIL goes through the
+// exact same extraction as one filed in SharePoint. po-mail-docs.js ingests
+// Amazon's revised-PO emails, and a second, drifting copy of these rules would
+// be the whole bug it exists to fix (2026-09-23).
+async function extractFromPdf(buf) {
+  const { PDFParse } = require('pdf-parse');
   const parsed = await new PDFParse({ data: buf }).getText();
   const text = parsed.text || '';
   let amount = null;
@@ -219,7 +227,7 @@ async function fetchAndExtract(fileName, folder) {
   const pdfOrderDate = usDate((text.match(/ORDER DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
   const pdfRevisedDate = usDate((text.match(/REVISED DATE:[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/20\d{2})/i) || [])[1]);
   const contact = extractPoContact(text);
-  return { amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6, pdfOrderDate, pdfRevisedDate, pdfDatesV: 1, ...contact, contactV: 1 };
+  return { text, amount, pdfVersion: pdfVersion ? parseInt(pdfVersion, 10) : null, docSiteCode: siteCode, pdfRevised: revised, description, isSnow, descLeadSite, shipToAddr: shipToAddr || null, siteExtractV: 6, pdfOrderDate, pdfRevisedDate, pdfDatesV: 1, ...contact, contactV: 1 };
 }
 
 // Small concurrency limiter so we don't fire hundreds of parses at once.
@@ -388,7 +396,7 @@ async function scanPoDocs(opts = {}) {
 
 // fetchAndExtract is exported for po-doc-recheck.js, which re-reads EVERY file
 // on a PO rather than just the one this watcher picks as latest.
-module.exports = { scanPoDocs, fetchAndExtract };
+module.exports = { scanPoDocs, fetchAndExtract, extractFromPdf };
 
 if (require.main === module) {
   scanPoDocs().then(() => process.exit(0)).catch(e => { console.error('[po-doc-watcher] FAILED:', e.message); process.exit(1); });
