@@ -5658,11 +5658,11 @@ function renderPoIntakeHealth() {
           <span style="font-size:13.5px;font-weight:700;color:var(--navy)">${escHtml(c.label)}</span>
           <span style="font-size:12.5px;color:var(--gray-600)">${c.count} PO${c.count === 1 ? '' : 's'}</span>
           ${c.atRisk > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#b45309">${fmt$(c.atRisk)} waiting</span>` : ''}
-          <span style="margin-left:auto;font-size:11px;color:var(--gray-400);cursor:pointer" onclick="poIntakeToggle('${escHtml(c.key)}')">show POs ▾</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--gray-400);cursor:pointer" onclick="poIntakeToggle('${escHtml(c.key)}')">${_poIntakeOpen.has(c.key) ? 'hide POs ▴' : 'show POs ▾'}</span>
         </div>
         <div style="font-size:11.5px;color:var(--gray-500);margin-top:4px">${escHtml(c.why)}</div>
-        <div id="intake-${escHtml(c.key)}" style="display:none;margin-top:8px">
-          ${poIntakeTable(a.pos.filter(p => p.defects.includes(c.key)))}
+        <div id="intake-${escHtml(c.key)}" style="display:${_poIntakeOpen.has(c.key) ? 'block' : 'none'};margin-top:8px">
+          ${poIntakeTable(a.pos.filter(p => p.defects.includes(c.key)), c.key)}
         </div>
       </div>`).join('')}
     ${checks.length ? '' : '<div style="padding:30px;text-align:center;color:var(--gray-500)">✅ Every purchase order passes. Nothing is blocking billing.</div>'}
@@ -5670,14 +5670,19 @@ function renderPoIntakeHealth() {
   renderArTrend();
 }
 
-function poIntakeTable(pos) {
+// Each check gets its OWN sort state (`intake:<key>`). One shared state would
+// mean sorting the "no document" list silently reordered every other panel
+// (Edwin 2026-09-23: "also i want to be able to sort here").
+function poIntakeTable(pos, checkKey) {
   if (!pos.length) return '<div style="font-size:12px;color:var(--gray-500)">None.</div>';
+  const sk = 'intake:' + (checkKey || 'all');
+  // Default: biggest money waiting first, which is the order the sheet is for.
+  pos = tblSortRows(pos, sk, 'atRisk', -1);
   return `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
     <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
-      <th style="padding:5px 8px;text-align:left">PO</th><th style="padding:5px 8px;text-align:left">Site</th>
-      <th style="padding:5px 8px;text-align:left">BU</th><th style="padding:5px 8px;text-align:left">Service</th>
-      <th style="padding:5px 8px;text-align:right">PO value</th><th style="padding:5px 8px;text-align:right">Waiting</th>
-      <th style="padding:5px 8px;text-align:left">All defects</th></tr></thead>
+      ${sortTh([['PO', 'poNumber'], ['Site', 'siteCode'], ['BU', 'businessUnit'],
+        ['Service', 'serviceType'], ['PO value', 'value', 'right'], ['Waiting', 'atRisk', 'right'],
+        ['All defects', null]], sk, 'renderPoIntakeHealth')}</tr></thead>
     <tbody>${pos.slice(0, 60).map(p => `<tr style="border-top:1px solid var(--gray-100)">
       <td style="padding:5px 8px;font-weight:600">${p.docUrl ? `<a href="${escHtml(p.docUrl)}" target="_blank" rel="noopener">${escHtml(p.poNumber)}</a>` : escHtml(p.poNumber)}</td>
       <td style="padding:5px 8px">${p.siteCode ? escHtml(p.siteCode)
@@ -5693,9 +5698,17 @@ function poIntakeTable(pos) {
     ${pos.length > 60 ? `<div style="font-size:11px;color:var(--gray-500);padding:6px 8px">Showing 60 of ${pos.length}.</div>` : ''}`;
 }
 
+let _poIntakeOpen = new Set();
+
 function poIntakeToggle(key) {
+  const open = !_poIntakeOpen.has(key);
+  if (open) _poIntakeOpen.add(key); else _poIntakeOpen.delete(key);
   const d = document.getElementById('intake-' + key);
-  if (d) d.style.display = d.style.display === 'none' ? '' : 'none';
+  if (d) d.style.display = open ? 'block' : 'none';
+  // Update the chevron in place rather than re-rendering the whole screen —
+  // the intake analysis is the slow part and nothing else has changed.
+  const t = document.querySelector(`[onclick="poIntakeToggle('${key}')"]`);
+  if (t) t.textContent = open ? 'hide POs ▴' : 'show POs ▾';
 }
 
 function setPoFundsSubtab(name) {
