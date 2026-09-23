@@ -15,6 +15,20 @@
 // Those need opposite actions, and the intake-health sheet could not tell them
 // apart. This re-parses every file on the PO and says which case it is.
 //
+// KNOW THE LIMIT OF THIS TOOL: it re-reads every document we have FILED, which
+// is not every document that exists. On 2D-20599848 Amazon said $1,143,628 and
+// both filed documents said $495,453 — so the first version of this module
+// called it a genuine disagreement to take up with Amazon. It was not. A
+// revised v2 dated 07/14/2026 exists showing exactly Amazon's figure; it had
+// simply never been filed in SharePoint, and a drive-wide search finds only v0
+// and v1. Amazon was right (Edwin 2026-09-23).
+//
+// So when nothing matches, DIRECTION is the diagnosis. Amazon higher than our
+// newest filed document almost always means an upward revision we were never
+// sent — a filing gap, not a dispute. Amazon lower is the one worth a question.
+// Either way billing is unaffected: the ledger's ceiling already comes from
+// Amazon's own figure, never from the document.
+//
 // It is deliberately NOT part of the hourly intake sweep. Each check means
 // downloading and parsing PDFs from SharePoint through Graph, which is far too
 // slow to sit behind a screen refresh or a download button — the reason the
@@ -104,7 +118,12 @@ async function run(invoices, { limit = 40, force = false } = {}) {
         // Gentle pacing: Graph answered a bulk re-parse with 910 straight 429s.
         await new Promise(r => setTimeout(r, 300));
         const x = await watcher.fetchAndExtract(f.name, f.folder);
+        // The document states its OWN version and revised date on the face of
+        // it ("VERSION: 2", "REVISED DATE: 07/14/2026"). That is better
+        // evidence than the filename, which can disagree — see 2D-20300544,
+        // where the file called v2 is three months older than the one called v1.
         perFile.push({ name: f.name, docDate: f.docDate || null, version: f.version,
+          pdfVersion: x.pdfVersion ?? null, pdfRevisedDate: x.pdfRevisedDate || null,
           amount: x.amount == null ? null : x.amount, isCurrent: entry.latestFile && f.name === entry.latestFile.name });
       } catch (e) {
         failed++;
@@ -125,16 +144,38 @@ async function run(invoices, { limit = 40, force = false } = {}) {
     // The portal is reading a file other than the one that answers the question.
     const stale = resolves && winner && !winner.isCurrent;
 
+    // Direction is the whole diagnosis when nothing matches, and calling every
+    // mismatch a "disagreement to reconcile with Amazon" was wrong. On
+    // 2D-20599848 Amazon says $1,143,628 and our newest FILED document says
+    // $495,453 — because the revised v2, dated 07/14/2026, exists but was never
+    // filed in SharePoint. Edwin had it; we did not. Amazon was right and there
+    // was nothing to dispute (Edwin 2026-09-23).
+    const $ = (n) => '$' + Math.round(n).toLocaleString('en-US');
+    const newestAmt = winner ? winner.amount : null;
+    const direction = (amazon == null || newestAmt == null) ? null
+      : amazon > newestAmt ? 'amazon-higher' : amazon < newestAmt ? 'amazon-lower' : 'equal';
+    const v = winner && winner.pdfVersion != null ? ` (the document calls itself v${winner.pdfVersion}` +
+      `${winner.pdfRevisedDate ? `, revised ${winner.pdfRevisedDate}` : ''})` : '';
+
     const action = !readable.length
       ? 'No document on file could be read — check the PDF opens, then re-file it.'
       : resolves
         ? (stale
           ? `Resolved: "${winner.name}" matches Amazon. The portal is reading a different file — no dispute to raise.`
           : 'Resolved: the document the portal already reads matches Amazon. The discrepancy has cleared.')
-        : `Genuine disagreement: no document on file matches Amazon's ${amazon == null ? 'figure' : '$' + Math.round(amazon).toLocaleString('en-US')}. Reconcile with Amazon.`;
+        : direction === 'amazon-higher'
+          ? `Missing revision: Amazon shows ${$(amazon)}, the newest document we hold shows ${$(newestAmt)}${v}. `
+            + `The PO was almost certainly revised UP and we were never sent the new copy — ask Amazon for it and file it. `
+            + `Nothing is blocked meanwhile: the portal already bills against Amazon's figure, so the extra `
+            + `${$(amazon - newestAmt)} of headroom is available now.`
+          : direction === 'amazon-lower'
+            ? `Amazon shows LESS than our newest document: ${$(amazon)} against ${$(newestAmt)}${v}. `
+              + `Either the PO was reduced or the document we hold belongs to a different order. `
+              + `Confirm with Amazon before planning work to the document figure.`
+            : `No document on file matches Amazon's figure. Confirm with Amazon.`;
 
     save.run(p.poNumber, sig, amazon, p.docAmount ?? null,
-      winner ? winner.amount : null, winner ? winner.name : null,
+      newestAmt, winner ? winner.name : null,
       resolves ? 1 : 0, stale ? 1 : 0, JSON.stringify(perFile), action,
       p.siteCode || '', new Date().toISOString());
   }
