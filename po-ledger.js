@@ -131,16 +131,40 @@ function isPlaceholderPo(poNumber) {
 // one to just that token so every variant groups as one site. Strings without a
 // recognizable code (e.g. "AKRON4", "LINDa") pass through untouched.
 const SITE_TOKEN_RE = /^([A-Z]{2,4}\d{1,2})(?=$|[^A-Z0-9])/i;
+// A minority of real sites carry NO trailing digit — air hubs (KJAX, KBWI,
+// KCVG) and named sites (TOWN, IZON, RCER). Those cannot be recognised by
+// shape, only by membership: Omnia has registered them as locations. Loaded
+// lazily and cached, and a failure degrades to "standard shapes only" so the
+// ledger never depends on the master being readable.
+let _noDigitSites = null;
+function noDigitSites() {
+  if (_noDigitSites) return _noDigitSites;
+  _noDigitSites = new Set();
+  try {
+    for (const r of db.getDb().prepare(
+      "SELECT site_code FROM amazon_locations WHERE site_code GLOB '[A-Z][A-Z][A-Z]*'").all()) {
+      const c = String(r.site_code || '').toUpperCase().trim();
+      if (/^[A-Z]{3,5}$/.test(c)) _noDigitSites.add(c);
+    }
+  } catch (e) { /* master unreadable */ }
+  return _noDigitSites;
+}
+function invalidateNoDigitSites() { _noDigitSites = null; }
 function normalizeSite(s) {
   if (s == null) return s;
   const str = String(s).trim();
   const m = str.match(SITE_TOKEN_RE);
-  return m ? m[1].toUpperCase() : str;
+  if (m) return m[1].toUpperCase();
+  // No standard token: a registered no-digit site still normalises to itself.
+  const u = str.toUpperCase();
+  return (/^[A-Z]{3,5}$/.test(u) && noDigitSites().has(u)) ? u : str;
 }
 // A real Amazon site code (DBU3, EWR9). Junk ship-to values like "Amazon.com
 // Services LLC" fail this, so we can tell "has a real site" from "has garbage".
 function isValidSite(s) {
-  return SITE_TOKEN_RE.test(String(s || '').trim());
+  const t = String(s || '').trim();
+  if (SITE_TOKEN_RE.test(t)) return true;
+  return /^[A-Z]{3,5}$/.test(t.toUpperCase()) && noDigitSites().has(t.toUpperCase());
 }
 
 // The Amazon PO prefix is not a site. Nor is a bare "2D"-style token, which is
@@ -165,7 +189,7 @@ const PO_PREFIX_RE = /^\d[A-Z]$/i;
 // 54% of documents — the last two forms above were missed. Anchoring on the line
 // number alone lifts it to 836 of 1,148 and changes just two resolved sites,
 // both of which the line item gets right.
-const PO_LINE_SITE_RE = /(?:^|\s)\d{1,3}\s+([A-Z]{2,5}\d)\b/g;
+const PO_LINE_SITE_RE = /(?:^|\s)\d{1,3}\s+([A-Z]{2,5}\d|[A-Z]{3,5})\b/g;
 
 function poLineSites(description) {
   if (!description) return [];
@@ -661,6 +685,7 @@ function invalidatePoLedger() { _ledgerEpoch++; }
 function invalidateSiteMeta() {
   _siteMetaCache = null;
   _siteMetaTs = 0;
+  invalidateNoDigitSites();
   _ledgerEpoch++;
 }
 
