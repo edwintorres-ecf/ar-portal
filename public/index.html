@@ -4515,11 +4515,30 @@ function poUpdateBadges() {
 // site code and the BU are always shown together and always look the same.
 function poSiteCell(r, extra) {
   const code = r.siteCode || r.site || '';
-  if (!code) return `<span style="color:var(--gray-400)">—</span>${extra || ''}`;
+  // Reassigning a SITE belongs to the PO, so the control is offered on PO rows
+  // only. Invoice rows carry `recordNo` and get the separate 🏷 invoice-site
+  // pin, which answers a different question (which site did THIS invoice serve
+  // on a multi-site blanket PO).
+  //
+  // It lives here, in the shared cell, because it was previously reachable from
+  // exactly one place — the "(no site)" group of Pending by Site — which meant
+  // a PO filed against the WRONG site could not be corrected at all, and a PO
+  // with no site could only be fixed if you already knew to look there
+  // (Edwin 2026-09-23: "i still dont see how i can assign a site code to a po").
+  const po = (!r.recordNo && r.poNumber) ? String(r.poNumber) : null;
+  const mayEdit = po && typeof canAssignPoSite === 'function' && canAssignPoSite();
+  if (!code) {
+    return (mayEdit
+      ? `<button class="btn-sm" style="font-size:10px;padding:1px 7px;background:#ede9fe;color:#5b21b6;border:none;border-radius:5px;cursor:pointer" title="Assign this PO to a site" onclick="event.stopPropagation();assignPoSite('${escHtml(po)}')">🏷 Set site</button>`
+      : `<span style="color:var(--gray-400)">—</span>`) + (extra || '');
+  }
   const bu = r.businessUnit
     ? `<div style="font-size:9.5px;color:#5b21b6;font-weight:600" title="Amazon business unit">${escHtml(r.businessUnit)}</div>`
     : `<div style="font-size:9.5px;color:var(--gray-400)" title="This site code is not in the Amazon location master">no BU</div>`;
-  return `<div style="white-space:nowrap"><span style="font-weight:600;color:var(--navy);cursor:pointer" title="Filter every tab to ${escHtml(code)}" onclick="poJumpSite('${escHtml(code)}')">${escHtml(code)}</span>${extra || ''}</div>${bu}`;
+  const edit = mayEdit
+    ? ` <span onclick="event.stopPropagation();assignPoSite('${escHtml(po)}')" title="Change the site this PO is filed against${r.siteManual ? ' (currently set by hand)' : ''}" style="font-size:10px;color:${r.siteManual ? '#0369a1' : 'var(--gray-400)'};cursor:pointer;vertical-align:middle">✎</span>`
+    : '';
+  return `<div style="white-space:nowrap"><span style="font-weight:600;color:var(--navy);cursor:pointer" title="Filter every tab to ${escHtml(code)}" onclick="poJumpSite('${escHtml(code)}')">${escHtml(code)}</span>${edit}${extra || ''}</div>${bu}`;
 }
 function poJumpSite(code) {
   _poFilterSite = String(code || '').toUpperCase();
@@ -5772,8 +5791,12 @@ function canAssignPoSite() {
 }
 
 async function assignPoSite(poNumber) {
+  const row = (_poLedger || []).find(r => r.poNumber === poNumber);
+  const now = row && row.siteCode ? row.siteCode : '(none)';
   const known = [...new Set((_poLedger || []).map(r => r.siteCode).filter(Boolean))].sort().join(', ');
-  const input = prompt(`Site code for ${poNumber} (e.g. DTW1).\nLeave empty to clear a manual assignment.\n\nKnown sites: ${known.slice(0, 300)}${known.length > 300 ? '…' : ''}`);
+  const input = prompt(`Site code for ${poNumber}\n\nCurrently: ${now}${row && row.siteManual ? ' (set by hand)' : ''}\n`
+    + `Leave empty to clear a manual assignment and fall back to the PO document.\n\n`
+    + `Known sites: ${known.slice(0, 300)}${known.length > 300 ? '…' : ''}`, row && row.siteManual ? row.siteCode : '');
   if (input === null) return;
   try {
     const r = await apiFetch('/api/po/' + encodeURIComponent(poNumber) + '/site', { method: 'POST', body: JSON.stringify({ siteCode: input.trim() }) });
