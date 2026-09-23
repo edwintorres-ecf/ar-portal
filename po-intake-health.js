@@ -91,11 +91,29 @@ function analyse(invoices, { snowOnly = false } = {}) {
   // reporting it forever would train people to ignore this screen. A
   // placeholder that STILL carries work stays flagged — that is the real thing
   // to fix (Edwin 2026-09-15).
+  const nothingBehindIt = (p) =>
+    !(p.pendingUpload > 0) && !(p.consumed > 0) && !(p.ceilingAmount > 0);
   const spentPlaceholder = (p) => {
     try { if (!require('./po-placeholder-adopt').isPlaceholder(p.poNumber)) return false; } catch (e) { return false; }
-    return !(p.pendingUpload > 0) && !(p.consumed > 0) && !(p.ceilingAmount > 0);
+    return nothingBehindIt(p);
   };
-  ledger = ledger.filter(p => !spentPlaceholder(p));
+
+  // A tracked number Amazon has never heard of, carrying no money and backed by
+  // no document, is a note somebody typed — not a purchase order. "WO #534482"
+  // is a work order; "987639" is not an Amazon PO at all. Reporting them as
+  // defects gives people something they cannot fix, which is how a screen
+  // teaches you to ignore it (Edwin 2026-09-23: "this is not an amazon PO that
+  // we should track here").
+  //
+  // Deliberately NOT a test on the shape of the number — B997-22182169 does not
+  // look like an Amazon PO and is one, sitting in Amazon's open-PO list with a
+  // $130,206 ceiling. The test is evidence: Amazon does not list it, no invoice
+  // has drawn on it, nothing is pending, and we hold no document. All four of
+  // the rows this removes fail every one of those; every genuine PO passes at
+  // least one.
+  const notAPurchaseOrder = (p) => !p.poStatus && !p.hasDoc && nothingBehindIt(p);
+
+  ledger = ledger.filter(p => !spentPlaceholder(p) && !notAPurchaseOrder(p));
 
   const pos = [];
   for (const p of ledger) {

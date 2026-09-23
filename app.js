@@ -3422,6 +3422,12 @@ app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.admin'), (req, r
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
     if (raw && !/^[A-Z0-9 -]{2,10}$/.test(raw)) return res.status(400).json({ error: 'Site code must be 2-10 letters/digits (e.g. DTW1)' });
     db.setPoSite(req.params.poNumber, raw || null, user.email);
+    // The ledger is memoised for 30s, and the screen reloads it IMMEDIATELY
+    // after this returns — so without busting the memo the row comes back
+    // unchanged and the save reads as having silently failed. Edwin assigned
+    // 2D-22740493 to ORF4, it was written correctly, and the screen showed the
+    // old value back (2026-09-23).
+    poLedger.invalidatePoLedger();
     db.auditLog(user.email, 'po_site_assign', req.params.poNumber, raw || '(cleared)');
     res.json({ ok: true, siteCode: raw || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3437,6 +3443,7 @@ app.post('/api/invoice/:recordNo/site', requireAuth, requirePerm('po.edit'), asy
     const raw = (req.body && req.body.siteCode || '').trim().toUpperCase();
     if (raw && !/^[A-Z]{2,4}\d{1,2}$/.test(raw)) return res.status(400).json({ error: 'Site code must look like DYY8 / DTW1' });
     db.setInvoiceSite(req.params.recordNo, (req.body && req.body.invoiceId) || null, raw || null, user.email);
+    poLedger.invalidatePoLedger();   // same 30s memo, same silent-failure look
     db.auditLog(user.email, 'invoice_site_assign', req.params.recordNo, raw || '(cleared)');
     res.json({ ok: true, siteCode: raw || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
