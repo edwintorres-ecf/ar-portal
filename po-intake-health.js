@@ -18,11 +18,25 @@ const poLedger = require('./po-ledger');
 
 // Ordered worst-first. `blocking` means we cannot safely bill against this PO.
 const CHECKS = [
+  // "No PO value" used to be ONE blocking check over every PO with no ceiling.
+  // It was 59 POs, and 50 of them were simply ones Amazon publishes as "--" —
+  // 15 of those already had invoices ACCEPTED against them. Calling a PO we are
+  // successfully billing "cannot safely be billed against" is how a screen
+  // teaches people to ignore it (Edwin 2026-09-23).
+  //
+  // The two halves are genuinely different problems with different fixes, so
+  // they are now two checks. Together they cover exactly what the single one did.
   {
     key: 'no-ceiling', blocking: true,
-    label: 'No PO value',
-    why: 'Without the order value we cannot tell whether an invoice fits, so every submission against it is a guess. This is the defect that produces Insufficient PO Funds Hold.',
-    test: (p) => p.ceilingAmount == null,
+    label: 'PO not visible in Amazon’s open-PO list',
+    why: 'Amazon does not list this PO as open, so we have no value, no status and no confirmation it exists on their side. Submissions to a PO in this state vanish without an error — this is the July 17 failure mode.',
+    test: (p) => p.ceilingAmount == null && !p.poStatus,
+  },
+  {
+    key: 'value-unpublished', blocking: false,
+    label: 'Amazon publishes no value for the PO',
+    why: 'Amazon lists the PO as open but shows its amount as "--", so headroom cannot be checked before sending. That is a blind spot, NOT a blocker: POs in this state routinely accept and pay invoices. The PO document usually carries the real value — file it and this clears.',
+    test: (p) => p.ceilingAmount == null && !!p.poStatus,
   },
   {
     key: 'no-site', blocking: true,

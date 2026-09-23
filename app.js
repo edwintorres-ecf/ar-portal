@@ -3830,7 +3830,15 @@ app.get('/api/po/intake-health.xlsx', requireAuth, async (req, res) => {
     let invoices = sage.getCachedInvoices();
     if (invoices.length === 0) invoices = await sage.getInvoices();
     invoices = applyUserFilter(invoices, req.session.user);
-    const { wb } = require('./po-intake-workbook').build(invoices, { snowOnly: req.query.snow === '1' });
+    // The "Exceptions checked" sheet comes from the cached document re-check.
+    // It cannot be computed here — it means downloading and parsing PDFs from
+    // SharePoint — so it rides the slow timer and this reads the result. Empty
+    // cache just omits the sheet, exactly as before.
+    const docCheck = (() => {
+      try { return require('./po-doc-recheck').latest(); } catch (e) { return null; }
+    })();
+    const { wb } = require('./po-intake-workbook').build(invoices,
+      { snowOnly: req.query.snow === '1', docCheck });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition',
       `attachment; filename="ECF-PO-intake-health-${new Date().toISOString().slice(0, 10)}.xlsx"`);
@@ -6961,6 +6969,21 @@ const LISTEN_ARGS = process.env.BIND_HOST ? [PORT, process.env.BIND_HOST] : [POR
 
   setTimeout(doIntakeSweep, 6 * 60 * 1000);
   setInterval(doIntakeSweep, 60 * 60 * 1000);
+
+  // Re-read every PO document behind a ceiling discrepancy. Slow by nature —
+  // it downloads and parses PDFs through Graph — so it gets its own long timer
+  // rather than riding the hourly intake sweep, and it skips any PO whose file
+  // set has not changed. Six-hourly is ample: these are documents, not feeds.
+  function doDocRecheck() {
+    const inv = sage.getCachedInvoices();
+    if (!inv.length) return;
+    require('./po-doc-recheck').run(inv)
+      .then(r => console.log(`[po-doc-recheck] ${r.flagged} flagged · ${r.parsed} re-parsed · `
+        + `${r.skipped} unchanged · ${r.failed} unreadable · ${r.dropped} no longer flagged`))
+      .catch(e => console.error('[po-doc-recheck] failed:', e.message));
+  }
+  setTimeout(doDocRecheck, 20 * 60 * 1000);
+  setInterval(doDocRecheck, 6 * 60 * 60 * 1000);
 
   setTimeout(doSiteLedgerRebuild, 4 * 60 * 1000);
   setInterval(doSiteLedgerRebuild, 60 * 60 * 1000);

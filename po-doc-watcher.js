@@ -386,7 +386,9 @@ async function scanPoDocs(opts = {}) {
   return out;
 }
 
-module.exports = { scanPoDocs };
+// fetchAndExtract is exported for po-doc-recheck.js, which re-reads EVERY file
+// on a PO rather than just the one this watcher picks as latest.
+module.exports = { scanPoDocs, fetchAndExtract };
 
 if (require.main === module) {
   scanPoDocs().then(() => process.exit(0)).catch(e => { console.error('[po-doc-watcher] FAILED:', e.message); process.exit(1); });
