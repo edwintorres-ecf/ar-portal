@@ -966,6 +966,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <button class="cust-pill" id="po-subtab-rejections" onclick="setPoFundsSubtab('rejections')">❌ Rejections <span id="po-rejections-badge"></span></button>
       <button class="cust-pill" id="po-subtab-contacts" onclick="setPoFundsSubtab('contacts')">👥 Site Contacts</button>
       <button class="cust-pill" id="po-subtab-intake" onclick="setPoFundsSubtab('intake')">🩺 Intake health <span id="po-intake-badge"></span></button>
+      <button class="cust-pill" id="po-subtab-season" onclick="setPoFundsSubtab('season')">❄️ Season readiness <span id="po-season-badge"></span></button>
     </div>
     <div id="po-form-container" style="display:none;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px;margin-bottom:16px;"></div>
     <div id="po-ledger-content">
@@ -978,6 +979,9 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-intake-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
+    <div id="po-season-content" style="display:none">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
     <div id="po-uploaded-content" style="display:none">
@@ -5612,6 +5616,145 @@ async function arTakeSnapshot(btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = '📸 Snapshot now'; } }
 }
 
+/* ── Season readiness ──────────────────────────────────────────────────────
+   Amazon awards a snow season months before it raises the purchase orders.
+   Until this screen there was no way to ask "we were awarded 283 sites for
+   $43M — where are they?", and the gap stayed invisible until invoices began
+   holding for want of funds in February (Edwin 2026-09-23).
+
+   The award is the BASE seasonal commitment, so it is compared against the
+   base "Snow Removal Maintenance" PO only. Ancillary, Season Closure and
+   ad-hoc storm work are shown separately: last season they were $65M on top
+   of $20M of base, and folding them in makes every site look over-funded. */
+let _poSeason = null;
+
+async function loadPoSeason() {
+  const el = document.getElementById('po-season-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray-500)">Checking the award against the purchase orders…</div>';
+  try {
+    _poSeason = await apiFetch('/api/po/season-readiness');
+    renderPoSeason();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--red)">Could not load: ${escHtml(e.message)}</div>`;
+  }
+}
+
+const SEASON_STATUS = {
+  'no-po':       { label: 'No PO yet',        bg: '#fef3c7', fg: '#92400e' },
+  'po-no-value': { label: 'PO, no value',     bg: '#e0f2fe', fg: '#0369a1' },
+  'short':       { label: 'PO below award',   bg: '#fee2e2', fg: '#991b1b' },
+  'matched':     { label: 'Matches award',    bg: '#dcfce7', fg: '#166534' },
+  'over':        { label: 'PO above award',   bg: '#ede9fe', fg: '#5b21b6' },
+};
+
+function renderPoSeason() {
+  const el = document.getElementById('po-season-content');
+  const r = _poSeason;
+  if (!el || !r) return;
+  const t = r.totals;
+  const badge = document.getElementById('po-season-badge');
+  if (badge) badge.textContent = t.sites ? `(${t.awaitingPo})` : '';
+
+  if (!t.sites) {
+    el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--gray-500)">
+      No award loaded for ${escHtml(r.season)}. Load Amazon's award list to use this screen.</div>`;
+    return;
+  }
+
+  const pct = t.awardedValue ? Math.round((t.poValue / t.awardedValue) * 100) : 0;
+  const tile = (label, value, note, bg, fg) => `<div style="background:${bg};border-radius:9px;padding:10px 14px;min-width:160px;flex:1">
+    <div style="font-size:10.5px;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.3px">${label}</div>
+    <div style="font-size:19px;font-weight:700;color:${fg};margin-top:2px" class="amount">${value}</div>
+    <div style="font-size:10px;color:var(--gray-500)">${note}</div></div>`;
+
+  const rollup = (title, obj, keyLabel) => {
+    const rows = Object.entries(obj).sort((a, b) => b[1].awarded - a[1].awarded);
+    return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:8px;flex:1;min-width:330px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:6px">${title}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
+          <th style="text-align:left;padding:3px 6px">${keyLabel}</th>
+          <th style="text-align:right;padding:3px 6px">Sites</th>
+          <th style="text-align:right;padding:3px 6px">Awarded</th>
+          <th style="text-align:right;padding:3px 6px">PO in</th></tr></thead>
+        <tbody>${rows.map(([k, v]) => `<tr style="border-top:1px solid var(--gray-100)">
+          <td style="padding:4px 6px;font-weight:600">${escHtml(k)}</td>
+          <td style="padding:4px 6px;text-align:right">${v.withPo}/${v.sites}</td>
+          <td style="padding:4px 6px;text-align:right" class="amount">${fmt$(v.awarded)}</td>
+          <td style="padding:4px 6px;text-align:right;color:${v.poValue ? '#166534' : 'var(--gray-400)'}" class="amount">${v.poValue ? fmt$(v.poValue) : '—'}</td>
+        </tr>`).join('')}</tbody></table></div>`;
+  };
+
+  const rows = tblSortRows(r.awarded, 'season', 'amount', -1);
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment`, '#eef2ff', '#3730a3')}
+      ${tile('Base PO received', fmt$(t.poValue), `${t.sitesWithPo} of ${t.sites} sites · ${pct}%`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')}
+      ${tile('Still awaiting a PO', fmt$(t.awaitingValue), `${t.awaitingPo} sites`, t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')}
+      ${tile('New to us', fmt$(t.newSitesValue), `${t.newSites} sites had no PO in ${escHtml(t.priorSeason || 'the prior season')}`, '#ede9fe', '#5b21b6')}
+    </div>
+
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:700;color:var(--navy)">Purchase orders received</span>
+        <span style="font-size:12px;color:var(--gray-600)">${fmt$(t.poValue)} of ${fmt$(t.awardedValue)}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--gray-500)">
+          award loaded ${r.loadedAt ? escHtml(String(r.loadedAt).slice(0, 10)) : 'n/a'}</span>
+      </div>
+      <div style="height:10px;background:var(--gray-100);border-radius:5px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(100, pct)}%;background:${pct >= 90 ? '#16a34a' : '#d97706'}"></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--gray-500);margin-top:6px">
+        Amazon raises the season's base "Snow Removal Maintenance" POs around 1 November —
+        last season ${t.priorSeason ? escHtml(t.priorSeason) : ''} they landed in a wave through late October.
+        ${t.additionalPoValue ? `A further <strong>${fmt$(t.additionalPoValue)}</strong> of ancillary and storm work has been raised on these sites this season.` : ''}
+        ${t.priorAdditionalValue ? `<span title="Ancillary, Season Closure and ad-hoc POs — driven by how the winter actually goes, not by the award">Last season these sites carried ${fmt$(t.priorPoValue)} of base plus ${fmt$(t.priorAdditionalValue)} of storm work.</span>` : ''}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${rollup('By service center', r.byServiceCenter, 'Service center')}
+      ${rollup('By region', r.byRegion, 'Region')}
+      ${rollup('By pricing model', r.byPricingModel, 'Model')}
+    </div>
+
+    ${r.unawarded && r.unawarded.length ? `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:10px">
+        <div style="font-size:12.5px;font-weight:700;color:#92400e">${r.unawarded.length} site(s) have a ${escHtml(r.season)} snow PO but are NOT on the award list</div>
+        <div style="font-size:11.5px;color:#92400e;margin-top:3px">${r.unawarded.slice(0, 20).map(u => `${escHtml(u.siteCode)} ${fmt$(u.poValue)}`).join(' · ')}</div>
+      </div>` : ''}
+
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
+          ${sortTh([['Site', 'siteCode'], ['State', 'state'], ['Region', 'region'],
+            ['Service center', 'serviceCenter'], ['Awarded', 'amount', 'right'],
+            ['Base PO', 'poValue', 'right'], ['vs award', 'gap', 'right'],
+            ['Storm work', 'additionalPoValue', 'right'],
+            [(t.priorSeason || 'Prior') + ' base', 'priorPoValue', 'right'],
+            ['Status', 'status']], 'season', 'renderPoSeason')}
+        </tr></thead>
+        <tbody>${rows.map(a => {
+          const st = SEASON_STATUS[a.status] || { label: a.status, bg: '#f1f5f9', fg: '#334155' };
+          return `<tr style="border-top:1px solid var(--gray-100)">
+            <td style="padding:6px 12px;font-weight:600;color:var(--navy);cursor:pointer" onclick="poJumpSite('${escHtml(a.siteCode)}')">${escHtml(a.siteCode)}${a.newToUs ? ' <span style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:0 4px" title="No snow PO last season — a site we have not worked before">new</span>' : ''}</td>
+            <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.state)}</td>
+            <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.region)}</td>
+            <td style="padding:6px 12px;color:${a.serviceCenter ? 'var(--gray-700)' : '#b45309'}">${escHtml(a.serviceCenter || 'unassigned')}</td>
+            <td style="padding:6px 12px;text-align:right;font-weight:600" class="amount">${fmt$(a.amount)}</td>
+            <td style="padding:6px 12px;text-align:right" class="amount">${a.poValue != null ? fmt$(a.poValue) : '<span style="color:var(--gray-400)">—</span>'}</td>
+            <td style="padding:6px 12px;text-align:right" class="amount">${a.gap == null ? '<span style="color:var(--gray-400)">—</span>'
+              : `<span style="color:${a.gap < 0 ? '#b91c1c' : '#166534'};font-weight:600">${a.gap < 0 ? '−' : '+'}${fmt$(Math.abs(a.gap))}</span>`}</td>
+            <td style="padding:6px 12px;text-align:right;color:var(--gray-500)" class="amount">${a.additionalPoValue ? fmt$(a.additionalPoValue) : '—'}</td>
+            <td style="padding:6px 12px;text-align:right;color:var(--gray-500)" class="amount">${a.priorPoValue ? fmt$(a.priorPoValue) : '—'}</td>
+            <td style="padding:6px 12px"><span style="font-size:10px;font-weight:700;background:${st.bg};color:${st.fg};border-radius:5px;padding:2px 7px;white-space:nowrap">${st.label}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
 async function loadPoIntakeHealth() {
   const el = document.getElementById('po-intake-content');
   if (!el) return;
@@ -5726,10 +5869,12 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-subtab-rejections').classList.toggle('active', name === 'rejections');
   document.getElementById('po-subtab-contacts').classList.toggle('active', name === 'contacts');
   document.getElementById('po-subtab-intake').classList.toggle('active', name === 'intake');
+  document.getElementById('po-subtab-season').classList.toggle('active', name === 'season');
   document.getElementById('po-ledger-content').style.display = name === 'ledger' ? '' : 'none';
   document.getElementById('po-sites-content').style.display = name === 'sites' ? '' : 'none';
   document.getElementById('po-pending-site-content').style.display = name === 'pending-site' ? '' : 'none';
   document.getElementById('po-intake-content').style.display = name === 'intake' ? '' : 'none';
+  document.getElementById('po-season-content').style.display = name === 'season' ? '' : 'none';
   document.getElementById('po-uploaded-content').style.display = name === 'uploaded' ? '' : 'none';
   document.getElementById('po-needs-upload-content').style.display = name === 'needs-upload' ? '' : 'none';
   document.getElementById('po-orphans-content').style.display = name === 'orphans' ? '' : 'none';
@@ -5743,6 +5888,7 @@ function setPoFundsSubtab(name) {
   if (name === 'pending-site') renderPendingBySite();
   if (name === 'contacts') loadSiteContacts();
   if (name === 'intake') loadPoIntakeHealth();
+  if (name === 'season') loadPoSeason();
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = (name === 'ledger' && currentUser && ['admin', 'manager'].includes(currentUser.role)) ? '' : 'none';
 }
