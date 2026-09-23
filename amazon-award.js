@@ -113,14 +113,43 @@ function seasonOfPo(po) {
  * `awarded`   every awarded site, with the POs that have arrived for it
  * `unawarded` sites carrying a PO for this season that were NOT awarded
  */
+function priorSeasonOf(season) {
+  const m = String(season).match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const start = Number(m[1]) - 1;
+  return `${start}-${String(start + 1).slice(2)}`;
+}
+
 function readiness(invoices, { season = CURRENT_SEASON } = {}) {
   const award = list(season);
   const ledger = require('./po-ledger').getPoLedger(invoices);
+  const prior = priorSeasonOf(season);
 
   const snowForSeason = ledger.filter(p =>
     p.serviceType === 'snow' && p.siteCode && seasonOfPo(p) === season);
   const bySite = {};
   for (const p of snowForSeason) (bySite[p.siteCode] = bySite[p.siteCode] || []).push(p);
+
+  // What the SAME site carried last season. Until this season's POs start
+  // arriving in late October the award column has nothing to sit beside, and
+  // last season's number is the only honest reference available — it also
+  // marks which awarded sites are new to us and have no history at all.
+  const priorBySite = {};
+  if (prior) {
+    for (const p of ledger) {
+      if (p.serviceType !== 'snow' || !p.siteCode) continue;
+      if (seasonOfPo(p) !== prior) continue;
+      priorBySite[p.siteCode] = priorBySite[p.siteCode] || { pos: 0, value: 0 };
+      priorBySite[p.siteCode].pos++;
+      priorBySite[p.siteCode].value += p.ceilingAmount || 0;
+    }
+  }
+
+  // Service centre and BU must come from the site MASTER, not from this
+  // season's POs. Before the POs arrive there are none to read them off, and
+  // every row would collapse into "(none)" — which is exactly the rollup a
+  // centre manager opens this screen for.
+  const master = (() => { try { return db.getAmazonLocationMap(); } catch (e) { return {}; } })();
 
   const awarded = award.map(a => {
     const pos = bySite[a.siteCode] || [];
@@ -130,8 +159,14 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     // not a shortfall (see ar-portal-zero-value-po).
     const gap = (poValue != null && a.amount != null) ? Math.round((poValue - a.amount) * 100) / 100 : null;
     const pct = (gap != null && a.amount) ? poValue / a.amount : null;
+    const last = priorBySite[a.siteCode] || null;
     return {
       ...a,
+      priorSeason: prior,
+      priorPoCount: last ? last.pos : 0,
+      priorPoValue: last ? Math.round(last.value * 100) / 100 : null,
+      // No PO last season either: a site we have not worked before.
+      newToUs: !last,
       poCount: pos.length,
       poNumbers: pos.map(p => p.poNumber),
       poValue,
@@ -143,8 +178,11 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
         : pct != null && pct < 0.9 ? 'short'
         : pct != null && pct > 1.1 ? 'over'
         : 'matched',
-      serviceCenter: pos.find(p => p.siteServiceCenter)?.siteServiceCenter || '',
-      businessUnit: pos.find(p => p.businessUnit)?.businessUnit || '',
+      serviceCenter: pos.find(p => p.siteServiceCenter)?.siteServiceCenter
+        || (master[a.siteCode] && master[a.siteCode].serviceCenter) || '',
+      businessUnit: pos.find(p => p.businessUnit)?.businessUnit
+        || (master[a.siteCode] && master[a.siteCode].businessUnit) || '',
+      inMaster: !!master[a.siteCode],
       pendingUpload: Math.round(pos.reduce((t, p) => t + (p.pendingUpload || 0), 0) * 100) / 100,
     };
   });
@@ -157,7 +195,8 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       poCount: pos.length,
       poNumbers: pos.map(p => p.poNumber),
       poValue: Math.round(pos.reduce((t, p) => t + (p.ceilingAmount || 0), 0) * 100) / 100,
-      serviceCenter: pos.find(p => p.siteServiceCenter)?.siteServiceCenter || '',
+      serviceCenter: pos.find(p => p.siteServiceCenter)?.siteServiceCenter
+        || (master[site] && master[site].serviceCenter) || '',
     }))
     .sort((a, b) => b.poValue - a.poValue);
 
@@ -198,6 +237,10 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       awaitingValue: sum(awarded.filter(a => !a.poCount), a => a.amount),
       shortfall: sum(awarded.filter(a => a.status === 'short'), a => -a.gap),
       unawardedWithPo: unawarded.length,
+      priorSeason: prior,
+      priorPoValue: sum(awarded, a => a.priorPoValue),
+      newSites: awarded.filter(a => a.newToUs).length,
+      newSitesValue: sum(awarded.filter(a => a.newToUs), a => a.amount),
     },
     loadedAt: award.length ? award[0].loadedAt : null,
   };
