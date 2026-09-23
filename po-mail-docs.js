@@ -198,4 +198,27 @@ function map() {
   return out;
 }
 
-module.exports = { ingest, map, newestFor, ensureTable, MAILBOX };
+/**
+ * The actual PDF bytes for a mail-sourced document, fetched from Graph on
+ * demand. Nothing is stored: the attachment already lives in the mailbox, and
+ * keeping a second copy would be one more thing to go stale. The message id and
+ * file name recorded at ingest are enough to find it again.
+ */
+async function attachment(poNumber) {
+  ensureTable();
+  const r = db.getDb().prepare('SELECT message_id, file_name FROM po_mail_docs WHERE po_number=?')
+    .get(String(poNumber || '').toUpperCase().trim());
+  if (!r || !r.message_id) return null;
+  const atts = await g(`/users/${MAILBOX}/messages/${encodeURIComponent(r.message_id)}/attachments`);
+  const list = atts.value || [];
+  const pick = list.find(a => a.name === r.file_name && a.contentBytes)
+    || list.find(a => a.contentBytes && (/pdf/i.test(a.contentType || '') || /\.pdf$/i.test(a.name || '')));
+  if (!pick) return null;
+  return {
+    name: pick.name || `${poNumber}.pdf`,
+    contentType: pick.contentType || 'application/pdf',
+    buffer: Buffer.from(pick.contentBytes, 'base64'),
+  };
+}
+
+module.exports = { ingest, map, newestFor, attachment, ensureTable, MAILBOX };

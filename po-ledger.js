@@ -56,7 +56,18 @@ function getPoDocsMap() {
     const mail = require('./po-mail-docs').map();
     for (const [po, m] of Object.entries(mail)) {
       const filed = byPo[po];
-      if (!filed || docIsNewer(m, filed)) byPo[po] = { ...(filed || {}), ...m, supersedesFiled: !!filed };
+      if (!filed || docIsNewer(m, filed)) {
+        // Point the document link at the portal, which streams the attachment
+        // straight out of the mailbox. The raw Outlook webLink opens the
+        // MESSAGE, leaving the reader to find and download the PDF themselves —
+        // and it is useless to anyone without access to that shared mailbox.
+        const withLink = {
+          ...m,
+          mailWebLink: m.latestFile && m.latestFile.webUrl,
+          latestFile: { ...(m.latestFile || {}), webUrl: `/api/po/${encodeURIComponent(po)}/document` },
+        };
+        byPo[po] = { ...(filed || {}), ...withLink, supersedesFiled: !!filed };
+      }
     }
   } catch (e) { /* not ingested yet — filed documents only */ }
 

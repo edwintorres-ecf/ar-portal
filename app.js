@@ -312,6 +312,11 @@ const SITE_OPS_ALLOWED = [
   /^\/api\/site-pos$/,
   /^\/api\/me\//,
   /^\/api\/health/,
+  // The PO document itself, for POs whose only copy came by email. The handler
+  // scopes it to the caller's own service centres exactly as /api/site-pos
+  // does, so this does not widen what they can see — without it the "📄 PO"
+  // button on their own screen would 403.
+  /^\/api\/po\/[^/]+\/document$/,
 ];
 app.use('/api', (req, res, next) => {
   const u = req.session && req.session.user;
@@ -3377,6 +3382,40 @@ app.get('/api/health/data', requireAuth, (req, res) => {
 // ─── Manual PO→site assignment ───────────────────────────────────────────
 // For POs whose documents/invoices don't reveal a site: a human pins it here
 // and the assignment wins over every automatic attribution source.
+// Stream the PO document for a PO whose only copy arrived by EMAIL.
+//
+// po-mail-docs stores the message id, not the bytes — the attachment already
+// lives in the mailbox and a second copy would just go stale — so this fetches
+// it on demand and serves it inline. Without this, the document link for a
+// mail-sourced PO opened the Outlook MESSAGE, which means finding and
+// downloading the attachment by hand and is no use at all to anyone without
+// access to that shared mailbox (Edwin 2026-09-23).
+app.get('/api/po/:poNumber/document', requireAuth, async (req, res) => {
+  try {
+    const po = String(req.params.poNumber || '').toUpperCase().trim();
+
+    // site_ops reach this route (it is on their allowlist) so the document on
+    // their own PO screen opens. Scope it the same way /api/site-pos is, or it
+    // would be a way to read any PO in the company by guessing numbers.
+    const mine = serviceCentresFor(req.session.user);
+    if (mine !== null) {
+      const ledger = poLedger.getPoLedger(sage.getCachedInvoices());
+      const row = ledger.find(p => String(p.poNumber).toUpperCase() === po);
+      if (!row || !mine.includes(row.siteServiceCenter)) {
+        return res.status(404).json({ error: 'No document for that purchase order.' });
+      }
+    }
+
+    const att = await require('./po-mail-docs').attachment(po);
+    if (!att) return res.status(404).json({ error: 'No emailed document on file for that purchase order.' });
+    res.setHeader('Content-Type', att.contentType || 'application/pdf');
+    // inline: the point is to READ it, not collect downloads.
+    res.setHeader('Content-Disposition', `inline; filename="${att.name.replace(/"/g, '')}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(att.buffer);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/po/:poNumber/site', requireAuth, requirePerm('po.admin'), (req, res) => {
   try {
     const user = req.session.user;
