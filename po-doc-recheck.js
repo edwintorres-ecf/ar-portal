@@ -145,6 +145,25 @@ async function run(invoices, { limit = 40, force = false } = {}) {
 
     // "Newest" means the document that AGREES with Amazon if one does —
     // that is the question being asked. Otherwise the most recent readable one.
+    // The emailed copy counts as a document we hold. Since po-mail-docs began
+    // ingesting arclerk@, the newest document for a PO is usually the one that
+    // was never filed, and a sheet that only listed SharePoint files would keep
+    // reporting a discrepancy that has already been explained.
+    const mailed = (() => {
+      try { return require('./po-mail-docs').map()[p.poNumber.toUpperCase()] || null; }
+      catch (e) { return null; }
+    })();
+    if (mailed) {
+      perFile.push({
+        name: `(email) ${mailed.latestFile && mailed.latestFile.name ? mailed.latestFile.name : mailed.mailSubject || 'PO email'}`,
+        docDate: mailed.pdfRevisedDate || mailed.pdfOrderDate || null,
+        version: mailed.pdfVersion, pdfVersion: mailed.pdfVersion,
+        pdfRevisedDate: mailed.pdfRevisedDate || null,
+        amount: mailed.docAmount == null ? null : mailed.docAmount,
+        isCurrent: true, fromEmail: true, receivedAt: mailed.mailReceivedAt || null,
+      });
+    }
+
     const readable = perFile.filter(f => f.amount != null);
     const agreeing = readable.filter(f => amazon != null && Math.abs(f.amount - amazon) <= MATCH_TOLERANCE);
     const byDate = readable.slice().sort((a, b) =>
@@ -173,7 +192,17 @@ async function run(invoices, { limit = 40, force = false } = {}) {
         ? (stale
           ? `Resolved: "${winner.name}" matches Amazon. The portal is reading a different file — no dispute to raise.`
           : 'Resolved: the document the portal already reads matches Amazon. The discrepancy has cleared.')
-        : `Unfiled revision: Amazon shows ${$(amazon)}, the newest document FILED shows ${$(newestAmt)}${v}`
+        : (winner && winner.fromEmail)
+          // Our document is NEWER than Amazon's published figure. Every case of
+          // this on 2026-09-23 was a revision emailed the same day that the
+          // open-PO feed had not yet picked up — 2D-19222234 went from $144,062
+          // to $555,378 that way. That is money arriving, not a defect.
+          ? `Amazon's feed has not caught up. We hold revision v${winner.pdfVersion ?? '?'}`
+            + `${winner.receivedAt ? ` emailed ${String(winner.receivedAt).slice(0, 10)}` : ''} at ${$(winner.amount)}, `
+            + `while the open-PO feed still shows ${$(amazon)}`
+            + `${winner.amount > amazon ? ` — ${$(winner.amount - amazon)} more headroom than Amazon is publishing yet` : ''}. `
+            + `Nothing to do but wait for the feed; the portal bills to Amazon's figure until it updates.`
+          : `Unfiled revision: Amazon shows ${$(amazon)}, the newest document FILED shows ${$(newestAmt)}${v}`
           + `${direction === 'amazon-higher' ? ` — revised UP by ${$(amazon - newestAmt)}`
             : direction === 'amazon-lower' ? ` — revised DOWN by ${$(newestAmt - amazon)}` : ''}. `
           + `Amazon emails every revision to ${REV_MAILBOX} with the PDF attached; search that mailbox for `
