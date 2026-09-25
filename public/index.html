@@ -6088,6 +6088,20 @@ function renderPoOutstanding() {
         ${halves.map(h => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${OUT_HALF_COLOR[h.key]};margin-right:5px"></span>
           <b>${escHtml(h.label)}</b> ${fmt$(h.amount)} · ${h.count} <span style="color:var(--gray-500)">${escHtml(h.note)}</span></span>`).join('')}
       </div>
+      ${(() => {
+        // Amazon missing its OWN date is the one thing here worth chasing Amazon
+        // about. Already-paid rows are excluded: they are a cash-application job,
+        // not a late payment.
+        const late = items.filter(i => i.amazonLate && i.stage !== 'apply-cash');
+        if (!late.length) return '';
+        const amt = late.reduce((t, i) => t + i.amount, 0);
+        const worst = Math.max(...late.map(i => i.lateDays || 0));
+        return `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:0 6px 6px 0;font-size:12.5px">
+          <b style="color:#dc2626">${fmt$(amt)}</b> across <b>${late.length}</b> invoices is past
+          <b>Amazon's own estimated due date</b> and still unpaid, the worst by ${worst} days.
+          That is Amazon's clock, not our payment terms.
+        </div>`;
+      })()}
       <div style="margin-top:9px;font-size:11px;color:var(--gray-500);border-top:1px solid var(--gray-100);padding-top:8px">
         Every open Amazon invoice in Sage appears in exactly one stage below, so the stages add up to this
         figure. Uploaded means a <b>live</b> attempt exists in Payee Central — an invoice whose every attempt
@@ -6114,7 +6128,8 @@ function renderPoOutstanding() {
       const ages = list.map(i => i.ageDays).filter(n => n !== null).sort((a, b) => a - b);
       return { ...s, list, ...(_outTally(list)),
         medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
-        oldestAge: ages.length ? ages[ages.length - 1] : null };
+        oldestAge: ages.length ? ages[ages.length - 1] : null,
+        late: _outTally(list.filter(i => i.amazonLate)) };
     }).filter(s => s.count);
 
     return `
@@ -6135,6 +6150,7 @@ function renderPoOutstanding() {
           <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Share</th>
           <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)" title="Days since we billed it">Median age</th>
           <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Oldest</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)" title="Amazon set its own Estimated Due Date and that date has passed. Nothing to do with our payment terms.">Past Amazon's date</th>
         </tr></thead>
         <tbody>
         ${stages.map(s => {
@@ -6154,8 +6170,11 @@ function renderPoOutstanding() {
             <td style="padding:8px;text-align:right;color:var(--gray-500)">${total ? ((s.amount / total) * 100).toFixed(1) : '0.0'}%</td>
             <td style="padding:8px;text-align:right">${s.medianAge === null ? '—' : s.medianAge + 'd'}</td>
             <td style="padding:8px;text-align:right;color:${(s.oldestAge || 0) > 180 ? '#dc2626' : 'inherit'}">${s.oldestAge === null ? '—' : s.oldestAge + 'd'}</td>
+            <td style="padding:8px;text-align:right">${s.late.count
+              ? `<b style="color:#dc2626">${fmt$(s.late.amount)}</b><div style="font-size:11px;color:var(--gray-500)">${s.late.count} invoice${s.late.count !== 1 ? 's' : ''}</div>`
+              : '<span style="color:var(--gray-400)">—</span>'}</td>
           </tr>
-          ${open ? `<tr><td colspan="6" style="padding:0 8px 12px">${_outInvoiceTable(s)}</td></tr>` : ''}`;
+          ${open ? `<tr><td colspan="7" style="padding:0 8px 12px">${_outInvoiceTable(s)}</td></tr>` : ''}`;
         }).join('')}
         </tbody>
       </table>
@@ -6260,7 +6279,7 @@ function _outInvoiceTable(s) {
     <thead><tr style="border-bottom:1px solid var(--gray-200)">
       ${sortTh([['Invoice', 'invoiceId'], ['Site', 'site'], ['PO', 'po'], ['Service centre', 'serviceCenter'],
                 ['Billed', 'invoiceDate'], ['Age', 'ageDays', 'right'], ['Amount', 'amount', 'right'],
-                ['Amazon status', 'payeeStatus'], ['Amazon due', 'amazonDueDate']], key, 'renderPoOutstanding')}
+                ['Amazon status', 'payeeStatus'], ['Amazon due', 'lateDays']], key, 'renderPoOutstanding')}
     </tr></thead>
     <tbody>
       ${shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
@@ -6272,7 +6291,7 @@ function _outInvoiceTable(s) {
         <td style="padding:6px 8px;text-align:right">${i.ageDays === null ? '—' : i.ageDays + 'd'}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:600">${fmt$(i.amount)}</td>
         <td style="padding:6px 8px;color:var(--gray-500)">${escHtml(i.payeeStatus || 'not in Payee')}</td>
-        <td style="padding:6px 8px;color:var(--gray-500)" title="Amazon's own Estimated Due Date, not our payment terms">${escHtml(i.amazonDueDate || '—')}</td>
+        <td style="padding:6px 8px;color:${i.amazonLate ? '#dc2626' : 'var(--gray-500)'}" title="Amazon's own Estimated Due Date, not our payment terms">${escHtml(i.amazonDueDate || '—')}${i.amazonLate ? ` <b>${i.lateDays}d late</b>` : ''}</td>
       </tr>`).join('')}
     </tbody>
   </table>

@@ -63,9 +63,7 @@ const STAGES = [
   { key: 'in-progress',  label: 'In progress',               half: 'uploaded', whose: 'amazon',
     reason: 'Moving normally through Amazon' },
   { key: 'scheduled',    label: 'Scheduled for payment',     half: 'uploaded', whose: 'amazon',
-    reason: 'Amazon has scheduled it and its own estimated date has not passed' },
-  { key: 'scheduled-late', label: 'Scheduled — date passed',  half: 'uploaded', whose: 'amazon',
-    reason: 'Amazon scheduled it, then missed its OWN estimated date — not our payment terms' },
+    reason: 'Amazon has scheduled it for payment' },
   // ── settled ──
   { key: 'apply-cash',   label: 'Paid — needs applying',     half: 'settled', whose: 'accounting',
     reason: 'Amazon paid. The balance is open in Intacct only, and chasing it would be wrong' },
@@ -108,17 +106,7 @@ function stageOf(row, nu) {
   if (row.amazonSettled) return 'apply-cash';
   if (st === 'Insufficient PO Funds Hold' || st === 'Insufficient Amazon PO Manager Hold') return 'funds-hold';
   if (st === 'Pending Goods Receipt Hold') return 'goods-receipt';
-  if (st === 'Scheduled for payment') {
-    // AMAZON's Estimated Due Date, never Sage's. Sage's `dueDate` is our payment
-    // terms; Amazon runs its own clock from the day the invoice landed in Payee
-    // Central and the two are routinely months apart. Reading the Sage date here
-    // called all 264 scheduled-and-past-term invoices late ($5.37M) when not one
-    // had passed Amazon's date — ECI-021128 was "5 months overdue" against an
-    // Amazon date of Oct 31. Same trap the entry-date note in site-ledger warns
-    // about (Edwin 2026-09-10).
-    const due = Date.parse(row.payeeDueDate);
-    return (!isNaN(due) && due < Date.now()) ? 'scheduled-late' : 'scheduled';
-  }
+  if (st === 'Scheduled for payment') return 'scheduled';
   return 'in-progress';
 }
 
@@ -127,6 +115,30 @@ function ageDays(row) {
   const t = Date.parse(row.invoiceDate);
   if (isNaN(t)) return null;
   return Math.floor((Date.now() - t) / 86400000);
+}
+
+/**
+ * Days past AMAZON's own Estimated Due Date, or null if that date has not
+ * passed (or there is none).
+ *
+ * ─── THIS IS A FLAG, NOT A STAGE ────────────────────────────────────────────
+ * It was first built as a stage, "Scheduled — date passed", on TWO wrong
+ * assumptions. First it read Sage's due date, which is OUR payment terms, and
+ * so called all 264 scheduled invoices late ($5.37M) when not one had passed
+ * Amazon's date. Second, even corrected, a stage can only describe invoices in
+ * the "Scheduled" status — and lateness is not confined to them: 255 invoices
+ * on Pending Goods Receipt Hold and 83 on a funds hold are past Amazon's date
+ * too, and those are the more chaseable, because nothing is scheduled at all.
+ *
+ * So the stage says WHERE the invoice is and this says WHETHER Amazon has
+ * blown its own clock. The two are independent, and every uploaded stage can
+ * carry it.
+ */
+function lateDays(row) {
+  const t = Date.parse(row.payeeDueDate);
+  if (isNaN(t)) return null;
+  const d = Math.floor((Date.now() - t) / 86400000);
+  return d > 0 ? d : null;
 }
 
 const BANDS = [['0-30', 0, 30], ['31-60', 31, 60], ['61-90', 61, 90], ['90+', 91, null]];
@@ -189,6 +201,8 @@ function classify(invoices) {
       amazonDueDate: r.payeeDueDate || '',      // Amazon's Estimated Due Date
       ageDays: ageDays(r),
       daysInPayee: r.daysInPayee ?? null,
+      lateDays: lateDays(r),                    // past AMAZON's date, null if not
+      amazonLate: lateDays(r) !== null,
       payeeStatus: r.payeeStatus || '',
       payeeId: r.payeeId || '',
       stage: key,

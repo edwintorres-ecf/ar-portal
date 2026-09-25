@@ -209,14 +209,23 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     const unstaged = items.filter(i => !i.stage);
     if (unstaged.length) throw new Error(`${unstaged.length} invoice(s) in no stage`);
     const notActuallyLate = items.filter(i =>
-      i.stage === 'scheduled-late' && !(Date.parse(i.amazonDueDate) < Date.now()));
+      i.amazonLate && !(Date.parse(i.amazonDueDate) < Date.now()));
     if (notActuallyLate.length) {
-      throw new Error(`${notActuallyLate.length} invoice(s) called late with no passed Amazon date `
+      throw new Error(`${notActuallyLate.length} invoice(s) flagged late with no passed Amazon date `
         + `(e.g. ${notActuallyLate[0].invoiceId} due ${notActuallyLate[0].amazonDueDate || 'never'})`);
     }
-    const late = items.filter(i => i.stage === 'scheduled-late');
+    // The original bug in reverse: lateness read off Sage's due date agreed with
+    // Amazon's on almost nothing, so if the two ever line up exactly again,
+    // something has started reading the wrong field.
+    const sageLate = items.filter(i => Date.parse(i.dueDate) < Date.now()).length;
+    const late = items.filter(i => i.amazonLate);
+    if (late.length && late.length === sageLate) {
+      throw new Error(`late count equals the Sage past-terms count (${sageLate}) — `
+        + `lateness is probably reading Sage's due date again`);
+    }
     return `${totals.count} invoices / $${Math.round(totals.amount).toLocaleString('en-US')} in `
-      + `${new Set(items.map(i => i.stage)).size} stages, ${late.length} genuinely past Amazon's date`;
+      + `${new Set(items.map(i => i.stage)).size} stages, ${late.length} past Amazon's date `
+      + `(${sageLate} past our terms)`;
   });
   // 6. Comms platform: inbound poller alive, no failed sends, dunning clean
   check('comms-platform', () => {
