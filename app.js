@@ -3868,6 +3868,42 @@ app.post('/api/site-pos/service-center', requireAuth, requirePerm('po.view'), (r
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ─── API: Site aliases — one building, more than one Amazon site code ───────
+// Confirming an alias MERGES two codes everywhere in the portal, so it is
+// admin-only and a person has to say so. Proposals are inert.
+app.get('/api/sites/aliases', requireAuth, (req, res) => {
+  try {
+    const sa = require('./site-alias');
+    res.json({ aliases: sa.list(), candidates: sa.detect(), confirmed: sa.map() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/sites/aliases/:alias', requireAuth, requirePerm('po.admin'), (req, res) => {
+  try {
+    const sa = require('./site-alias');
+    const user = req.session.user;
+    const alias = String(req.params.alias || '').toUpperCase().trim();
+    const action = String((req.body && req.body.action) || '').toLowerCase();
+    const canonical = String((req.body && req.body.canonical) || '').toUpperCase().trim();
+    let out;
+    if (action === 'confirm') {
+      if (!canonical) return res.status(400).json({ error: 'canonical site code is required' });
+      out = sa.confirm(alias, canonical, user.email);
+      db.auditLog(user.email, 'site_alias_confirm', null, `${alias} is the same site as ${canonical}; ${canonical} is the real code`);
+    } else if (action === 'reject') {
+      out = sa.reject(alias, user.email);
+      db.auditLog(user.email, 'site_alias_reject', null, `${alias} is NOT the same site`);
+    } else if (action === 'propose') {
+      out = sa.propose(alias, canonical, { source: user.email });
+    } else {
+      return res.status(400).json({ error: 'action must be confirm, reject or propose' });
+    }
+    // Merging changes the site on every ledger row, so both caches must go.
+    poLedger.invalidateSiteMeta();
+    res.json({ ok: true, alias: out });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ─── API: Season readiness — the award against the POs that have arrived ────
 // Amazon awards a snow season months before it raises the purchase orders. The
 // portal only ever knew about POs that existed, so "we were awarded 283 sites

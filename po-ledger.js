@@ -154,10 +154,23 @@ function normalizeSite(s) {
   if (s == null) return s;
   const str = String(s).trim();
   const m = str.match(SITE_TOKEN_RE);
-  if (m) return m[1].toUpperCase();
+  if (m) return aliasResolve(m[1].toUpperCase());
   // No standard token: a registered no-digit site still normalises to itself.
   const u = str.toUpperCase();
-  return (/^[A-Z]{3,5}$/.test(u) && noDigitSites().has(u)) ? u : str;
+  return (/^[A-Z]{3,5}$/.test(u) && noDigitSites().has(u)) ? aliasResolve(u) : str;
+}
+
+// Amazon renames sites, and the old code keeps all the history while the new
+// one arrives empty. A CONFIRMED alias collapses both to one code here, which
+// is the single point every site code in the portal passes through — so the
+// ledger, intake health, pending-by-site, the field PO screen and the award
+// screen all stop counting one building as two (Edwin 2026-09-24).
+//
+// Confirmed pairs only. A wrong merge moves money between sites and business
+// units with nothing downstream to question it, so nothing resolves until a
+// person has said the two codes are the same place.
+function aliasResolve(code) {
+  try { return require('./site-alias').resolve(code); } catch (e) { return code; }
 }
 // A real Amazon site code (DBU3, EWR9). Junk ship-to values like "Amazon.com
 // Services LLC" fail this, so we can tell "has a real site" from "has garbage".
@@ -686,6 +699,7 @@ function invalidateSiteMeta() {
   _siteMetaCache = null;
   _siteMetaTs = 0;
   invalidateNoDigitSites();
+  try { require('./site-alias').invalidate(); } catch (e) {}
   _ledgerEpoch++;
 }
 
