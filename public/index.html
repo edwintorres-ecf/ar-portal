@@ -5821,8 +5821,8 @@ function renderPoSeason() {
       <div style="font-size:11.5px;color:var(--gray-500);margin-top:6px">
         Amazon raises the season's base "Snow Removal Maintenance" POs around 1 November —
         last season ${t.priorSeason ? escHtml(t.priorSeason) : ''} they landed in a wave through late October.
-        ${t.additionalPoValue ? `A further <strong>${fmt$(t.additionalPoValue)}</strong> of ancillary and storm work has been raised on these sites this season.` : ''}
-        ${t.priorAdditionalValue ? `<span title="Ancillary, Season Closure and ad-hoc POs — driven by how the winter actually goes, not by the award">Last season these sites carried ${fmt$(t.priorPoValue)} of base plus ${fmt$(t.priorAdditionalValue)} of storm work.</span>` : ''}
+        ${money && t.additionalPoValue ? `A further <strong>${fmt$(t.additionalPoValue)}</strong> of ancillary and storm work has been raised on these sites this season.` : ''}
+        ${money && t.priorAdditionalValue ? `<span title="Ancillary, Season Closure and ad-hoc POs — driven by how the winter actually goes, not by the award">Last season these sites carried ${fmt$(t.priorPoValue)} of base plus ${fmt$(t.priorAdditionalValue)} of storm work.</span>` : ''}
       </div>
       ${t.sqFt ? `<div style="font-size:11.5px;color:var(--gray-500);margin-top:4px">
         Covering ${Math.round(t.sqFt).toLocaleString('en-US')} sq ft.
@@ -5838,6 +5838,32 @@ function renderPoSeason() {
         <span style="color:#b91c1c;font-weight:600">${t.awardedBelowBid} below</span>.
       </div>` : ''}
     </div>
+
+    <!-- Each site's PO checked against its award, as a count of verdicts. This
+         is the whole comparison without a single figure: "PO below award 12"
+         says what needs chasing, and works identically whether or not the
+         caller may see the award dollars (Edwin 2026-09-25, "verified against
+         the award but no need to total these"). -->
+    ${(() => {
+      const order = ['matched', 'over', 'short', 'po-no-value', 'no-po'];
+      const seen = order.filter(k => r.byStatus && r.byStatus[k]);
+      if (!seen.length) return '';
+      return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px">
+        <div style="font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:8px">
+          Verified against the award
+          <span style="font-weight:400;color:var(--gray-500);font-size:11px">— every site's base PO checked against what Amazon committed</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${seen.map(k => {
+            const st = SEASON_STATUS[k];
+            return `<div style="background:${st.bg};border-radius:8px;padding:7px 12px;min-width:120px">
+              <div style="font-size:19px;font-weight:700;color:${st.fg}">${r.byStatus[k]}</div>
+              <div style="font-size:10.5px;font-weight:600;color:${st.fg}">${st.label}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
 
     <div id="site-alias-card"></div>
 
