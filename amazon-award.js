@@ -76,10 +76,18 @@ function load(rows, { season = CURRENT_SEASON, source = 'award-email' } = {}) {
   try {
     d.prepare('DELETE FROM amazon_award WHERE season=?').run(season);
     for (const r of rows) {
-      // Three 2026-27 rows cover TWO sites on one contract ("DOB5 - HBO2").
-      // The money is awarded once, so the row stays one record: the first code
-      // is the key and the rest are recorded as also-covered. Splitting them
-      // into a row each would double-count $403,383.
+      // Three 2026-27 rows name TWO codes for ONE site — "DOB5 - HBO2" is a
+      // site Amazon RENAMED (Edwin 2026-09-24), not two sites on one contract.
+      // Each pair shares an address: DOB5/HBO2 at 34 Market St Everett MA,
+      // MDT2/KRB5 at 600 Principio Pkwy W, WGR5/DGS2 at 1115 McDonald Rd.
+      //
+      // So the row stays ONE record for ONE site, keyed on the first code, with
+      // the other recorded as an alias. Treating them as separate sites would
+      // both double-count $403,383 of award and report 286 sites for 283.
+      //
+      // WHICH code is current is NOT consistent, so this does not assume:
+      // Omnia lists DOB5 and MDT2 but not HBO2; for the third pair it lists
+      // DGS2 and NOT WGR5, while WGR5 carries the newer PO. Both are matched.
       const codes = String(r.code || r.siteCode || '').toUpperCase()
         .split(/[\s,\/]*-[\s,\/]*|[\s,\/]+/).map(x => x.trim()).filter(Boolean);
       const code = codes[0];
@@ -102,7 +110,9 @@ function list(season = CURRENT_SEASON) {
     return db.getDb().prepare('SELECT * FROM amazon_award WHERE season=? ORDER BY site_code').all(season)
       .map(r => ({ season: r.season, siteCode: r.site_code, state: r.state || '', region: r.region || '',
         amount: r.amount, pricingModel: r.pricing_model || '', source: r.source, loadedAt: r.loaded_at,
-        covers: r.covers ? r.covers.split(',') : [],
+        // Other code(s) for the SAME physical site, after an Amazon rename.
+        aliases: r.covers ? r.covers.split(',') : [],
+        covers: r.covers ? r.covers.split(',') : [],   // deprecated name
         // Amazon's own label. Beats inferring it from whether we had a PO last
         // season, which counts a site we serviced under a different contract
         // type as new.
@@ -193,7 +203,8 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
   const master = (() => { try { return db.getAmazonLocationMap(); } catch (e) { return {}; } })();
 
   const awarded = award.map(a => {
-    const sites = [a.siteCode, ...(a.covers || [])];
+    // One site, every code it has been known by.
+    const sites = [a.siteCode, ...(a.aliases || [])];
     const pos = sites.flatMap(sc => bySite[sc] || []);
     const basePos = pos.filter(isBasePo);
     const addPos = pos.filter(p => !isBasePo(p));
@@ -241,7 +252,7 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     };
   });
 
-  const awardedCodes = new Set(award.flatMap(a => [a.siteCode, ...(a.covers || [])]));
+  const awardedCodes = new Set(award.flatMap(a => [a.siteCode, ...(a.aliases || [])]));
   const unawarded = Object.entries(bySite)
     .filter(([site]) => !awardedCodes.has(site))
     .map(([site, pos]) => ({
@@ -283,7 +294,9 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     byServiceCenter: roll('serviceCenter'),
     byPricingModel: roll('pricingModel'),
     totals: {
+      // 283 SITES, not 286: three of them answer to two codes each.
       sites: awarded.length,
+      renamedSites: awarded.filter(a => (a.aliases || []).length).length,
       awardedValue: sum(awarded, a => a.amount),
       sitesWithPo: withPo.length,
       poValue: sum(withPo, a => a.poValue),

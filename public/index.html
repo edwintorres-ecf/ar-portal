@@ -5689,7 +5689,7 @@ function renderPoSeason() {
   const rows = tblSortRows(r.awarded, 'season', 'amount', -1);
   el.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      ${tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment`, '#eef2ff', '#3730a3')}
+      ${tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment${t.renamedSites ? ` · ${t.renamedSites} renamed` : ''}`, '#eef2ff', '#3730a3')}
       ${tile('Base PO received', fmt$(t.poValue), `${t.sitesWithPo} of ${t.sites} sites · ${pct}%`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')}
       ${tile('Still awaiting a PO', fmt$(t.awaitingValue), `${t.awaitingPo} sites`, t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')}
       ${tile('New sites', fmt$(t.newSitesValue), `${t.newSites} of ${t.sites} — Amazon's own incumbency label`, '#ede9fe', '#5b21b6')}
@@ -5746,7 +5746,7 @@ function renderPoSeason() {
           const st = SEASON_STATUS[a.status] || { label: a.status, bg: '#f1f5f9', fg: '#334155' };
           return `<tr style="border-top:1px solid var(--gray-100)">
             <td style="padding:6px 12px;font-weight:600;color:var(--navy)">
-              <span style="cursor:pointer" onclick="poJumpSite('${escHtml(a.siteCode)}')">${escHtml(a.siteCode)}</span>${(a.covers || []).map(c => ` <span style="cursor:pointer;color:var(--gray-600)" onclick="poJumpSite('${escHtml(c)}')" title="One contract covers both sites">+ ${escHtml(c)}</span>`).join('')}
+              <span style="cursor:pointer" onclick="poJumpSite('${escHtml(a.siteCode)}')">${escHtml(a.siteCode)}</span>${(a.aliases || a.covers || []).map(c => ` <span style="cursor:pointer;font-weight:400;color:var(--gray-500);font-size:11px" onclick="poJumpSite('${escHtml(c)}')" title="The same site under its other code — Amazon renamed it. Purchase orders and history under either code count here.">/ ${escHtml(c)}</span>`).join('')}
               ${a.incumbency ? `<span style="font-size:9px;background:${a.isNew ? '#ede9fe' : '#e0f2fe'};color:${a.isNew ? '#5b21b6' : '#0369a1'};border-radius:4px;padding:0 4px;margin-left:3px" title="Amazon's incumbency label">${escHtml(a.incumbency.toLowerCase() === 'new' ? 'new' : a.incumbency.replace(/^Existing\s*/i, '') || 'existing')}</span>` : ''}
               ${a.bidVariance != null && a.bidVariance < -1 ? `<span style="font-size:9px;color:#b91c1c;margin-left:3px" title="Awarded ${fmt$(Math.abs(a.bidVariance))} below the ${fmt$(a.bidPrice)} we bid">▼bid</span>` : ''}
             </td>
