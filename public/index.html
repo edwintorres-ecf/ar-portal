@@ -6033,6 +6033,15 @@ let _poOutItems = [];             // after the BU/site filter
 let _poOutOpen = new Set();       // expanded stage keys
 let _poOutGroup = 'serviceCenter';
 let _poOutStage = '';             // scope the rollup to one stage ('' = all)
+// Service scope, same rule and same sentinel as the Amazon AR screen. Nothing
+// special is needed to make the totals follow it: every figure here is already
+// a sum over the rows on display, so narrowing the rows narrows everything.
+let _poOutService = '';
+function setPoOutService(v) {
+  _poOutService = (_poOutService === v) ? '' : (v || '');
+  renderPoOutstanding();
+  poUpdateBadges();
+}
 
 const OUT_STAGE_COLOR = {
   'no-po': '#6b7280', 'ready': '#16a34a', 'resubmit': '#ea580c', 'blocked-funds': '#dc2626',
@@ -6101,17 +6110,43 @@ function poOutByGroup(stage, group, ev) {
 function renderPoOutstanding() {
   const el = document.getElementById('po-outstanding-content');
   if (!el || !_poOutRaw) return;
-  _poOutItems = poFilterRows(_poOutRaw.items || []);
+  // `base` is everything the BU/site filter allows; `items` is that narrowed to
+  // the chosen service. The pills count `base`, so picking one never hides how
+  // big the others are.
+  const base = poFilterRows(_poOutRaw.items || []);
+  _poOutItems = _poOutService ? base.filter(i => amzSvcKey(i) === _poOutService) : base;
   const items = _poOutItems;
   const stageMeta = _poOutRaw.stageMeta || [];
   const halfMeta = _poOutRaw.halfMeta || {};
   const whoseMeta = _poOutRaw.whoseMeta || {};
   const total = items.reduce((t, i) => t + (i.amount || 0), 0);
 
+  // Rendered before the empty check, or choosing a service with no outstanding
+  // work would take the pills away with it and leave no way back.
+  const svcPills = (() => {
+    const tally = {};
+    for (const i of base) {
+      const k = amzSvcKey(i);
+      tally[k] = tally[k] || { n: 0, amt: 0 };
+      tally[k].n++; tally[k].amt += (i.amount || 0);
+    }
+    const pill = (key, label, n, amt, on) => `<button onclick="setPoOutService('${key}')"
+      class="cust-pill${on ? ' active' : ''}" title="${fmt$(amt)} across ${n} invoice${n !== 1 ? 's' : ''}">${label} <span style="opacity:.6">${n}</span></button>`;
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">`
+      + pill('', 'All work', base.length, base.reduce((t, i) => t + (i.amount || 0), 0), !_poOutService)
+      + AMZ_SERVICE_ORDER.filter(k => tally[k]).map(k => {
+          const chip = NU_SERVICE_CHIP[k];
+          return pill(k, chip ? `${chip.icon} ${chip.label}` : (AMZ_SERVICE_LABEL[k] || k),
+            tally[k].n, tally[k].amt, _poOutService === k);
+        }).join('')
+      + (_poOutService ? `<span style="font-size:11.5px;color:var(--gray-500);margin-left:6px">every figure below counts this work only</span>` : '')
+      + `</div>`;
+  })();
+
   if (!items.length) {
-    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--gray-500)">
+    el.innerHTML = svcPills + `<div style="padding:40px;text-align:center;color:var(--gray-500)">
       <div style="font-size:32px;margin-bottom:12px">💰</div>
-      <div style="font-size:15px;font-weight:600">Nothing outstanding${poFilterActive() ? ' in this filter' : ''}</div></div>`;
+      <div style="font-size:15px;font-weight:600">Nothing outstanding${_poOutService || poFilterActive() ? ' in this filter' : ''}</div></div>`;
     return;
   }
 
@@ -6327,7 +6362,7 @@ function renderPoOutstanding() {
       <div style="margin-top:8px;font-size:11px;color:var(--gray-500)">Bars are to the same scale, so row length compares rows directly.</div>
     </div>`;
 
-  el.innerHTML = head + cards + halves.map(halfPanel).join('') + rollup;
+  el.innerHTML = svcPills + head + cards + halves.map(halfPanel).join('') + rollup;
 }
 
 /** The invoices behind one stage. Sorted biggest first — that is the work order. */
@@ -6338,7 +6373,8 @@ function _outInvoiceTable(s) {
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--gray-50);border-radius:8px">
     <thead><tr style="border-bottom:1px solid var(--gray-200)">
       ${sortTh([['Invoice', 'invoiceId'], ['Site', 'site'], ['PO', 'po'], ['Service centre', 'serviceCenter'],
-                ['Billed', 'invoiceDate'], ['Age', 'ageDays', 'right'], ['Amount', 'amount', 'right'],
+                ['Service', 'serviceType'], ['Billed', 'invoiceDate'], ['Age', 'ageDays', 'right'],
+                ['Amount', 'amount', 'right'],
                 ['Amazon status', 'payeeStatus'], ['Amazon due', 'lateDays']], key, 'renderPoOutstanding')}
     </tr></thead>
     <tbody>
@@ -6347,6 +6383,7 @@ function _outInvoiceTable(s) {
         <td style="padding:6px 8px">${escHtml(i.site || '—')}</td>
         <td style="padding:6px 8px;font-family:monospace">${escHtml(i.po || '—')}</td>
         <td style="padding:6px 8px">${escHtml(i.serviceCenter || '—')}</td>
+        <td style="padding:6px 8px">${nuServiceChip(i.serviceType)}</td>
         <td style="padding:6px 8px">${escHtml(String(i.invoiceDate || '').slice(0, 10))}</td>
         <td style="padding:6px 8px;text-align:right">${i.ageDays === null ? '—' : i.ageDays + 'd'}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:600">${fmt$(i.amount)}</td>

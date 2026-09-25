@@ -178,6 +178,16 @@ function classify(invoices) {
     for (const r of poLedger.getNeedsUpload(invoices)) nuByRec[String(r.recordNo)] = r;
   } catch (e) { /* degrade to no funds verdict rather than no screen */ }
 
+  // What KIND of work each dollar is, so the screen can be scoped to snow in
+  // season. Keyed on the PO the invoice will be billed against — `r.po` from
+  // buildAmazonRows is already assignment-aware — which is the same chain
+  // Needs Upload, Pending by Site and Amazon AR use. getPoLedger is memoised
+  // on the invoice array, so this reuses the ledger getNeedsUpload just built.
+  const svcByPo = {};
+  try {
+    for (const r of poLedger.getPoLedger(invoices)) svcByPo[r.poNumber] = r.serviceType || '';
+  } catch (e) { /* every row falls back to unclassified */ }
+
   const items = [];
   for (const r of rows) {
     const amount = r.amount || 0;
@@ -196,6 +206,9 @@ function classify(invoices) {
       region: r.region || '',
       po: r.po || '',
       poNumber: r.po || '',
+      // '' and 'unknown' both mean nobody has said what this work is; the
+      // screen folds them into one Unclassified bucket.
+      serviceType: svcByPo[r.po] || '',
       invoiceDate: r.invoiceDate || '',
       dueDate: r.dueDate || '',                 // Sage's, i.e. OUR terms
       amazonDueDate: r.payeeDueDate || '',      // Amazon's Estimated Due Date
