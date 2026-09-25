@@ -5692,7 +5692,7 @@ function renderPoSeason() {
       ${tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment`, '#eef2ff', '#3730a3')}
       ${tile('Base PO received', fmt$(t.poValue), `${t.sitesWithPo} of ${t.sites} sites · ${pct}%`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')}
       ${tile('Still awaiting a PO', fmt$(t.awaitingValue), `${t.awaitingPo} sites`, t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')}
-      ${tile('New to us', fmt$(t.newSitesValue), `${t.newSites} sites had no PO in ${escHtml(t.priorSeason || 'the prior season')}`, '#ede9fe', '#5b21b6')}
+      ${tile('New sites', fmt$(t.newSitesValue), `${t.newSites} of ${t.sites} — Amazon's own incumbency label`, '#ede9fe', '#5b21b6')}
     </div>
 
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px">
@@ -5711,6 +5711,13 @@ function renderPoSeason() {
         ${t.additionalPoValue ? `A further <strong>${fmt$(t.additionalPoValue)}</strong> of ancillary and storm work has been raised on these sites this season.` : ''}
         ${t.priorAdditionalValue ? `<span title="Ancillary, Season Closure and ad-hoc POs — driven by how the winter actually goes, not by the award">Last season these sites carried ${fmt$(t.priorPoValue)} of base plus ${fmt$(t.priorAdditionalValue)} of storm work.</span>` : ''}
       </div>
+      ${t.bidTotal ? `<div style="font-size:11.5px;color:var(--gray-500);margin-top:4px;border-top:1px solid var(--gray-100);padding-top:6px">
+        We bid <strong>${fmt$(t.bidTotal)}</strong> and were awarded <strong>${fmt$(t.awardedValue)}</strong>
+        — <span style="color:${t.bidVariance >= 0 ? '#166534' : '#b91c1c'};font-weight:600">${t.bidVariance >= 0 ? '+' : '−'}${fmt$(Math.abs(t.bidVariance))}</span> overall,
+        but ${t.awardedAboveBid} site${t.awardedAboveBid === 1 ? '' : 's'} above our bid and
+        <span style="color:#b91c1c;font-weight:600">${t.awardedBelowBid} below</span>.
+        ${t.sqFt ? `Covering ${Math.round(t.sqFt).toLocaleString('en-US')} sq ft.` : ''}
+      </div>` : ''}
     </div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -5738,7 +5745,11 @@ function renderPoSeason() {
         <tbody>${rows.map(a => {
           const st = SEASON_STATUS[a.status] || { label: a.status, bg: '#f1f5f9', fg: '#334155' };
           return `<tr style="border-top:1px solid var(--gray-100)">
-            <td style="padding:6px 12px;font-weight:600;color:var(--navy);cursor:pointer" onclick="poJumpSite('${escHtml(a.siteCode)}')">${escHtml(a.siteCode)}${a.newToUs ? ' <span style="font-size:9px;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:0 4px" title="No snow PO last season — a site we have not worked before">new</span>' : ''}</td>
+            <td style="padding:6px 12px;font-weight:600;color:var(--navy)">
+              <span style="cursor:pointer" onclick="poJumpSite('${escHtml(a.siteCode)}')">${escHtml(a.siteCode)}</span>${(a.covers || []).map(c => ` <span style="cursor:pointer;color:var(--gray-600)" onclick="poJumpSite('${escHtml(c)}')" title="One contract covers both sites">+ ${escHtml(c)}</span>`).join('')}
+              ${a.incumbency ? `<span style="font-size:9px;background:${a.isNew ? '#ede9fe' : '#e0f2fe'};color:${a.isNew ? '#5b21b6' : '#0369a1'};border-radius:4px;padding:0 4px;margin-left:3px" title="Amazon's incumbency label">${escHtml(a.incumbency.toLowerCase() === 'new' ? 'new' : a.incumbency.replace(/^Existing\s*/i, '') || 'existing')}</span>` : ''}
+              ${a.bidVariance != null && a.bidVariance < -1 ? `<span style="font-size:9px;color:#b91c1c;margin-left:3px" title="Awarded ${fmt$(Math.abs(a.bidVariance))} below the ${fmt$(a.bidPrice)} we bid">▼bid</span>` : ''}
+            </td>
             <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.state)}</td>
             <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.region)}</td>
             <td style="padding:6px 12px;color:${a.serviceCenter ? 'var(--gray-700)' : '#b45309'}">${escHtml(a.serviceCenter || 'unassigned')}</td>
