@@ -375,13 +375,19 @@ const CAPABILITIES = [
   // sites we were willing to go low on and by how much. Edwin 2026-09-25,
   // "only i should view that".
   'award.bids',
+  // The award DOLLARS: what Amazon committed per site and in total, and the
+  // gap between that and the POs raised. The accounting team works this screen
+  // for season prep and needs the counts — which sites are awarded, which are
+  // still waiting — but not the contract value (Edwin 2026-09-25).
+  'award.values',
 ];
 
 // Capabilities the admin wildcard does NOT confer. `admin` means "runs the
-// portal", which is not the same as "may see what we bid" — without this, any
-// future admin account would pick bid data up silently. Held by explicit grant
-// only, which is visible and revocable in Admin → Permissions like any other.
-const ADMIN_EXCLUDED = new Set(['award.bids']);
+// portal", which is not the same as "may see the Amazon contract value" —
+// without this, any future admin account would pick both up silently. Held by
+// explicit grant only, visible and revocable in Admin → Permissions like any
+// other capability.
+const ADMIN_EXCLUDED = new Set(['award.bids', 'award.values']);
 const ROLE_DEFAULT_CAPS = {
   viewer: [],
   // Operations staff at a service centre. They check a PO arrived and carries
@@ -3946,12 +3952,17 @@ app.get('/api/po/season-readiness', requireAuth, async (req, res) => {
     const award = require('./amazon-award');
     const season = String(req.query.season || award.CURRENT_SEASON);
     const out = { ...award.readiness(invoices, { season }), seasons: award.seasons() };
-    // Everything else on this screen — awarded value, PO coverage, which sites
-    // are still waiting — is ordinary season-prep work the AR team needs. Only
-    // the bid comparison is withheld, and it is REMOVED FROM THE RESPONSE
-    // rather than hidden in the browser: a field the client never receives
-    // cannot be read out of the network tab.
-    if (!hasPerm(req.session.user, 'award.bids')) stripBids(out);
+    // The screen stays usable for the accounting team either way: which sites
+    // are awarded, which still have no PO, which are short, by COUNT. What is
+    // withheld is the money — and it is REMOVED FROM THE RESPONSE rather than
+    // hidden in the browser, because a field the client never receives cannot
+    // be read out of the network tab.
+    const canValues = hasPerm(req.session.user, 'award.values');
+    if (!canValues) stripAwardValues(out);
+    // Bids REQUIRE values. bidVariance is (award − bid), so bid plus variance
+    // reconstructs the award amount exactly; serving bids to someone who may
+    // not see award values would hand them back through the side door.
+    if (!canValues || !hasPerm(req.session.user, 'award.bids')) stripBids(out);
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3964,6 +3975,25 @@ function stripBids(out) {
   for (const a of (out.awarded || [])) { delete a.bidPrice; delete a.bidVariance; }
   for (const a of (out.unawarded || [])) { delete a.bidPrice; delete a.bidVariance; }
   out.bidsWithheld = true;
+}
+
+/**
+ * Drop the award DOLLARS, keep every count.
+ *
+ * PO values stay: a purchase order's ceiling is operational, it is already on
+ * the Ledger, Needs Upload and the field PO screen, and hiding it on this one
+ * tab would be theatre. What goes is the award amount and anything computed
+ * from it — `gap` most of all, since PO value plus gap gives the award back.
+ */
+function stripAwardValues(out) {
+  for (const k of ['awardedValue', 'awaitingValue', 'newSitesValue', 'shortfall']) {
+    if (out.totals) delete out.totals[k];
+  }
+  for (const a of (out.awarded || [])) { delete a.amount; delete a.gap; }
+  for (const roll of ['byRegion', 'byServiceCenter', 'byPricingModel']) {
+    for (const v of Object.values(out[roll] || {})) delete v.awarded;
+  }
+  out.valuesWithheld = true;
 }
 
 // The intake list as a worklist someone can take away and work through. The

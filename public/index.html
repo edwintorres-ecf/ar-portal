@@ -5750,43 +5750,68 @@ function renderPoSeason() {
     return;
   }
 
-  const pct = t.awardedValue ? Math.round((t.poValue / t.awardedValue) * 100) : 0;
+  // The award dollars are withheld unless the caller holds award.values; the
+  // server strips them, so their ABSENCE is the signal. Everything below then
+  // counts sites instead — which is the same question, answered in the unit
+  // the accounting team is allowed to see.
+  const money = !r.valuesWithheld;
+  const pct = money
+    ? (t.awardedValue ? Math.round((t.poValue / t.awardedValue) * 100) : 0)
+    : (t.sites ? Math.round((t.sitesWithPo / t.sites) * 100) : 0);
   const tile = (label, value, note, bg, fg) => `<div style="background:${bg};border-radius:9px;padding:10px 14px;min-width:160px;flex:1">
     <div style="font-size:10.5px;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.3px">${label}</div>
     <div style="font-size:19px;font-weight:700;color:${fg};margin-top:2px" class="amount">${value}</div>
     <div style="font-size:10px;color:var(--gray-500)">${note}</div></div>`;
 
   const rollup = (title, obj, keyLabel) => {
-    const rows = Object.entries(obj).sort((a, b) => b[1].awarded - a[1].awarded);
+    const rows = Object.entries(obj).sort((a, b) =>
+      money ? b[1].awarded - a[1].awarded : b[1].sites - a[1].sites);
     return `<div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:8px;flex:1;min-width:330px">
       <div style="font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:6px">${title}</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
           <th style="text-align:left;padding:3px 6px">${keyLabel}</th>
           <th style="text-align:right;padding:3px 6px">Sites</th>
-          <th style="text-align:right;padding:3px 6px">Awarded</th>
-          <th style="text-align:right;padding:3px 6px">PO in</th></tr></thead>
+          ${money ? '<th style="text-align:right;padding:3px 6px">Awarded</th>' : ''}
+          <th style="text-align:right;padding:3px 6px">${money ? 'PO in' : 'Awaiting'}</th></tr></thead>
         <tbody>${rows.map(([k, v]) => `<tr style="border-top:1px solid var(--gray-100)">
           <td style="padding:4px 6px;font-weight:600">${escHtml(k)}</td>
           <td style="padding:4px 6px;text-align:right">${v.withPo}/${v.sites}</td>
-          <td style="padding:4px 6px;text-align:right" class="amount">${fmt$(v.awarded)}</td>
-          <td style="padding:4px 6px;text-align:right;color:${v.poValue ? '#166534' : 'var(--gray-400)'}" class="amount">${v.poValue ? fmt$(v.poValue) : '—'}</td>
+          ${money ? `<td style="padding:4px 6px;text-align:right" class="amount">${fmt$(v.awarded)}</td>` : ''}
+          ${money
+            ? `<td style="padding:4px 6px;text-align:right;color:${v.poValue ? '#166534' : 'var(--gray-400)'}" class="amount">${v.poValue ? fmt$(v.poValue) : '—'}</td>`
+            : `<td style="padding:4px 6px;text-align:right;color:${v.sites - v.withPo ? '#b45309' : 'var(--gray-400)'};font-weight:600">${v.sites - v.withPo || '—'}</td>`}
         </tr>`).join('')}</tbody></table></div>`;
   };
 
-  const rows = tblSortRows(r.awarded, 'season', 'amount', -1);
+  // Biggest award first is the natural order, but that field is absent when
+  // values are withheld — fall back to site code so the table is not in
+  // arbitrary order for the accounting team.
+  const rows = money
+    ? tblSortRows(r.awarded, 'season', 'amount', -1)
+    : tblSortRows(r.awarded, 'season', 'siteCode', 1);
   el.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      ${tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment${t.renamedSites ? ` · ${t.renamedSites} renamed` : ''}`, '#eef2ff', '#3730a3')}
-      ${tile('Base PO received', fmt$(t.poValue), `${t.sitesWithPo} of ${t.sites} sites · ${pct}%`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')}
-      ${tile('Still awaiting a PO', fmt$(t.awaitingValue), `${t.awaitingPo} sites`, t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')}
-      ${tile('New sites', fmt$(t.newSitesValue), `${t.newSites} of ${t.sites} — Amazon's own incumbency label`, '#ede9fe', '#5b21b6')}
+      ${money
+        ? tile('Awarded ' + escHtml(r.season), fmt$(t.awardedValue), `${t.sites} sites · base commitment${t.renamedSites ? ` · ${t.renamedSites} renamed` : ''}`, '#eef2ff', '#3730a3')
+        : tile('Awarded ' + escHtml(r.season), t.sites + ' sites', `base commitment${t.renamedSites ? ` · ${t.renamedSites} renamed` : ''}`, '#eef2ff', '#3730a3')}
+      ${money
+        ? tile('Base PO received', fmt$(t.poValue), `${t.sitesWithPo} of ${t.sites} sites · ${pct}%`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')
+        : tile('Base PO received', `${t.sitesWithPo} of ${t.sites}`, `${pct}% of sites`, pct >= 90 ? '#dcfce7' : '#fef3c7', pct >= 90 ? '#166534' : '#92400e')}
+      ${money
+        ? tile('Still awaiting a PO', fmt$(t.awaitingValue), `${t.awaitingPo} sites`, t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')
+        : tile('Still awaiting a PO', t.awaitingPo + ' sites', 'no base PO raised yet', t.awaitingPo ? '#fee2e2' : '#f1f5f9', t.awaitingPo ? '#991b1b' : '#334155')}
+      ${money
+        ? tile('New sites', fmt$(t.newSitesValue), `${t.newSites} of ${t.sites} — Amazon's own incumbency label`, '#ede9fe', '#5b21b6')
+        : tile('New sites', `${t.newSites} of ${t.sites}`, "Amazon's own incumbency label", '#ede9fe', '#5b21b6')}
     </div>
 
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px">
       <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
         <span style="font-size:12.5px;font-weight:700;color:var(--navy)">Purchase orders received</span>
-        <span style="font-size:12px;color:var(--gray-600)">${fmt$(t.poValue)} of ${fmt$(t.awardedValue)}</span>
+        <span style="font-size:12px;color:var(--gray-600)">${money
+          ? `${fmt$(t.poValue)} of ${fmt$(t.awardedValue)}`
+          : `${t.sitesWithPo} of ${t.sites} sites`}</span>
         <span style="margin-left:auto;font-size:11px;color:var(--gray-500)">
           award loaded ${r.loadedAt ? escHtml(String(r.loadedAt).slice(0, 10)) : 'n/a'}</span>
       </div>
@@ -5832,8 +5857,9 @@ function renderPoSeason() {
       <table id="season-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="background:var(--gray-50);color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
           ${sortTh([['Site', 'siteCode'], ['State', 'state'], ['Region', 'region'],
-            ['Service center', 'serviceCenter'], ['Awarded', 'amount', 'right'],
-            ['Base PO', 'poValue', 'right'], ['vs award', 'gap', 'right'],
+            ['Service center', 'serviceCenter'],
+            ...(money ? [['Awarded', 'amount', 'right'], ['Base PO', 'poValue', 'right'], ['vs award', 'gap', 'right']]
+                      : [['Base PO', 'poValue', 'right']]),
             ['Storm work', 'additionalPoValue', 'right'],
             [(t.priorSeason || 'Prior') + ' base', 'priorPoValue', 'right'],
             ['Status', 'status']], 'season', 'renderPoSeason')}
@@ -5849,10 +5875,10 @@ function renderPoSeason() {
             <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.state)}</td>
             <td style="padding:6px 12px;color:var(--gray-500)">${escHtml(a.region)}</td>
             <td style="padding:6px 12px;color:${a.serviceCenter ? 'var(--gray-700)' : '#b45309'}">${escHtml(a.serviceCenter || 'unassigned')}</td>
-            <td style="padding:6px 12px;text-align:right;font-weight:600" class="amount">${fmt$(a.amount)}</td>
+            ${money ? `<td style="padding:6px 12px;text-align:right;font-weight:600" class="amount">${fmt$(a.amount)}</td>` : ''}
             <td style="padding:6px 12px;text-align:right" class="amount">${a.poValue != null ? fmt$(a.poValue) : '<span style="color:var(--gray-400)">—</span>'}</td>
-            <td style="padding:6px 12px;text-align:right" class="amount">${a.gap == null ? '<span style="color:var(--gray-400)">—</span>'
-              : `<span style="color:${a.gap < 0 ? '#b91c1c' : '#166534'};font-weight:600">${a.gap < 0 ? '−' : '+'}${fmt$(Math.abs(a.gap))}</span>`}</td>
+            ${money ? `<td style="padding:6px 12px;text-align:right" class="amount">${a.gap == null ? '<span style="color:var(--gray-400)">—</span>'
+              : `<span style="color:${a.gap < 0 ? '#b91c1c' : '#166534'};font-weight:600">${a.gap < 0 ? '−' : '+'}${fmt$(Math.abs(a.gap))}</span>`}</td>` : ''}
             <td style="padding:6px 12px;text-align:right;color:var(--gray-500)" class="amount">${a.additionalPoValue ? fmt$(a.additionalPoValue) : '—'}</td>
             <td style="padding:6px 12px;text-align:right;color:var(--gray-500)" class="amount">${a.priorPoValue ? fmt$(a.priorPoValue) : '—'}</td>
             <td style="padding:6px 12px"><span style="font-size:10px;font-weight:700;background:${st.bg};color:${st.fg};border-radius:5px;padding:2px 7px;white-space:nowrap">${st.label}</span></td>
