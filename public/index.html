@@ -5972,6 +5972,7 @@ let _poOutRaw = null;             // the unfiltered response
 let _poOutItems = [];             // after the BU/site filter
 let _poOutOpen = new Set();       // expanded stage keys
 let _poOutGroup = 'serviceCenter';
+let _poOutStage = '';             // scope the rollup to one stage ('' = all)
 
 const OUT_STAGE_COLOR = {
   'no-po': '#6b7280', 'ready': '#16a34a', 'resubmit': '#ea580c', 'blocked-funds': '#dc2626',
@@ -6021,6 +6022,21 @@ function poOutToggleStage(key) {
   renderPoOutstanding();
 }
 function setPoOutGroup(g) { _poOutGroup = g; renderPoOutstanding(); }
+function setPoOutStage(k) { _poOutStage = k || ''; renderPoOutstanding(); }
+
+/**
+ * "Show me THIS stage by site" — the question the stage table always provokes.
+ * Scopes the rollup to one stage, groups by site and scrolls to it, so the
+ * answer is one click rather than exporting the invoice list and pivoting it.
+ */
+function poOutByGroup(stage, group, ev) {
+  if (ev) ev.stopPropagation();          // the row itself toggles the invoice list
+  _poOutStage = stage;
+  _poOutGroup = group;
+  renderPoOutstanding();
+  const el = document.getElementById('po-out-rollup');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function renderPoOutstanding() {
   const el = document.getElementById('po-outstanding-content');
@@ -6128,6 +6144,9 @@ function renderPoOutstanding() {
               <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${OUT_STAGE_COLOR[s.key]};margin-right:7px"></span>
               <b>${escHtml(s.label)}</b>
               <span style="color:var(--gray-500);margin-left:6px">${open ? '▴' : '▾'}</span>
+              <button class="btn-sm" style="margin-left:10px;font-size:11px;padding:2px 8px"
+                onclick="poOutByGroup('${s.key}','site',event)"
+                title="Break this stage down by site">by site</button>
               <div style="font-size:11.5px;color:var(--gray-500);margin-left:16px">${escHtml(s.reason)}</div>
             </td>
             <td style="padding:8px;text-align:right">${s.count}</td>
@@ -6148,28 +6167,59 @@ function renderPoOutstanding() {
   };
 
   // ── Where is it, by centre / BU / site ──
+  // Scopeable to a single stage, because "$5.4M is scheduled and past due" is
+  // only actionable once you know which sites it is (PVD2 alone is a third of
+  // it). When a stage is selected the half columns are meaningless — every row
+  // is in that one stage — so the table swaps them for the age of the money.
+  const stageSel = _poOutStage ? (stageMeta.find(s => s.key === _poOutStage) || null) : null;
+  const scoped = stageSel ? items.filter(i => i.stage === _poOutStage) : items;
   const g = {};
-  for (const i of items) (g[i[_poOutGroup] || '(none)'] = g[i[_poOutGroup] || '(none)'] || []).push(i);
-  const groups = Object.entries(g).map(([name, list]) => ({
-    name, ...(_outTally(list)),
-    halves: Object.keys(halfMeta).map(k => ({ key: k, ...(_outTally(list.filter(i => i.half === k))) })),
-  })).sort((a, b) => b.amount - a.amount);
+  for (const i of scoped) (g[i[_poOutGroup] || '(none)'] = g[i[_poOutGroup] || '(none)'] || []).push(i);
+  const groups = Object.entries(g).map(([name, list]) => {
+    const ages = list.map(i => i.ageDays).filter(n => n !== null).sort((a, b) => a - b);
+    return { name, ...(_outTally(list)),
+      medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
+      oldestAge: ages.length ? ages[ages.length - 1] : null,
+      halves: Object.keys(halfMeta).map(k => ({ key: k, ...(_outTally(list.filter(i => i.half === k))) })),
+      stages: [...new Set(list.map(i => i.stage))].map(k => ({ key: k, ...(_outTally(list.filter(i => i.stage === k))) })),
+    };
+  }).sort((a, b) => b.amount - a.amount);
   const gMax = groups.length ? groups[0].amount : 1;
+  const scopedTotal = scoped.reduce((t, i) => t + i.amount, 0);
+
+  const cols = stageSel
+    ? [['Name', 'name'], ['Invoices', 'count', 'right'], ['Amount', 'amount', 'right'],
+       ['Share', null, 'right'], ['Median age', 'medianAge', 'right'], ['Oldest', 'oldestAge', 'right'], ['Size', null]]
+    : [['Name', 'name'], ['Invoices', 'count', 'right'], ['Outstanding', 'amount', 'right'],
+       ['Not uploaded', 'notUploaded', 'right'], ['With Amazon', 'uploaded', 'right'], ['Split', null]];
 
   const rollup = `
-    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px 18px">
+    <div id="po-out-rollup" style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px 18px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <span style="font-size:14px;font-weight:700;color:var(--navy)">Where it sits</span>
+        <select onchange="setPoOutStage(this.value)"
+          style="padding:5px 9px;border:1px solid var(--gray-300);border-radius:8px;font-size:12.5px;max-width:280px">
+          <option value="">All stages · ${fmt$(total)}</option>
+          ${stageMeta.filter(s => items.some(i => i.stage === s.key)).map(s => {
+            const t = _outTally(items.filter(i => i.stage === s.key));
+            return `<option value="${s.key}" ${_poOutStage === s.key ? 'selected' : ''}>${escHtml(s.label)} · ${fmt$(t.amount)}</option>`;
+          }).join('')}
+        </select>
+        ${stageSel ? `<button class="btn-sm" onclick="setPoOutStage('')" title="Back to every stage">✕ clear</button>` : ''}
         <span style="margin-left:auto;display:flex;gap:6px">
           ${OUT_GROUPS.map(([k, label]) =>
             `<button class="cust-pill${_poOutGroup === k ? ' active' : ''}" onclick="setPoOutGroup('${k}')">${label}</button>`).join('')}
         </span>
       </div>
+      ${stageSel ? `<div style="margin-bottom:10px;font-size:12.5px;color:var(--gray-700);
+          border-left:3px solid ${OUT_STAGE_COLOR[stageSel.key]};padding:4px 0 4px 10px">
+          <b>${escHtml(stageSel.label)}</b> — ${escHtml(stageSel.reason)}.
+          <b>${fmt$(scopedTotal)}</b> across ${scoped.length} invoice${scoped.length !== 1 ? 's' : ''}
+          and ${groups.length} ${_poOutGroup === 'site' ? 'site' : _poOutGroup === 'businessUnit' ? 'business unit' : 'service centre'}${groups.length !== 1 ? 's' : ''}.
+        </div>` : ''}
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="border-bottom:1px solid var(--gray-200)">
-          ${sortTh([['Name', 'name'], ['Invoices', 'count', 'right'], ['Outstanding', 'amount', 'right'],
-                    ['Not uploaded', 'notUploaded', 'right'], ['With Amazon', 'uploaded', 'right'], ['Split', null]],
-                   'outstanding:group', 'renderPoOutstanding')}
+          ${sortTh(cols, 'outstanding:group', 'renderPoOutstanding')}
         </tr></thead>
         <tbody>
         ${tblSortRows(groups.map(r => ({ ...r,
@@ -6180,15 +6230,22 @@ function renderPoOutstanding() {
             <td style="padding:8px"><b>${escHtml(r.name)}</b></td>
             <td style="padding:8px;text-align:right">${r.count}</td>
             <td style="padding:8px;text-align:right;font-weight:600">${fmt$(r.amount)}</td>
-            <td style="padding:8px;text-align:right;color:${r.notUploaded ? '#d97706' : 'var(--gray-400)'}">${r.notUploaded ? fmt$(r.notUploaded) : '—'}</td>
-            <td style="padding:8px;text-align:right;color:var(--gray-700)">${r.uploaded ? fmt$(r.uploaded) : '—'}</td>
-            <td style="padding:8px;width:32%">${_outBar(r.halves.map(h => ({
-                label: (halfMeta[h.key] || {}).label || h.key, amount: h.amount, color: OUT_HALF_COLOR[h.key],
-              })), gMax, 10)}</td>
+            ${stageSel ? `
+              <td style="padding:8px;text-align:right;color:var(--gray-500)">${scopedTotal ? ((r.amount / scopedTotal) * 100).toFixed(1) : '0.0'}%</td>
+              <td style="padding:8px;text-align:right">${r.medianAge === null ? '—' : r.medianAge + 'd'}</td>
+              <td style="padding:8px;text-align:right;color:${(r.oldestAge || 0) > 180 ? '#dc2626' : 'inherit'}">${r.oldestAge === null ? '—' : r.oldestAge + 'd'}</td>
+              <td style="padding:8px;width:32%">${_outBar([{ label: stageSel.label, amount: r.amount, color: OUT_STAGE_COLOR[stageSel.key] }], gMax, 10)}</td>
+            ` : `
+              <td style="padding:8px;text-align:right;color:${r.notUploaded ? '#d97706' : 'var(--gray-400)'}">${r.notUploaded ? fmt$(r.notUploaded) : '—'}</td>
+              <td style="padding:8px;text-align:right;color:var(--gray-700)">${r.uploaded ? fmt$(r.uploaded) : '—'}</td>
+              <td style="padding:8px;width:32%">${_outBar(r.halves.map(h => ({
+                  label: (halfMeta[h.key] || {}).label || h.key, amount: h.amount, color: OUT_HALF_COLOR[h.key],
+                })), gMax, 10)}</td>
+            `}
           </tr>`).join('')}
         </tbody>
       </table>
-      <div style="margin-top:8px;font-size:11px;color:var(--gray-500)">Bars are to the same scale, so row length compares centres directly.</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray-500)">Bars are to the same scale, so row length compares rows directly.</div>
     </div>`;
 
   el.innerHTML = head + cards + halves.map(halfPanel).join('') + rollup;
