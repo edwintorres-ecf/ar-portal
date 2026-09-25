@@ -7528,10 +7528,25 @@ function renderPoNeedsUpload() {
   let filtered = _poNeedsUploadSiteFilter
     ? _poNeedsUpload.filter(inv => inv.siteCode === _poNeedsUploadSiteFilter)
     : _poNeedsUpload;
+  // Every service count is taken from here — after the site filter, before the
+  // service one. The "All" pill used to quote the whole list, so with a site
+  // chosen it could read higher than Snow and Non-snow added together.
+  const filteredBySite = filtered;
+  // The same service buckets as Amazon AR and Outstanding, plus NON-SNOW, which
+  // those two do not need and this screen does: working the non-snow backlog is
+  // a real job here, and making someone click five pills to see it would undo
+  // the reason that toggle exists (42 invoices / $204k a snow-only view hid).
+  const nuKey = inv => amzSvcKey({ serviceType: nuSvc(inv) });
   const svcCounts = { snow: 0, nonsnow: 0 };
-  for (const inv of filtered) svcCounts[nuSvc(inv) === 'snow' ? 'snow' : 'nonsnow']++;
-  if (_poNuService === 'snow') filtered = filtered.filter(inv => nuSvc(inv) === 'snow');
-  else if (_poNuService === 'nonsnow') filtered = filtered.filter(inv => nuSvc(inv) !== 'snow');
+  const typeCounts = {};
+  for (const inv of filtered) {
+    const k = nuKey(inv);
+    svcCounts[k === 'snow' ? 'snow' : 'nonsnow']++;
+    typeCounts[k] = (typeCounts[k] || 0) + 1;
+  }
+  if (_poNuService === 'snow') filtered = filtered.filter(inv => nuKey(inv) === 'snow');
+  else if (_poNuService === 'nonsnow') filtered = filtered.filter(inv => nuKey(inv) !== 'snow');
+  else if (_poNuService) filtered = filtered.filter(inv => nuKey(inv) === _poNuService);
   _poNeedsUploadFilteredIds = filtered.map(inv => inv.recordNo);
   filtered = tblSortRows(filtered, 'needsupload');
   _shownNeedsUpload = filtered;
@@ -7588,10 +7603,17 @@ function renderPoNeedsUpload() {
       <select onchange="setPoNeedsUploadSiteFilter(this.value)" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px">
         ${siteFilterOptions(_poNeedsUpload)}
       </select>
-      <span style="display:inline-flex;gap:4px">
-        <button class="cust-pill${!_poNuService ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Every invoice waiting to be uploaded" onclick="setPoNuService('')">All ${_poNeedsUpload.length}</button>
+      <span style="display:inline-flex;gap:4px;flex-wrap:wrap">
+        <button class="cust-pill${!_poNuService ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Every invoice waiting to be uploaded" onclick="setPoNuService('')">All ${filteredBySite.length}</button>
         <button class="cust-pill${_poNuService === 'snow' ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Only invoices whose assigned PO is a snow PO (manual service overrides honored)" onclick="setPoNuService('snow')">❄️ Snow ${svcCounts.snow}</button>
         <button class="cust-pill${_poNuService === 'nonsnow' ? ' active' : ''}" style="font-size:11px;padding:4px 10px" title="Everything that is not snow — landscape, cleaning, maintenance, and any PO with no service classified" onclick="setPoNuService('nonsnow')">🌱 Non-snow ${svcCounts.nonsnow}</button>
+        ${svcCounts.nonsnow ? '<span style="align-self:center;color:var(--gray-300)">|</span>' : ''}
+        ${AMZ_SERVICE_ORDER.filter(k => k !== 'snow' && typeCounts[k]).map(k => {
+          const chip = NU_SERVICE_CHIP[k];
+          const label = chip ? `${chip.icon} ${chip.label}` : (AMZ_SERVICE_LABEL[k] || k);
+          return `<button class="cust-pill${_poNuService === k ? ' active' : ''}" style="font-size:11px;padding:4px 10px"
+            title="Only ${escHtml(label.replace(/^\S+\s/, ''))} work" onclick="setPoNuService('${k}')">${label} ${typeCounts[k]}</button>`;
+        }).join('')}
       </span>
       <span style="font-size:12px;color:var(--gray-500)">${filtered.length} invoice${filtered.length!==1?'s':''} · ${fmt$(filtered.reduce((s,x)=>s+(x.amount||0),0))}</span>
       ${exportBtn('exportNeedsUploadCsv')}
