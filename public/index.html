@@ -8315,8 +8315,18 @@ function amzArSetService(v) {
 
 const AMZ_SERVICE_ORDER = ['snow', 'landscape', 'cleaning', 'maintenance', 'other', AMZ_SVC_NONE];
 const AMZ_SERVICE_LABEL = { other: '📦 Other', [AMZ_SVC_NONE]: 'Unclassified' };
-/** The scope key for an invoice: its service, or the unclassified bucket. */
-const amzSvcKey = (i) => i.serviceType || AMZ_SVC_NONE;
+/**
+ * The scope key for an invoice: its service, or the unclassified bucket.
+ *
+ * 'unknown' and '' both land in Unclassified. They differ in cause — 'unknown'
+ * is a PO whose description classifies nothing, '' is no PO at all — but both
+ * mean nobody has said what this work is, and giving 'unknown' no pill left 41
+ * invoices worth $585,903 reachable by no scope on the screen.
+ */
+const amzSvcKey = (i) => {
+  const s = i.serviceType || '';
+  return (s && s !== 'unknown') ? s : AMZ_SVC_NONE;
+};
 
 function renderAmazonView() {
   if (!_amazonData) return;
