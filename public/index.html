@@ -6050,7 +6050,12 @@ const OUT_STAGE_COLOR = {
 };
 const OUT_WHOSE_COLOR = { us: '#16a34a', funds: '#dc2626', amazon: '#2563eb', accounting: '#64748b' };
 const OUT_HALF_COLOR  = { 'not-uploaded': '#d97706', 'uploaded': '#2563eb', 'settled': '#64748b' };
-const OUT_GROUPS = [['serviceCenter', 'Service centre'], ['businessUnit', 'Business unit'], ['site', 'Site']];
+// PO is here because a stage scoped to it is often a PO-level problem, not a
+// site one: a goods receipt is raised against a purchase order, and 24 of the
+// 412 invoices Amazon is holding for one sit on a single PO.
+const OUT_GROUPS = [['serviceCenter', 'Service centre'], ['businessUnit', 'Business unit'],
+  ['site', 'Site'], ['po', 'PO']];
+const OUT_GROUP_NOUN = { serviceCenter: 'service centre', businessUnit: 'business unit', site: 'site', po: 'PO' };
 
 async function loadPoOutstanding() {
   const el = document.getElementById('po-outstanding-content');
@@ -6291,7 +6296,13 @@ function renderPoOutstanding() {
   for (const i of scoped) (g[i[_poOutGroup] || '(none)'] = g[i[_poOutGroup] || '(none)'] || []).push(i);
   const groups = Object.entries(g).map(([name, list]) => {
     const ages = list.map(i => i.ageDays).filter(n => n !== null).sort((a, b) => a - b);
-    return { name, ...(_outTally(list)),
+    // A bare PO number says nothing about where the work is; a site does.
+    const sub = _poOutGroup === 'po'
+      ? [...new Set(list.map(i => i.site).filter(Boolean))].slice(0, 3).join(', ')
+      : (_poOutGroup === 'site'
+          ? [...new Set(list.map(i => i.serviceCenter).filter(Boolean))].slice(0, 2).join(', ')
+          : '');
+    return { name, sub, ...(_outTally(list)),
       medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
       oldestAge: ages.length ? ages[ages.length - 1] : null,
       halves: Object.keys(halfMeta).map(k => ({ key: k, ...(_outTally(list.filter(i => i.half === k))) })),
@@ -6329,7 +6340,7 @@ function renderPoOutstanding() {
           border-left:3px solid ${OUT_STAGE_COLOR[stageSel.key]};padding:4px 0 4px 10px">
           <b>${escHtml(stageSel.label)}</b> — ${escHtml(stageSel.reason)}.
           <b>${fmt$(scopedTotal)}</b> across ${scoped.length} invoice${scoped.length !== 1 ? 's' : ''}
-          and ${groups.length} ${_poOutGroup === 'site' ? 'site' : _poOutGroup === 'businessUnit' ? 'business unit' : 'service centre'}${groups.length !== 1 ? 's' : ''}.
+          and ${groups.length} ${OUT_GROUP_NOUN[_poOutGroup] || _poOutGroup}${groups.length !== 1 ? 's' : ''}.
         </div>` : ''}
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="border-bottom:1px solid var(--gray-200)">
@@ -6341,7 +6352,8 @@ function renderPoOutstanding() {
             uploaded: (r.halves.find(h => h.key === 'uploaded') || {}).amount || 0 })),
           'outstanding:group', 'amount', -1).map(r => `
           <tr style="border-bottom:1px solid var(--gray-100)">
-            <td style="padding:8px"><b>${escHtml(r.name)}</b></td>
+            <td style="padding:8px"><b>${escHtml(r.name)}</b>${r.sub
+              ? `<div style="font-size:10.5px;color:var(--gray-500);font-weight:400">${escHtml(r.sub)}</div>` : ''}</td>
             <td style="padding:8px;text-align:right">${r.count}</td>
             <td style="padding:8px;text-align:right;font-weight:600">${fmt$(r.amount)}</td>
             ${stageSel ? `
