@@ -1,12 +1,10 @@
 {
-  "generatedAt": "2026-09-25T21:08:21.698Z",
+  "generatedAt": "2026-09-25T22:31:23.098Z",
   "source": "payee-po-detail-scraper",
   "openTotal": 1249,
-  "scraped": 3,
-  "ok": 3,
+  "ok": 25,
   "failed": 0,
-  "failRatio": 0,
-  "trustworthy": true,
+  "partial": true,
   "details": {
     "2D-22065956": {
       "available": 198137.27,
@@ -56146,7 +56144,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22588282": {
@@ -56183,7 +56181,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22621201": {
@@ -56202,7 +56200,7 @@
         }
       ],
       "matchedCount": 1,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22626365": {
@@ -56214,7 +56212,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22640988": {
@@ -56239,7 +56237,7 @@
         }
       ],
       "matchedCount": 2,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22655468": {
@@ -56251,7 +56249,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22675805": {
@@ -56263,7 +56261,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22679656": {
@@ -56275,7 +56273,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22688918": {
@@ -56287,7 +56285,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22689099": {
@@ -56299,7 +56297,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22689091": {
@@ -56311,7 +56309,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22688218": {
@@ -56323,7 +56321,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22697192": {
@@ -56372,7 +56370,7 @@
         }
       ],
       "matchedCount": 6,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22700511": {
@@ -56384,7 +56382,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22701101": {
@@ -56396,7 +56394,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22701335": {
@@ -56408,7 +56406,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22714477": {
@@ -56480,7 +56478,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22755585": {
@@ -56492,7 +56490,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22761948": {
@@ -56504,7 +56502,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22762883": {
@@ -56516,7 +56514,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22763246": {
@@ -56528,7 +56526,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22761926": {
@@ -56540,7 +56538,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22761922": {
@@ -56552,7 +56550,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22761781": {
@@ -56564,7 +56562,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22761395": {
@@ -56576,7 +56574,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "scrapedAt": "2026-09-25T22:31:23.098Z",
       "stale": false
     },
     "2D-22767814": {
