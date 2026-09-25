@@ -51,6 +51,11 @@ function ensureTable() {
       loaded_at     TEXT,
       PRIMARY KEY (season, site_code)
     )`);
+    // Added when Amazon's own spreadsheet replaced the OCR of the award email.
+    const cols = db.getDb().prepare('PRAGMA table_info(amazon_award)').all().map(c => c.name);
+    for (const [c, type] of [['covers', 'TEXT'], ['incumbency', 'TEXT'], ['bid_price', 'REAL'], ['sq_ft', 'REAL']]) {
+      if (!cols.includes(c)) db.getDb().exec(`ALTER TABLE amazon_award ADD COLUMN ${c} ${type}`);
+    }
   } catch (e) { console.error('[amazon-award] table:', e.message); }
 }
 
@@ -59,19 +64,32 @@ function load(rows, { season = CURRENT_SEASON, source = 'award-email' } = {}) {
   ensureTable();
   const d = db.getDb();
   const ins = d.prepare(`INSERT INTO amazon_award
-    (season, site_code, state, region, amount, pricing_model, source, loaded_at)
-    VALUES (?,?,?,?,?,?,?,datetime('now'))
+    (season, site_code, state, region, amount, pricing_model, source, loaded_at,
+     covers, incumbency, bid_price, sq_ft)
+    VALUES (?,?,?,?,?,?,?,datetime('now'),?,?,?,?)
     ON CONFLICT(season, site_code) DO UPDATE SET
       state=excluded.state, region=excluded.region, amount=excluded.amount,
-      pricing_model=excluded.pricing_model, source=excluded.source, loaded_at=excluded.loaded_at`);
+      pricing_model=excluded.pricing_model, source=excluded.source, loaded_at=excluded.loaded_at,
+      covers=excluded.covers, incumbency=excluded.incumbency,
+      bid_price=excluded.bid_price, sq_ft=excluded.sq_ft`);
   d.exec('BEGIN');
   try {
     d.prepare('DELETE FROM amazon_award WHERE season=?').run(season);
     for (const r of rows) {
-      const code = String(r.code || r.siteCode || '').toUpperCase().trim();
+      // Three 2026-27 rows cover TWO sites on one contract ("DOB5 - HBO2").
+      // The money is awarded once, so the row stays one record: the first code
+      // is the key and the rest are recorded as also-covered. Splitting them
+      // into a row each would double-count $403,383.
+      const codes = String(r.code || r.siteCode || '').toUpperCase()
+        .split(/[\s,\/]*-[\s,\/]*|[\s,\/]+/).map(x => x.trim()).filter(Boolean);
+      const code = codes[0];
       if (!code) continue;
       ins.run(season, code, r.state || '', r.region || '',
-        r.amount == null ? null : Number(r.amount), r.pricing || r.pricingModel || '', source);
+        r.amount == null ? null : Number(r.amount), r.pricing || r.pricingModel || '', source,
+        codes.slice(1).join(',') || null,
+        r.incumbency || null,
+        r.bid == null ? null : Number(r.bid),
+        r.sqft == null ? null : Number(r.sqft));
     }
     d.exec('COMMIT');
   } catch (e) { d.exec('ROLLBACK'); throw e; }
@@ -83,7 +101,17 @@ function list(season = CURRENT_SEASON) {
   try {
     return db.getDb().prepare('SELECT * FROM amazon_award WHERE season=? ORDER BY site_code').all(season)
       .map(r => ({ season: r.season, siteCode: r.site_code, state: r.state || '', region: r.region || '',
-        amount: r.amount, pricingModel: r.pricing_model || '', source: r.source, loadedAt: r.loaded_at }));
+        amount: r.amount, pricingModel: r.pricing_model || '', source: r.source, loadedAt: r.loaded_at,
+        covers: r.covers ? r.covers.split(',') : [],
+        // Amazon's own label. Beats inferring it from whether we had a PO last
+        // season, which counts a site we serviced under a different contract
+        // type as new.
+        incumbency: r.incumbency || '',
+        isNew: /^new$/i.test(String(r.incumbency || '').trim()),
+        bidPrice: r.bid_price,
+        bidVariance: (r.bid_price != null && r.amount != null)
+          ? Math.round((r.amount - r.bid_price) * 100) / 100 : null,
+        sqFt: r.sq_ft }));
   } catch (e) { return []; }
 }
 
@@ -165,7 +193,8 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
   const master = (() => { try { return db.getAmazonLocationMap(); } catch (e) { return {}; } })();
 
   const awarded = award.map(a => {
-    const pos = bySite[a.siteCode] || [];
+    const sites = [a.siteCode, ...(a.covers || [])];
+    const pos = sites.flatMap(sc => bySite[sc] || []);
     const basePos = pos.filter(isBasePo);
     const addPos = pos.filter(p => !isBasePo(p));
     const anyValue = basePos.some(p => p.ceilingAmount != null);
@@ -176,15 +205,19 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     // not a shortfall (see ar-portal-zero-value-po).
     const gap = (poValue != null && a.amount != null) ? Math.round((poValue - a.amount) * 100) / 100 : null;
     const pct = (gap != null && a.amount) ? poValue / a.amount : null;
-    const last = priorBySite[a.siteCode] || null;
+    const last = sites.map(sc => priorBySite[sc]).filter(Boolean)
+      .reduce((acc, x) => acc ? { pos: acc.pos + x.pos, base: acc.base + x.base,
+        additional: acc.additional + x.additional } : x, null);
     return {
       ...a,
       priorSeason: prior,
       priorPoCount: last ? last.pos : 0,
       priorPoValue: last ? Math.round(last.base * 100) / 100 : null,
       priorAdditionalValue: last ? Math.round(last.additional * 100) / 100 : null,
-      // No PO last season either: a site we have not worked before.
-      newToUs: !last,
+      // Amazon's own incumbency label when we have it; otherwise fall back to
+      // "no PO last season", which is a weaker proxy.
+      newToUs: a.incumbency ? a.isNew : !last,
+      inferredNew: !last,
       poCount: pos.length,
       poNumbers: pos.map(p => p.poNumber),
       basePoCount: basePos.length,
@@ -208,7 +241,7 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
     };
   });
 
-  const awardedCodes = new Set(award.map(a => a.siteCode));
+  const awardedCodes = new Set(award.flatMap(a => [a.siteCode, ...(a.covers || [])]));
   const unawarded = Object.entries(bySite)
     .filter(([site]) => !awardedCodes.has(site))
     .map(([site, pos]) => ({
@@ -264,6 +297,11 @@ function readiness(invoices, { season = CURRENT_SEASON } = {}) {
       priorPoValue: sum(awarded, a => a.priorPoValue),
       newSites: awarded.filter(a => a.newToUs).length,
       newSitesValue: sum(awarded.filter(a => a.newToUs), a => a.amount),
+      bidTotal: sum(awarded, a => a.bidPrice),
+      bidVariance: sum(awarded, a => a.bidVariance),
+      awardedBelowBid: awarded.filter(a => a.bidVariance != null && a.bidVariance < -1).length,
+      awardedAboveBid: awarded.filter(a => a.bidVariance != null && a.bidVariance > 1).length,
+      sqFt: sum(awarded, a => a.sqFt),
     },
     loadedAt: award.length ? award[0].loadedAt : null,
   };
