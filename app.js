@@ -370,7 +370,18 @@ const CAPABILITIES = [
   // the holder sees POs and NOTHING else — no invoices, no AR, no balances
   // (Edwin 2026-09-21).
   'po.view',
+  // What ECF BID per site on the Amazon snow RFP, and how the award moved
+  // against it. This is our negotiating position, not AR data: it says which
+  // sites we were willing to go low on and by how much. Edwin 2026-09-25,
+  // "only i should view that".
+  'award.bids',
 ];
+
+// Capabilities the admin wildcard does NOT confer. `admin` means "runs the
+// portal", which is not the same as "may see what we bid" — without this, any
+// future admin account would pick bid data up silently. Held by explicit grant
+// only, which is visible and revocable in Admin → Permissions like any other.
+const ADMIN_EXCLUDED = new Set(['award.bids']);
 const ROLE_DEFAULT_CAPS = {
   viewer: [],
   // Operations staff at a service centre. They check a PO arrived and carries
@@ -388,7 +399,9 @@ const ROLE_DEFAULT_CAPS = {
 };
 
 function effectiveCaps(email, role) {
-  let caps = ROLE_DEFAULT_CAPS[role] === null ? [...CAPABILITIES] : [...(ROLE_DEFAULT_CAPS[role] || [])];
+  let caps = ROLE_DEFAULT_CAPS[role] === null
+    ? CAPABILITIES.filter(c => !ADMIN_EXCLUDED.has(c))
+    : [...(ROLE_DEFAULT_CAPS[role] || [])];
   try {
     const u = db.getUserRoleAnyCase(email);
     if (u && u.permissions) {
@@ -3932,9 +3945,26 @@ app.get('/api/po/season-readiness', requireAuth, async (req, res) => {
     if (invoices.length === 0) invoices = await sage.getInvoices();
     const award = require('./amazon-award');
     const season = String(req.query.season || award.CURRENT_SEASON);
-    res.json({ ...award.readiness(invoices, { season }), seasons: award.seasons() });
+    const out = { ...award.readiness(invoices, { season }), seasons: award.seasons() };
+    // Everything else on this screen — awarded value, PO coverage, which sites
+    // are still waiting — is ordinary season-prep work the AR team needs. Only
+    // the bid comparison is withheld, and it is REMOVED FROM THE RESPONSE
+    // rather than hidden in the browser: a field the client never receives
+    // cannot be read out of the network tab.
+    if (!hasPerm(req.session.user, 'award.bids')) stripBids(out);
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+/** Drop every trace of what we bid, per site and in the totals. */
+function stripBids(out) {
+  for (const k of ['bidTotal', 'bidVariance', 'awardedBelowBid', 'awardedAboveBid']) {
+    if (out.totals) delete out.totals[k];
+  }
+  for (const a of (out.awarded || [])) { delete a.bidPrice; delete a.bidVariance; }
+  for (const a of (out.unawarded || [])) { delete a.bidPrice; delete a.bidVariance; }
+  out.bidsWithheld = true;
+}
 
 // The intake list as a worklist someone can take away and work through. The
 // screen answers "how bad is it"; this answers "what do I do next, in what

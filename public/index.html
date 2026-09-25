@@ -5799,12 +5799,18 @@ function renderPoSeason() {
         ${t.additionalPoValue ? `A further <strong>${fmt$(t.additionalPoValue)}</strong> of ancillary and storm work has been raised on these sites this season.` : ''}
         ${t.priorAdditionalValue ? `<span title="Ancillary, Season Closure and ad-hoc POs — driven by how the winter actually goes, not by the award">Last season these sites carried ${fmt$(t.priorPoValue)} of base plus ${fmt$(t.priorAdditionalValue)} of storm work.</span>` : ''}
       </div>
+      ${t.sqFt ? `<div style="font-size:11.5px;color:var(--gray-500);margin-top:4px">
+        Covering ${Math.round(t.sqFt).toLocaleString('en-US')} sq ft.
+      </div>` : ''}
+      <!-- What we bid is withheld from everyone but its grant holders, and the
+           server strips it from the response rather than the browser hiding it.
+           A missing bid total therefore means "not permitted", and this block
+           simply does not render. -->
       ${t.bidTotal ? `<div style="font-size:11.5px;color:var(--gray-500);margin-top:4px;border-top:1px solid var(--gray-100);padding-top:6px">
         We bid <strong>${fmt$(t.bidTotal)}</strong> and were awarded <strong>${fmt$(t.awardedValue)}</strong>
         — <span style="color:${t.bidVariance >= 0 ? '#166534' : '#b91c1c'};font-weight:600">${t.bidVariance >= 0 ? '+' : '−'}${fmt$(Math.abs(t.bidVariance))}</span> overall,
         but ${t.awardedAboveBid} site${t.awardedAboveBid === 1 ? '' : 's'} above our bid and
         <span style="color:#b91c1c;font-weight:600">${t.awardedBelowBid} below</span>.
-        ${t.sqFt ? `Covering ${Math.round(t.sqFt).toLocaleString('en-US')} sq ft.` : ''}
       </div>` : ''}
     </div>
 
