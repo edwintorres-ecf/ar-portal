@@ -4392,15 +4392,32 @@ app.get('/api/amazon/overview', requireAuth, async (req, res) => {
     let ledger = {}, master = {};
     try { ledger = siteLedger.getLedgerMap(); } catch (e) { /* not built yet */ }
     try { master = db.getAmazonLocationMap(); } catch (e) { /* master not loaded */ }
+
+    // What KIND of work an invoice is, so the screen can be scoped to snow in
+    // season. The service belongs to the PO the invoice will be billed against,
+    // honouring a manual reassignment — the same chain Needs Upload and Pending
+    // by Site use, so the three screens cannot disagree about what is snow.
+    let svcByPo = {}, poAssign = {};
+    try {
+      for (const r of poLedger.getPoLedger(invoices)) svcByPo[r.poNumber] = r.serviceType || '';
+      poAssign = db.getAllPoAssignments();
+    } catch (e) { /* ledger unavailable — every row falls back to unclassified */ }
+
     const enriched = amazon.map(inv => {
       const sl = ledger[inv.recordNo] || {};
       const loc = sl.siteCode ? master[sl.siteCode] : null;
+      const effectivePo = ((poAssign[inv.recordNo] || {}).assigned_po || inv.poNumber || '').trim();
       return {
         ...inv,
         payeeStatus: payee.resolveInvoice(payee.toPayeeId(inv.invoiceId)) || null,
         siteCode: sl.siteCode || '',
         siteSource: sl.source || '',
         businessUnit: loc ? (loc.businessUnit || '') : '',
+        effectivePo: effectivePo || null,
+        // '' when the PO carries no classifiable description, or there is no PO
+        // at all. Surfaced as "unclassified" rather than hidden, so scoping to
+        // snow never silently drops work nobody has classified yet.
+        serviceType: svcByPo[effectivePo] || '',
       };
     });
 
