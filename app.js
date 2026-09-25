@@ -1178,6 +1178,12 @@ function slackSiteStatus() {
   return _slackStatus.sites || {};
 }
 
+// Slack visibility for every site, for any screen that wants to show it.
+app.get('/api/sites/slack-status', requireAuth, (req, res) => {
+  try { res.json({ sites: slackSiteStatus() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
   try {
     const contacts = db.getSiteContactMap();

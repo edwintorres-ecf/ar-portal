@@ -4991,6 +4991,34 @@ async function loadSiteContacts() {
 // at all (a channel exists and Sentinel is in it), and whether it is being
 // MONITORED (archived, and its requests tracked on the closure clock).
 // "No channel yet" is a neutral state — plenty of sites are still coming online.
+let _slackSites = null;
+function loadSlackSites() {
+  if (_slackSites) return Promise.resolve(_slackSites);
+  return apiFetch('/api/sites/slack-status')
+    .then(d => { _slackSites = (d && d.sites) || {}; return _slackSites; })
+    .catch(() => { _slackSites = {}; return _slackSites; });
+}
+
+// Compact form for money tables, where a full pill would crowd the numbers.
+// Same two states as the Site Contacts column: visible to us, and tracked by us.
+function slackSiteDots(code) {
+  const s = (_slackSites || {})[code];
+  if (!s || !s.connected) {
+    return `<span title="No Slack channel yet — normal while a site is coming online"
+      style="display:inline-block;width:7px;height:7px;border-radius:50%;border:1.5px solid var(--gray-300);vertical-align:middle"></span>`;
+  }
+  const names = (s.channels || []).map(c => c.name).join(', ');
+  const when = s.days_since == null ? 'no messages yet'
+    : s.days_since === 0 ? 'active today'
+    : `last activity ${s.days_since}d ago`;
+  const stats = s.items ? ` · ${s.items} requests, ${s.closure_rate}% closed` : '';
+  const tip = `Linked: ${names}${s.monitored ? ' · Tracked' : ' · not captured yet'} · ${when}${stats}`;
+  return `<span title="${escHtml(tip)}" style="white-space:nowrap;vertical-align:middle">
+    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#16a34a"></span>
+    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${s.monitored ? '#2563eb' : 'var(--gray-300)'};margin-left:2px"></span>
+  </span>`;
+}
+
 function slackSiteCell(s) {
   if (!s || !s.connected) {
     return `<div style="display:flex;align-items:center;gap:6px" title="No Slack channel yet — expected while a site is coming online">
@@ -6514,6 +6542,8 @@ function pbsQuery() {
 let _pbsReqSeq = 0;
 function loadPendingBySite() {
   const seq = ++_pbsReqSeq;
+  // Fire and forget: if it lands late the next render picks it up.
+  loadSlackSites().then(() => { try { renderPendingBySite(); } catch (e) {} });
   return apiFetch('/api/po/pending-by-site' + pbsQuery())
     .then(d => {
       // Typing in the site box fires several of these; only the newest may land,
@@ -6788,7 +6818,7 @@ function renderPendingBySite() {
     const n = s.poRows.length;
     const isNoSite = s.site === '(no site)';
     const siteCell = `<td rowspan="${n}" style="padding:8px 8px;${mergedStyle}border-right:1px solid var(--gray-100);cursor:pointer" title="${isNoSite ? 'POs whose site could not be determined — no Sage invoice activity and no PO document parsed yet' : 'Open Needs Upload filtered to ' + escHtml(s.site)}" onclick="pbsDrill('${escHtml(s.site)}')">
-        <div style="font-weight:700;color:${isNoSite ? 'var(--gray-500)' : 'var(--navy)'};white-space:nowrap">${isNoSite ? '❓ Unknown' : escHtml(s.site)}</div>
+        <div style="font-weight:700;color:${isNoSite ? 'var(--gray-500)' : 'var(--navy)'};white-space:nowrap">${isNoSite ? '❓ Unknown' : escHtml(s.site)}${isNoSite ? '' : ' ' + slackSiteDots(s.site)}</div>
         ${s.businessUnit ? `<div style="font-size:9.5px;color:#5b21b6;background:#ede9fe;border-radius:5px;padding:0 5px;display:inline-block;margin-top:2px;white-space:nowrap" title="Amazon business unit">${escHtml(s.businessUnit)}</div>` : (isNoSite ? '' : '<div style="font-size:9.5px;color:var(--gray-400);white-space:nowrap" title="Site code is not in the Amazon location master">no BU</div>')}
         <div style="font-size:10px;color:var(--gray-500);white-space:nowrap">${s.count} inv</div>
         ${(() => {
