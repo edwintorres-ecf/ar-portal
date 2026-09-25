@@ -188,6 +188,36 @@ const sh = (cmd) => execSync(cmd, { timeout: 30000 }).toString().trim();
     if (drift.length > 5) throw new Error(`${drift.length} POs drifted >$500 below Amazon implied consumed — run consumption-backfill`);
     return `${r.ok.length} reconciled, ${r.overdrawn.length} over-drawn, ${r.overLedger.length} over-ledger, ${openReviews} open reviews`;
   });
+  // 5a. Outstanding view: it must account for every open Amazon dollar, and it
+  // must judge "late" on AMAZON's clock.
+  //
+  // Both halves have already gone wrong. The stages are the whole point of the
+  // screen — if one invoice falls between them the headline silently understates
+  // the book. And "Scheduled — date passed" was first built on Sage's due date,
+  // which is our payment terms: it reported $5.37M across 264 invoices as late
+  // when not one had passed Amazon's own Estimated Due Date (2026-09-25).
+  check('outstanding-view', () => {
+    const sage = require('./sage');
+    const ao = require('./amazon-outstanding');
+    const invoices = sage.getCachedInvoices();
+    if (!invoices.length) return 'Sage cache empty — skipped';
+    const { items, totals } = ao.classify(invoices);
+    const staged = items.reduce((t, i) => t + (i.stage ? i.amount : 0), 0);
+    if (Math.abs(staged - totals.amount) > 0.05) {
+      throw new Error(`stages total $${staged.toFixed(2)} but the book is $${totals.amount.toFixed(2)}`);
+    }
+    const unstaged = items.filter(i => !i.stage);
+    if (unstaged.length) throw new Error(`${unstaged.length} invoice(s) in no stage`);
+    const notActuallyLate = items.filter(i =>
+      i.stage === 'scheduled-late' && !(Date.parse(i.amazonDueDate) < Date.now()));
+    if (notActuallyLate.length) {
+      throw new Error(`${notActuallyLate.length} invoice(s) called late with no passed Amazon date `
+        + `(e.g. ${notActuallyLate[0].invoiceId} due ${notActuallyLate[0].amazonDueDate || 'never'})`);
+    }
+    const late = items.filter(i => i.stage === 'scheduled-late');
+    return `${totals.count} invoices / $${Math.round(totals.amount).toLocaleString('en-US')} in `
+      + `${new Set(items.map(i => i.stage)).size} stages, ${late.length} genuinely past Amazon's date`;
+  });
   // 6. Comms platform: inbound poller alive, no failed sends, dunning clean
   check('comms-platform', () => {
     if (!process.env.AR_MAILBOX) return 'AR_MAILBOX unset — comms checks skipped';
