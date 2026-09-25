@@ -2180,6 +2180,23 @@ app.get('/api/po/ledger', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Everything Amazon owes us, in one list ─────────────────────────────────
+// Needs Upload answers "what have we not sent", Aging answers "what is Amazon
+// sitting on", and neither adds up to the balance. This classifies every open
+// Amazon invoice into exactly one stage so the stages sum to open Amazon AR.
+//
+// Returns the flat rows, not totals: the screen re-totals whenever the BU/site
+// filter is on, and a second set of sums computed here would be a second thing
+// to keep in step. See amazon-outstanding.js.
+app.get('/api/po/outstanding', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    res.json(require('./amazon-outstanding').classify(invoices));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/po/needs-upload', requireAuth, async (req, res) => {
   try {
     let invoices = sage.getCachedInvoices();

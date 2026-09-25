@@ -953,6 +953,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
          row past the 1300px container and they were simply clipped off the
          right edge, invisible with no scrollbar (Edwin 2026-09-10). -->
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <button class="cust-pill" id="po-subtab-outstanding" onclick="setPoFundsSubtab('outstanding')">💰 Outstanding <span id="po-outstanding-badge"></span></button>
       <button class="cust-pill active" id="po-subtab-ledger" onclick="setPoFundsSubtab('ledger')">Ledger</button>
       <button class="cust-pill" id="po-subtab-sites" onclick="setPoFundsSubtab('sites')">By Site</button>
       <button class="cust-pill" id="po-subtab-pending-site" onclick="setPoFundsSubtab('pending-site')">Pending by Site</button>
@@ -969,6 +970,9 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
       <button class="cust-pill" id="po-subtab-season" onclick="setPoFundsSubtab('season')">❄️ Season readiness <span id="po-season-badge"></span></button>
     </div>
     <div id="po-form-container" style="display:none;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px;margin-bottom:16px;"></div>
+    <div id="po-outstanding-content" style="display:none">
+      <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
+    </div>
     <div id="po-ledger-content">
       <div style="padding:30px;text-align:center;color:var(--gray-500);">Loading…</div>
     </div>
@@ -4473,6 +4477,7 @@ function poApplyFilter() {
   _poExceptions    = poFilterExceptions(_poRaw.exceptions) || { exceptions: [], duplicates: [], graceHours: 72 };
   poRenderFilterBar();
   poRenderFilterSummary();
+  try { renderPoOutstanding(); } catch (e) {}
   try { renderPoLedger(); } catch (e) {}
   try { renderPoUploaded(); } catch (e) {}
   try { renderPoNeedsUpload(); } catch (e) {}
@@ -4509,6 +4514,14 @@ function poUpdateBadges() {
     b.textContent = n ? `(${n})` : '';
     b.style.color = n ? (color || '') : '';
   };
+  // Outstanding is a money figure, not a count — the count is every open Amazon
+  // invoice and says nothing useful on a tab.
+  const outBadge = document.getElementById('po-outstanding-badge');
+  if (outBadge && _poOutRaw) {
+    const t = (_poOutItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+    outBadge.textContent = t ? `(${fmt$(t)})` : '';
+    outBadge.style.color = 'var(--gray-500)';
+  }
   set('po-uploaded-badge', (_poUploaded || []).length);
   set('po-needs-upload-badge', (_poNeedsUpload || []).length, '#d97706');
   set('po-orphans-badge', (_poOrphans || []).length, '#dc2626');
@@ -4620,6 +4633,7 @@ async function loadPoFunds() {
   const addBtn = document.getElementById('btn-add-po');
   if (addBtn) addBtn.style.display = canEditPo ? '' : 'none';
   await loadPoLedger();
+  loadPoOutstanding();    // async, non-blocking — fills the Outstanding badge
   loadPoUploaded();       // async, non-blocking — just updates the badge count + tab content when ready
   loadPoNeedsUpload();    // async, non-blocking
   loadPoOrphans();        // async, non-blocking
@@ -5937,8 +5951,272 @@ function poIntakeToggle(key) {
   if (t) t.textContent = open ? 'hide POs ▴' : 'show POs ▾';
 }
 
+// ─── 💰 Outstanding ─────────────────────────────────────────────────────────
+// Every open Amazon dollar on one screen, split by where it is stuck.
+//
+// Needs Upload and ⏳ Aging each answer half of "what is outstanding", and
+// neither adds up to the balance, so the whole question could only be answered
+// by adding tabs together by hand. Here every invoice lands in exactly one
+// stage and the stages sum to total open Amazon AR — the reconciliation line
+// under the bar says so out loud, because a rollup nobody can tie out is a
+// rollup nobody trusts.
+//
+// The server sends flat rows; every total on screen is a sum over the rows
+// actually displayed, so the BU/site filter needs no special handling and no
+// total can drift from its own list.
+let _poOutRaw = null;             // the unfiltered response
+let _poOutItems = [];             // after the BU/site filter
+let _poOutOpen = new Set();       // expanded stage keys
+let _poOutGroup = 'serviceCenter';
+
+const OUT_STAGE_COLOR = {
+  'no-po': '#6b7280', 'ready': '#16a34a', 'resubmit': '#ea580c', 'blocked-funds': '#dc2626',
+  'funds-hold': '#b91c1c', 'goods-receipt': '#2563eb', 'in-progress': '#0ea5e9',
+  'scheduled': '#0d9488', 'scheduled-late': '#7c3aed', 'apply-cash': '#64748b',
+};
+const OUT_WHOSE_COLOR = { us: '#16a34a', funds: '#dc2626', amazon: '#2563eb', accounting: '#64748b' };
+const OUT_HALF_COLOR  = { 'not-uploaded': '#d97706', 'uploaded': '#2563eb', 'settled': '#64748b' };
+const OUT_GROUPS = [['serviceCenter', 'Service centre'], ['businessUnit', 'Business unit'], ['site', 'Site']];
+
+async function loadPoOutstanding() {
+  const el = document.getElementById('po-outstanding-content');
+  if (!el) return;
+  if (_poOutRaw) { renderPoOutstanding(); return; }
+  try {
+    _poOutRaw = await apiFetch('/api/po/outstanding');
+    renderPoOutstanding();
+    poUpdateBadges();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red);">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+const _outTally = (list) => ({ count: list.length, amount: list.reduce((t, i) => t + (i.amount || 0), 0) });
+
+function _outBands(list) {
+  const band = (lo, hi) => _outTally(list.filter(i =>
+    i.ageDays !== null && i.ageDays >= lo && (hi === null || i.ageDays <= hi)));
+  return [['0-30', band(0, 30)], ['31-60', band(31, 60)], ['61-90', band(61, 90)], ['90+', band(91, null)]];
+}
+
+/** A stacked proportional bar. Segments under 4% lose their label, not their width. */
+function _outBar(segs, total, height) {
+  if (!total) return '';
+  return `<div style="display:flex;height:${height}px;border-radius:6px;overflow:hidden;background:var(--gray-100)">` +
+    segs.filter(s => s.amount > 0).map(s => {
+      const pct = (s.amount / total) * 100;
+      return `<div title="${escHtml(s.label)} — ${fmt$(s.amount)} (${pct.toFixed(1)}%)"
+        style="width:${pct}%;background:${s.color};display:flex;align-items:center;justify-content:center;
+               color:#fff;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden">
+        ${pct >= 4 && height >= 20 ? escHtml(s.short || s.label) : ''}</div>`;
+    }).join('') + '</div>';
+}
+
+function poOutToggleStage(key) {
+  if (_poOutOpen.has(key)) _poOutOpen.delete(key); else _poOutOpen.add(key);
+  renderPoOutstanding();
+}
+function setPoOutGroup(g) { _poOutGroup = g; renderPoOutstanding(); }
+
+function renderPoOutstanding() {
+  const el = document.getElementById('po-outstanding-content');
+  if (!el || !_poOutRaw) return;
+  _poOutItems = poFilterRows(_poOutRaw.items || []);
+  const items = _poOutItems;
+  const stageMeta = _poOutRaw.stageMeta || [];
+  const halfMeta = _poOutRaw.halfMeta || {};
+  const whoseMeta = _poOutRaw.whoseMeta || {};
+  const total = items.reduce((t, i) => t + (i.amount || 0), 0);
+
+  if (!items.length) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--gray-500)">
+      <div style="font-size:32px;margin-bottom:12px">💰</div>
+      <div style="font-size:15px;font-weight:600">Nothing outstanding${poFilterActive() ? ' in this filter' : ''}</div></div>`;
+    return;
+  }
+
+  const halves = Object.entries(halfMeta).map(([key, m]) => {
+    const list = items.filter(i => i.half === key);
+    return { key, ...m, list, ...(_outTally(list)) };
+  }).filter(h => h.count);
+
+  const whose = Object.entries(whoseMeta).map(([key, m]) => {
+    const list = items.filter(i => i.whose === key);
+    return { key, ...m, ...(_outTally(list)) };
+  }).filter(w => w.count);
+
+  // ── The whole book in one bar ──
+  const headBar = _outBar(halves.map(h => ({
+    label: h.label, short: h.label, amount: h.amount, color: OUT_HALF_COLOR[h.key],
+  })), total, 34);
+
+  const feed = _poOutRaw.feedGeneratedAt
+    ? `Amazon feed ${escHtml(String(_poOutRaw.feedGeneratedAt).slice(0, 16).replace('T', ' '))} UTC` : '';
+
+  const head = `
+    <div class="po-card" style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:18px 20px;margin-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="font-size:28px;font-weight:700;color:var(--navy)">${fmt$(total)}</div>
+        <div style="font-size:13px;color:var(--gray-700)">open Amazon AR · ${items.length.toLocaleString()} invoice${items.length !== 1 ? 's' : ''}</div>
+        <div style="margin-left:auto;font-size:11px;color:var(--gray-500)">${feed}</div>
+      </div>
+      ${headBar}
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px">
+        ${halves.map(h => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${OUT_HALF_COLOR[h.key]};margin-right:5px"></span>
+          <b>${escHtml(h.label)}</b> ${fmt$(h.amount)} · ${h.count} <span style="color:var(--gray-500)">${escHtml(h.note)}</span></span>`).join('')}
+      </div>
+      <div style="margin-top:9px;font-size:11px;color:var(--gray-500);border-top:1px solid var(--gray-100);padding-top:8px">
+        Every open Amazon invoice in Sage appears in exactly one stage below, so the stages add up to this
+        figure. Uploaded means a <b>live</b> attempt exists in Payee Central — an invoice whose every attempt
+        was rejected or cancelled counts as not uploaded, however many times it was sent.
+      </div>
+    </div>`;
+
+  // ── Whose move is it ──
+  // The cut that turns status labels into a short list of who has to act.
+  const cards = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px">
+      ${whose.map(w => `
+        <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:14px 16px;border-left:4px solid ${OUT_WHOSE_COLOR[w.key]}">
+          <div style="font-size:11.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:${OUT_WHOSE_COLOR[w.key]}">${escHtml(w.label)}</div>
+          <div style="font-size:21px;font-weight:700;color:var(--navy);margin:4px 0 2px">${fmt$(w.amount)}</div>
+          <div style="font-size:11.5px;color:var(--gray-500)">${w.count} invoice${w.count !== 1 ? 's' : ''} · ${escHtml(w.note)}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // ── Each half, broken into stages ──
+  const halfPanel = (h) => {
+    const stages = stageMeta.filter(s => s.half === h.key).map(s => {
+      const list = h.list.filter(i => i.stage === s.key);
+      const ages = list.map(i => i.ageDays).filter(n => n !== null).sort((a, b) => a - b);
+      return { ...s, list, ...(_outTally(list)),
+        medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null,
+        oldestAge: ages.length ? ages[ages.length - 1] : null };
+    }).filter(s => s.count);
+
+    return `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${OUT_HALF_COLOR[h.key]}"></span>
+        <span style="font-size:15px;font-weight:700;color:var(--navy)">${escHtml(h.label)}</span>
+        <span style="font-size:12px;color:var(--gray-500)">${escHtml(h.note)}</span>
+        <span style="margin-left:auto;font-size:17px;font-weight:700;color:var(--navy)">${fmt$(h.amount)}</span>
+        <span style="font-size:12px;color:var(--gray-500)">${h.count} inv</span>
+      </div>
+      ${_outBar(stages.map(s => ({ label: s.label, amount: s.amount, color: OUT_STAGE_COLOR[s.key] })), h.amount, 12)}
+      <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px">
+        <thead><tr style="border-bottom:1px solid var(--gray-200)">
+          <th style="padding:7px 8px;text-align:left;font-weight:600;color:var(--gray-700)">Stage</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Invoices</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Amount</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Share</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)" title="Days since we billed it">Median age</th>
+          <th style="padding:7px 8px;text-align:right;font-weight:600;color:var(--gray-700)">Oldest</th>
+        </tr></thead>
+        <tbody>
+        ${stages.map(s => {
+          const open = _poOutOpen.has(s.key);
+          return `<tr style="border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="poOutToggleStage('${s.key}')">
+            <td style="padding:8px">
+              <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${OUT_STAGE_COLOR[s.key]};margin-right:7px"></span>
+              <b>${escHtml(s.label)}</b>
+              <span style="color:var(--gray-500);margin-left:6px">${open ? '▴' : '▾'}</span>
+              <div style="font-size:11.5px;color:var(--gray-500);margin-left:16px">${escHtml(s.reason)}</div>
+            </td>
+            <td style="padding:8px;text-align:right">${s.count}</td>
+            <td style="padding:8px;text-align:right;font-weight:600">${fmt$(s.amount)}</td>
+            <td style="padding:8px;text-align:right;color:var(--gray-500)">${total ? ((s.amount / total) * 100).toFixed(1) : '0.0'}%</td>
+            <td style="padding:8px;text-align:right">${s.medianAge === null ? '—' : s.medianAge + 'd'}</td>
+            <td style="padding:8px;text-align:right;color:${(s.oldestAge || 0) > 180 ? '#dc2626' : 'inherit'}">${s.oldestAge === null ? '—' : s.oldestAge + 'd'}</td>
+          </tr>
+          ${open ? `<tr><td colspan="6" style="padding:0 8px 12px">${_outInvoiceTable(s)}</td></tr>` : ''}`;
+        }).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:10px;font-size:11.5px;color:var(--gray-500)">
+        Age since billed: ${_outBands(h.list).filter(([, b]) => b.count)
+          .map(([k, b]) => `<b>${k}d</b> ${b.count} · ${fmt$(b.amount)}`).join(' &nbsp;|&nbsp; ')}
+      </div>
+    </div>`;
+  };
+
+  // ── Where is it, by centre / BU / site ──
+  const g = {};
+  for (const i of items) (g[i[_poOutGroup] || '(none)'] = g[i[_poOutGroup] || '(none)'] || []).push(i);
+  const groups = Object.entries(g).map(([name, list]) => ({
+    name, ...(_outTally(list)),
+    halves: Object.keys(halfMeta).map(k => ({ key: k, ...(_outTally(list.filter(i => i.half === k))) })),
+  })).sort((a, b) => b.amount - a.amount);
+  const gMax = groups.length ? groups[0].amount : 1;
+
+  const rollup = `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:700;color:var(--navy)">Where it sits</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          ${OUT_GROUPS.map(([k, label]) =>
+            `<button class="cust-pill${_poOutGroup === k ? ' active' : ''}" onclick="setPoOutGroup('${k}')">${label}</button>`).join('')}
+        </span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="border-bottom:1px solid var(--gray-200)">
+          ${sortTh([['Name', 'name'], ['Invoices', 'count', 'right'], ['Outstanding', 'amount', 'right'],
+                    ['Not uploaded', 'notUploaded', 'right'], ['With Amazon', 'uploaded', 'right'], ['Split', null]],
+                   'outstanding:group', 'renderPoOutstanding')}
+        </tr></thead>
+        <tbody>
+        ${tblSortRows(groups.map(r => ({ ...r,
+            notUploaded: (r.halves.find(h => h.key === 'not-uploaded') || {}).amount || 0,
+            uploaded: (r.halves.find(h => h.key === 'uploaded') || {}).amount || 0 })),
+          'outstanding:group', 'amount', -1).map(r => `
+          <tr style="border-bottom:1px solid var(--gray-100)">
+            <td style="padding:8px"><b>${escHtml(r.name)}</b></td>
+            <td style="padding:8px;text-align:right">${r.count}</td>
+            <td style="padding:8px;text-align:right;font-weight:600">${fmt$(r.amount)}</td>
+            <td style="padding:8px;text-align:right;color:${r.notUploaded ? '#d97706' : 'var(--gray-400)'}">${r.notUploaded ? fmt$(r.notUploaded) : '—'}</td>
+            <td style="padding:8px;text-align:right;color:var(--gray-700)">${r.uploaded ? fmt$(r.uploaded) : '—'}</td>
+            <td style="padding:8px;width:32%">${_outBar(r.halves.map(h => ({
+                label: (halfMeta[h.key] || {}).label || h.key, amount: h.amount, color: OUT_HALF_COLOR[h.key],
+              })), gMax, 10)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray-500)">Bars are to the same scale, so row length compares centres directly.</div>
+    </div>`;
+
+  el.innerHTML = head + cards + halves.map(halfPanel).join('') + rollup;
+}
+
+/** The invoices behind one stage. Sorted biggest first — that is the work order. */
+function _outInvoiceTable(s) {
+  const key = 'outstanding:' + s.key;
+  const rows = tblSortRows(s.list, key, 'amount', -1);
+  const shown = rows.slice(0, 250);
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--gray-50);border-radius:8px">
+    <thead><tr style="border-bottom:1px solid var(--gray-200)">
+      ${sortTh([['Invoice', 'invoiceId'], ['Site', 'site'], ['PO', 'po'], ['Service centre', 'serviceCenter'],
+                ['Billed', 'invoiceDate'], ['Age', 'ageDays', 'right'], ['Amount', 'amount', 'right'],
+                ['Amazon status', 'payeeStatus']], key, 'renderPoOutstanding')}
+    </tr></thead>
+    <tbody>
+      ${shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
+        <td style="padding:6px 8px;font-family:monospace">${escHtml(i.invoiceId)}</td>
+        <td style="padding:6px 8px">${escHtml(i.site || '—')}</td>
+        <td style="padding:6px 8px;font-family:monospace">${escHtml(i.po || '—')}</td>
+        <td style="padding:6px 8px">${escHtml(i.serviceCenter || '—')}</td>
+        <td style="padding:6px 8px">${escHtml(String(i.invoiceDate || '').slice(0, 10))}</td>
+        <td style="padding:6px 8px;text-align:right">${i.ageDays === null ? '—' : i.ageDays + 'd'}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:600">${fmt$(i.amount)}</td>
+        <td style="padding:6px 8px;color:var(--gray-500)">${escHtml(i.payeeStatus || 'not in Payee')}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  ${rows.length > shown.length ? `<div style="padding:6px 8px;font-size:11px;color:var(--gray-500)">Showing the largest ${shown.length} of ${rows.length}.</div>` : ''}`;
+}
+
 function setPoFundsSubtab(name) {
   _poFundsSubtab = name;
+  document.getElementById('po-subtab-outstanding').classList.toggle('active', name === 'outstanding');
   document.getElementById('po-subtab-ledger').classList.toggle('active', name === 'ledger');
   document.getElementById('po-subtab-sites').classList.toggle('active', name === 'sites');
   document.getElementById('po-subtab-pending-site').classList.toggle('active', name === 'pending-site');
@@ -5953,6 +6231,7 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-subtab-contacts').classList.toggle('active', name === 'contacts');
   document.getElementById('po-subtab-intake').classList.toggle('active', name === 'intake');
   document.getElementById('po-subtab-season').classList.toggle('active', name === 'season');
+  document.getElementById('po-outstanding-content').style.display = name === 'outstanding' ? '' : 'none';
   document.getElementById('po-ledger-content').style.display = name === 'ledger' ? '' : 'none';
   document.getElementById('po-sites-content').style.display = name === 'sites' ? '' : 'none';
   document.getElementById('po-pending-site-content').style.display = name === 'pending-site' ? '' : 'none';
@@ -5967,6 +6246,7 @@ function setPoFundsSubtab(name) {
   document.getElementById('po-aging-content').style.display = name === 'aging' ? '' : 'none';
   document.getElementById('po-rejections-content').style.display = name === 'rejections' ? '' : 'none';
   document.getElementById('po-contacts-content').style.display = name === 'contacts' ? '' : 'none';
+  if (name === 'outstanding') loadPoOutstanding();
   if (name === 'sites') renderPoSiteReport();
   if (name === 'pending-site') renderPendingBySite();
   if (name === 'contacts') loadSiteContacts();
