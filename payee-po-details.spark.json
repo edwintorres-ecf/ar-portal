@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-25T16:00:44.958Z",
+  "generatedAt": "2026-09-25T21:08:21.698Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1246,
-  "scraped": 4,
-  "ok": 4,
+  "openTotal": 1249,
+  "scraped": 3,
+  "ok": 3,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -56589,6 +56589,42 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-25T03:01:44.132Z",
+      "stale": false
+    },
+    "2D-22778555": {
+      "available": 60979.17,
+      "poAmount": 60979.17,
+      "status": "Open",
+      "site": "DKY9",
+      "desc": "Paint consumables and materials",
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-25T21:08:21.698Z",
+      "stale": false
+    },
+    "2D-22779366": {
+      "available": 964.24,
+      "poAmount": 964.24,
+      "status": "Open",
+      "site": "AKR1",
+      "desc": "AKR1 – Fall Irrigation Repairs",
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-25T21:08:21.698Z",
+      "stale": false
+    },
+    "2D-22781389": {
+      "available": 36753.04,
+      "poAmount": 36753.04,
+      "status": "Open",
+      "site": "DNH2",
+      "desc": "DNH2 - 2026 - Snow Removal EPO Season Closure Offsite",
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-25T21:08:21.698Z",
       "stale": false
     }
   }
