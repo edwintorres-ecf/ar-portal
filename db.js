@@ -1269,7 +1269,12 @@ function getSiteAliasMap() {
   const d = getDb();
   const out = {};
   try {
-    for (const r of d.prepare('SELECT alias, canonical_code, note FROM site_aliases').all()) {
+    // CONFIRMED pairs only. site-alias.js adds proposals to this same table,
+    // and an unconfirmed candidate must not merge two sites' money behind
+    // anyone's back. Rows predating the status column were set by a person and
+    // are migrated to 'confirmed' (2026-09-24).
+    for (const r of d.prepare(`SELECT alias, canonical_code, note FROM site_aliases
+        WHERE COALESCE(NULLIF(TRIM(COALESCE(status,'')),''),'confirmed')='confirmed'`).all()) {
       out[r.alias] = { canonical: r.canonical_code, note: r.note || '' };
     }
   } catch (e) { /* table missing on an old database */ }

@@ -27,19 +27,37 @@
 
 const db = require('./db');
 
+// ─── USES THE EXISTING STORE ────────────────────────────────────────────────
+// `site_aliases` already existed — Edwin set MDT2 -> KRB5 and MDT9 -> QYY4 on
+// 2026-09-09 — with columns (alias, canonical_code, note, set_by, set_at) and
+// helpers db.setSiteAlias / db.getSiteAliasMap. It was only ever read by
+// site-ledger.js, never by po-ledger, which is why one renamed site still
+// counted twice everywhere else.
+//
+// This module does NOT create a second table. It adds the missing pieces on
+// top: a `status` so a candidate can sit unconfirmed, address-based detection,
+// and resolution at the point every site code passes through.
 function ensureTable() {
+  const d = db.getDb();
   try {
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS site_aliases (
-      alias_code     TEXT PRIMARY KEY,
+    d.exec(`CREATE TABLE IF NOT EXISTS site_aliases (
+      alias          TEXT PRIMARY KEY,
       canonical_code TEXT NOT NULL,
-      status         TEXT NOT NULL DEFAULT 'proposed',   -- proposed | confirmed | rejected
-      evidence       TEXT,
-      source         TEXT,
-      created_at     TEXT,
-      decided_by     TEXT,
-      decided_at     TEXT
+      note           TEXT,
+      set_by         TEXT,
+      set_at         TEXT DEFAULT (datetime('now'))
     )`);
-    db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_site_alias_canon ON site_aliases(canonical_code)');
+    const cols = d.prepare('PRAGMA table_info(site_aliases)').all().map(c => c.name);
+    if (!cols.includes('status')) {
+      d.exec("ALTER TABLE site_aliases ADD COLUMN status TEXT");
+      // Anything already here was typed by a person, so it is confirmed.
+      d.exec("UPDATE site_aliases SET status='confirmed' WHERE status IS NULL");
+      console.log('[site-alias] added status; existing rows marked confirmed');
+    }
+    if (!cols.includes('evidence')) d.exec('ALTER TABLE site_aliases ADD COLUMN evidence TEXT');
+    if (!cols.includes('decided_by')) d.exec('ALTER TABLE site_aliases ADD COLUMN decided_by TEXT');
+    if (!cols.includes('decided_at')) d.exec('ALTER TABLE site_aliases ADD COLUMN decided_at TEXT');
+    d.exec("UPDATE site_aliases SET status='confirmed' WHERE status IS NULL OR TRIM(status)=''");
   } catch (e) { console.error('[site-alias] table:', e.message); }
 }
 
@@ -51,12 +69,11 @@ function propose(alias, canonical, { evidence = '', source = '' } = {}) {
   const a = up(alias), c = up(canonical);
   if (!a || !c || a === c) throw new Error('need two different site codes');
   db.getDb().prepare(`INSERT INTO site_aliases
-    (alias_code, canonical_code, status, evidence, source, created_at)
-    VALUES (?,?, 'proposed', ?, ?, datetime('now'))
-    ON CONFLICT(alias_code) DO UPDATE SET
-      canonical_code=excluded.canonical_code, evidence=excluded.evidence,
-      source=excluded.source
-    WHERE site_aliases.status='proposed'`).run(a, c, evidence, source);
+    (alias, canonical_code, status, evidence, note, set_by, set_at)
+    VALUES (?,?, 'proposed', ?, ?, ?, datetime('now'))
+    ON CONFLICT(alias) DO UPDATE SET
+      canonical_code=excluded.canonical_code, evidence=excluded.evidence
+    WHERE site_aliases.status='proposed'`).run(a, c, evidence, source, source);
   return get(a);
 }
 
@@ -70,13 +87,13 @@ function confirm(alias, canonical, by) {
   if (!a || !c || a === c) throw new Error('need two different site codes');
   const d = db.getDb();
   // Confirming the reverse direction: drop any row pointing the other way.
-  d.prepare('DELETE FROM site_aliases WHERE alias_code=? AND canonical_code=?').run(c, a);
+  d.prepare('DELETE FROM site_aliases WHERE alias=? AND canonical_code=?').run(c, a);
   d.prepare(`INSERT INTO site_aliases
-    (alias_code, canonical_code, status, evidence, source, created_at, decided_by, decided_at)
-    VALUES (?,?, 'confirmed', '', '', datetime('now'), ?, datetime('now'))
-    ON CONFLICT(alias_code) DO UPDATE SET
+    (alias, canonical_code, status, set_by, set_at, decided_by, decided_at)
+    VALUES (?,?, 'confirmed', ?, datetime('now'), ?, datetime('now'))
+    ON CONFLICT(alias) DO UPDATE SET
       canonical_code=excluded.canonical_code, status='confirmed',
-      decided_by=excluded.decided_by, decided_at=excluded.decided_at`).run(a, c, by || null);
+      decided_by=excluded.decided_by, decided_at=excluded.decided_at`).run(a, c, by || null, by || null);
   invalidate();
   return get(a);
 }
@@ -85,14 +102,14 @@ function confirm(alias, canonical, by) {
 function reject(alias, by) {
   ensureTable();
   db.getDb().prepare(`UPDATE site_aliases SET status='rejected', decided_by=?, decided_at=datetime('now')
-    WHERE alias_code=?`).run(by || null, up(alias));
+    WHERE alias=?`).run(by || null, up(alias));
   invalidate();
   return get(up(alias));
 }
 
 function get(alias) {
   ensureTable();
-  try { return db.getDb().prepare('SELECT * FROM site_aliases WHERE alias_code=?').get(up(alias)) || null; }
+  try { return db.getDb().prepare('SELECT * FROM site_aliases WHERE alias=?').get(up(alias)) || null; }
   catch (e) { return null; }
 }
 
@@ -100,8 +117,8 @@ function list(status) {
   ensureTable();
   try {
     return status
-      ? db.getDb().prepare('SELECT * FROM site_aliases WHERE status=? ORDER BY alias_code').all(status)
-      : db.getDb().prepare('SELECT * FROM site_aliases ORDER BY status, alias_code').all();
+      ? db.getDb().prepare('SELECT * FROM site_aliases WHERE status=? ORDER BY alias').all(status)
+      : db.getDb().prepare('SELECT * FROM site_aliases ORDER BY status, alias').all();
   } catch (e) { return []; }
 }
 
@@ -115,7 +132,7 @@ function map() {
   _map = {};
   try {
     for (const r of list('confirmed')) {
-      const a = up(r.alias_code), c = up(r.canonical_code);
+      const a = up(r.alias), c = up(r.canonical_code);
       if (a && c && a !== c) _map[a] = c;
     }
     // One hop only. A chain (A->B, B->C) would be a data error, and following
@@ -164,7 +181,7 @@ function detect() {
     if (k.length < 8) continue;
     (byAddr[k] = byAddr[k] || []).push(r);
   }
-  const decided = new Set(list().map(r => up(r.alias_code)));
+  const decided = new Set(list().flatMap(r => [up(r.alias), up(r.canonical_code)]));
   const out = [];
   for (const [addr, group] of Object.entries(byAddr)) {
     const codes = [...new Set(group.map(r => up(r.siteCode)))];
