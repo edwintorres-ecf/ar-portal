@@ -5616,6 +5616,75 @@ async function arTakeSnapshot(btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = '📸 Snapshot now'; } }
 }
 
+/* ── Site aliases: one building, two Amazon site codes ─────────────────────
+   Amazon renames sites. The old code keeps every PO and dollar; the new one
+   arrives empty, and both sit in the master as separate rows — so one site is
+   counted twice and its history is split in half.
+
+   Confirming a pair MERGES them everywhere, which is why nothing happens until
+   a person says so and picks which code is real. Direction cannot be guessed:
+   Omnia lists DOB5 and MDT2 but not HBO2, yet lists DGS2 and NOT WGR5 while
+   WGR5 carries the newer PO (Edwin 2026-09-24). */
+let _siteAliases = null;
+
+async function loadSiteAliases() {
+  try { _siteAliases = await apiFetch('/api/sites/aliases'); }
+  catch (e) { _siteAliases = null; }
+  renderSiteAliasCard();
+}
+
+function renderSiteAliasCard() {
+  const el = document.getElementById('site-alias-card');
+  if (!el) return;
+  const d = _siteAliases;
+  if (!d) { el.innerHTML = ''; return; }
+  const proposed = (d.aliases || []).filter(a => a.status === 'proposed');
+  const confirmed = (d.aliases || []).filter(a => a.status === 'confirmed');
+  const mayEdit = typeof canAssignPoSite === 'function' && canAssignPoSite();
+
+  if (!proposed.length && !confirmed.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:700;color:var(--navy)">Renamed sites</span>
+        <span style="font-size:11.5px;color:var(--gray-600)">${confirmed.length} confirmed${proposed.length ? ` · <strong style="color:#b45309">${proposed.length} need a decision</strong>` : ''}</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--gray-500);margin-top:3px">
+        Amazon renames sites. Until a pair is confirmed the portal counts one building as two and splits its history between the codes.
+      </div>
+      ${proposed.map(a => `
+        <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:9px 11px;margin-top:8px">
+          <div style="font-size:12.5px;font-weight:700;color:#92400e">${escHtml(a.canonical_code)} and ${escHtml(a.alias)} may be the same site</div>
+          <div style="font-size:11px;color:#92400e;margin-top:3px">${escHtml(a.evidence || a.note || '')}</div>
+          ${mayEdit ? `<div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn-sm" style="background:#dcfce7;color:#166534;font-weight:600" onclick="decideSiteAlias('${escHtml(a.alias)}','confirm','${escHtml(a.canonical_code)}')">Same site — ${escHtml(a.canonical_code)} is the real code</button>
+            <button class="btn-sm" style="background:#dcfce7;color:#166534;font-weight:600" onclick="decideSiteAlias('${escHtml(a.canonical_code)}','confirm','${escHtml(a.alias)}')">Same site — ${escHtml(a.alias)} is the real code</button>
+            <button class="btn-sm" onclick="decideSiteAlias('${escHtml(a.alias)}','reject')">Not the same</button>
+          </div>` : '<div style="font-size:10.5px;color:var(--gray-500);margin-top:5px">An admin has to decide this.</div>'}
+        </div>`).join('')}
+      ${confirmed.length ? `<div style="font-size:11px;color:var(--gray-500);margin-top:8px">
+        Merged: ${confirmed.map(a => `<span title="${escHtml(a.alias)} resolves to ${escHtml(a.canonical_code)}">${escHtml(a.alias)} → <strong>${escHtml(a.canonical_code)}</strong></span>`).join(' · ')}
+      </div>` : ''}
+    </div>`;
+}
+
+async function decideSiteAlias(alias, action, canonical) {
+  const msg = action === 'confirm'
+    ? `Merge ${alias} into ${canonical}?\n\nEvery purchase order, invoice and dollar booked under ${alias} will count as ${canonical} — on this screen, the ledger, Pending by Site and the field PO screen. ${alias} stops appearing as a site of its own.`
+    : `Mark ${alias} as NOT the same site?\n\nIt stays a separate site and will not be proposed again.`;
+  if (!confirm(msg)) return;
+  try {
+    await apiFetch('/api/sites/aliases/' + encodeURIComponent(alias), {
+      method: 'POST', body: JSON.stringify({ action, canonical }) });
+    showToast(action === 'confirm' ? `${alias} merged into ${canonical}` : `${alias} kept separate`, 'success');
+    await loadSiteAliases();
+    // The merge changes the site on every row, so reload what is on screen.
+    if (typeof loadPoSeason === 'function' && _poFundsSubtab === 'season') loadPoSeason();
+    if (typeof loadPoLedger === 'function') loadPoLedger();
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 /* ── Season readiness ──────────────────────────────────────────────────────
    Amazon awards a snow season months before it raises the purchase orders.
    Until this screen there was no way to ask "we were awarded 283 sites for
@@ -5635,6 +5704,7 @@ async function loadPoSeason() {
   try {
     _poSeason = await apiFetch('/api/po/season-readiness');
     renderPoSeason();
+    loadSiteAliases();
   } catch (e) {
     el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--red)">Could not load: ${escHtml(e.message)}</div>`;
   }
@@ -5719,6 +5789,8 @@ function renderPoSeason() {
         ${t.sqFt ? `Covering ${Math.round(t.sqFt).toLocaleString('en-US')} sq ft.` : ''}
       </div>` : ''}
     </div>
+
+    <div id="site-alias-card"></div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       ${rollup('By service center', r.byServiceCenter, 'Service center')}
