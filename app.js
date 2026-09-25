@@ -1162,6 +1162,22 @@ app.get('/api/amazon/statement', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Per-site Slack visibility, published by slack-intel as a JSON snapshot so the
+// two apps stay decoupled (the portal never reaches into that database).
+// A site with no channel is NOT a fault — many are only now coming online.
+const SLACK_STATUS_PATH = '/home/ecf-admin/slack-intel/site-slack-status.json';
+let _slackStatus = { sites: {}, generated_at: null }, _slackStatusMtime = 0;
+function slackSiteStatus() {
+  try {
+    const st = fs.statSync(SLACK_STATUS_PATH);
+    if (st.mtimeMs !== _slackStatusMtime) {
+      _slackStatus = JSON.parse(fs.readFileSync(SLACK_STATUS_PATH, 'utf8'));
+      _slackStatusMtime = st.mtimeMs;
+    }
+  } catch (e) { /* snapshot absent — every site simply reads as not connected */ }
+  return _slackStatus.sites || {};
+}
+
 app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
   try {
     const contacts = db.getSiteContactMap();
@@ -1198,7 +1214,11 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
         poNumber: pc.po_number, name: pc.contact_name, email: pc.contact_email, docDate: pc.doc_date,
       });
     }
-    const sites = new Set([...Object.keys(contacts), ...Object.keys(bySite), ...Object.keys(collectors)]);
+    const slk = slackSiteStatus();
+    // Sites that exist only in Slack (a channel opened before the paperwork)
+    // still belong in this list, otherwise a new site stays invisible here.
+    const sites = new Set([...Object.keys(contacts), ...Object.keys(bySite),
+                           ...Object.keys(collectors), ...Object.keys(slk)]);
     res.json({
       sites: [...sites].sort().map(code => {
         const c = contacts[code] || {};
@@ -1219,6 +1239,7 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
           note: c.note || null,
           poCount: pos.length,
           pos: pos.slice(0, 8),
+          slack: slk[code] || null,
         };
       }),
     });

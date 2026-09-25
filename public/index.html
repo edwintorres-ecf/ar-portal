@@ -4987,6 +4987,39 @@ async function loadSiteContacts() {
   } catch (e) { el.innerHTML = `<div style="padding:20px;color:var(--red)">${escHtml(e.message)}</div>`; }
 }
 
+// Two separate things, deliberately: whether the conversation is VISIBLE to us
+// at all (a channel exists and Sentinel is in it), and whether it is being
+// MONITORED (archived, and its requests tracked on the closure clock).
+// "No channel yet" is a neutral state — plenty of sites are still coming online.
+function slackSiteCell(s) {
+  if (!s || !s.connected) {
+    return `<div style="display:flex;align-items:center;gap:6px" title="No Slack channel yet — expected while a site is coming online">
+      <span style="width:9px;height:9px;border-radius:50%;border:1.5px solid var(--gray-300);display:inline-block"></span>
+      <span style="font-size:11.5px;color:var(--gray-400)">not yet</span></div>`;
+  }
+  const names = (s.channels || []).map(c => c.name).join(', ');
+  const quiet = s.days_since != null && s.days_since > 45;
+  const when = s.days_since == null ? 'no messages yet'
+    : s.days_since === 0 ? 'active today'
+    : s.days_since === 1 ? 'active yesterday'
+    : `last activity ${s.days_since}d ago`;
+  const linked = `<span title="Linked — Slack channel connected: ${escHtml(names)}"
+      style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#166534;
+             background:#dcfce7;border:1px solid #bbf7d0;border-radius:999px;padding:1px 7px">&#128279; Linked</span>`;
+  const tracked = s.monitored
+    ? `<span title="Tracked — messages archived, requests on the closure clock (${s.items || 0} logged, ${s.attachments || 0} files kept)"
+        style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#1e40af;
+               background:#dbeafe;border:1px solid #bfdbfe;border-radius:999px;padding:1px 7px">&#9673; Tracked</span>`
+    : `<span title="Connected, but nothing captured yet"
+        style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);
+               background:var(--gray-100);border:1px solid var(--gray-200);border-radius:999px;padding:1px 7px">&#9675; pending</span>`;
+  const stats = s.items
+    ? ` &middot; ${s.items} request${s.items === 1 ? '' : 's'}${s.closure_rate != null ? `, ${s.closure_rate}% closed` : ''}`
+    : '';
+  return `<div style="display:flex;gap:5px;flex-wrap:wrap">${linked}${tracked}</div>
+    <div style="font-size:10px;color:${quiet ? 'var(--gray-400)' : 'var(--gray-500)'};margin-top:3px;white-space:nowrap">${when}${stats}</div>`;
+}
+
 function renderSiteContacts() {
   const el = document.getElementById('po-contacts-content');
   if (!el) return;
@@ -5010,6 +5043,7 @@ function renderSiteContacts() {
         ? `<div style="font-size:12.5px">${escHtml(r.internalEmail)}</div><div style="font-size:10.5px;color:var(--gray-500)">${r.internalPinned ? '📌 set by hand' : escHtml(r.internalVia || '')}</div>`
         : '<span style="color:#b91c1c;font-size:12px;font-weight:600">nobody — rejections cannot be routed</span>'}
     </td>
+    <td style="padding:9px 12px">${slackSiteCell(r.slack)}</td>
     <td style="padding:9px 12px;text-align:right"><button class="btn" style="font-size:11px;padding:3px 9px" onclick="siteContactEdit('${escHtml(r.siteCode)}')">Edit</button></td>
   </tr>`).join('');
   const users = (_portalUsers || []).filter(u => u && u.email);
@@ -5080,14 +5114,19 @@ function renderSiteContacts() {
     </div>
     <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <caption style="caption-side:top;text-align:left;font-size:11px;color:var(--gray-500);padding:0 12px 7px">
+          <b>Linked</b> = a Slack channel exists and we are in it &middot;
+          <b>Tracked</b> = its messages are archived and requests are on the closure clock &middot;
+          <b>not yet</b> = no channel, which is normal for a site still coming online
+        </caption>
         <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200)">
           <th style="padding:9px 12px;width:30px"></th>
           ${sortTh([
             ['Site / BU', 'siteCode'], ['Amazon contact (from the PO)', 'amazonEmail'],
-            ['Internal owner', 'internalEmail'], ['', null, 'right'],
+            ['Internal owner', 'internalEmail'], ['Slack', null], ['', null, 'right'],
           ], 'sitecontacts', 'renderSiteContacts')}
         </tr></thead>
-        <tbody>${body || '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--gray-500)">No sites match this filter.</td></tr>'}</tbody>
+        <tbody>${body || '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--gray-500)">No sites match this filter.</td></tr>'}</tbody>
       </table>
     </div>`;
 }
