@@ -95,7 +95,63 @@ function confirm(alias, canonical, by) {
       canonical_code=excluded.canonical_code, status='confirmed',
       decided_by=excluded.decided_by, decided_at=excluded.decided_at`).run(a, c, by || null, by || null);
   invalidate();
-  return get(a);
+  // The retired code usually holds the details; carry them across now rather
+  // than leaving the canonical site reading as unknown.
+  const inherited = inheritFromAlias(a, c);
+  if (inherited.filled.length) console.log(`[site-alias] ${c} inherited from ${a}: ${inherited.filled.join(', ')}`);
+  return { ...get(a), inherited: inherited.filled };
+}
+
+// Master-data columns a renamed site should carry over. Deliberately NOT the
+// service centre: that has its own precedence stack (omnia < billing < manual,
+// each in its own column) and writing it here would bypass it — see
+// site-service-center.js.
+const INHERITABLE = [
+  ['business_unit', 'businessUnit'],
+  ['region', 'region'],
+  ['zone', 'zone'],
+  ['city', 'city'],
+  ['state', 'state'],
+  ['address', 'address'],
+  ['site_type', 'siteType'],
+];
+
+/**
+ * A rename leaves the site's details on the RETIRED code.
+ *
+ * Amazon issues the new code as a bare row; everything we know about the
+ * building — business unit, city, address — stays behind on the old one. The
+ * canonical site then reads as having no BU and drops out of every rollup that
+ * groups by it. DOB5 was exactly this: HBO2 carried `GSF` and `Everett`, DOB5
+ * carried neither, and it sat in the "sites with no business unit" report
+ * holding a $36,869 PO (2026-09-25).
+ *
+ * FILLS BLANKS ONLY. A value already on the canonical row is never replaced —
+ * the new code is the one Amazon is using now, so where the two disagree the
+ * canonical is the better answer, and a silent overwrite would be the harm
+ * this is trying to prevent.
+ */
+function inheritFromAlias(alias, canonical) {
+  const d = db.getDb();
+  const a = up(alias), c = up(canonical);
+  const filled = [];
+  try {
+    const from = d.prepare('SELECT * FROM amazon_locations WHERE site_code=?').get(a);
+    const to = d.prepare('SELECT * FROM amazon_locations WHERE site_code=?').get(c);
+    // Nothing to copy from, or no row to copy into. The second case is a real
+    // possibility — a brand-new code Amazon has issued but nobody has loaded —
+    // and it is left alone rather than invented here.
+    if (!from || !to) return { filled, reason: !from ? 'alias not in the master' : 'canonical not in the master' };
+    const blank = (v) => v === null || v === undefined || String(v).trim() === '';
+    for (const [col, label] of INHERITABLE) {
+      if (!blank(to[col]) || blank(from[col])) continue;
+      d.prepare(`UPDATE amazon_locations SET ${col}=? WHERE site_code=?`).run(from[col], c);
+      filled.push(`${label}=${from[col]}`);
+    }
+  } catch (e) {
+    return { filled, reason: e.message };
+  }
+  return { filled, reason: null };
 }
 
 /** Not the same site. Kept as a tombstone so it is not proposed again. */
@@ -200,4 +256,5 @@ function detect() {
   return out;
 }
 
-module.exports = { ensureTable, propose, confirm, reject, get, list, map, resolve, codesFor, detect, invalidate };
+module.exports = { ensureTable, propose, confirm, reject, get, list, map, resolve, codesFor, detect,
+  invalidate, inheritFromAlias, INHERITABLE };

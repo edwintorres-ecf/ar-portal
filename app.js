@@ -3925,7 +3925,13 @@ app.post('/api/sites/aliases/:alias', requireAuth, requirePerm('po.admin'), (req
     if (action === 'confirm') {
       if (!canonical) return res.status(400).json({ error: 'canonical site code is required' });
       out = sa.confirm(alias, canonical, user.email);
-      db.auditLog(user.email, 'site_alias_confirm', null, `${alias} is the same site as ${canonical}; ${canonical} is the real code`);
+      // Confirming also carries the retired code's master data across, so the
+      // audit line has to say what moved — that is a change to the location
+      // master, not just to the alias table.
+      const got = (out && out.inherited) || [];
+      db.auditLog(user.email, 'site_alias_confirm', null,
+        `${alias} is the same site as ${canonical}; ${canonical} is the real code`
+        + (got.length ? ` — ${canonical} inherited ${got.join(', ')} from ${alias}` : ''));
     } else if (action === 'reject') {
       out = sa.reject(alias, user.email);
       db.auditLog(user.email, 'site_alias_reject', null, `${alias} is NOT the same site`);
