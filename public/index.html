@@ -56,7 +56,11 @@
     justify-content: space-between;
     position: sticky;
     top: 0;
-    z-index: 100;
+    /* Above ds.css's sticky table headers (--z-sticky: 100), below the drawer
+       overlay (200) that is meant to dim the nav too. At 100 the two tied and
+       document order won, so scrolling any long PO Manager table painted its
+       header row on top of the navigation. */
+    z-index: 150;
     box-shadow: var(--shadow-md);
   }
   .nav-brand { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
@@ -6046,8 +6050,11 @@ function renderPoOutstanding() {
   }).filter(w => w.count);
 
   // ── The whole book in one bar ──
+  // `short` because "Paid by Amazon" does not fit its own segment at 8% of the
+  // bar; the full label is still in the hover title and in the legend below.
+  const HALF_SHORT = { 'not-uploaded': 'Not uploaded', 'uploaded': 'Uploaded', 'settled': 'Paid' };
   const headBar = _outBar(halves.map(h => ({
-    label: h.label, short: h.label, amount: h.amount, color: OUT_HALF_COLOR[h.key],
+    label: h.label, short: HALF_SHORT[h.key] || h.label, amount: h.amount, color: OUT_HALF_COLOR[h.key],
   })), total, 34);
 
   const feed = _poOutRaw.feedGeneratedAt
