@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-25T12:27:20.941Z",
+  "generatedAt": "2026-09-25T14:02:21.564Z",
   "source": "payee-po-detail-scraper",
   "openTotal": 1246,
-  "scraped": 1,
-  "ok": 1,
+  "scraped": 4,
+  "ok": 4,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -56432,7 +56432,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-24T17:12:27.076Z",
+      "scrapedAt": "2026-09-25T14:02:21.564Z",
       "stale": false
     },
     "2D-22721527": {
@@ -56444,7 +56444,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-24T17:12:27.076Z",
+      "scrapedAt": "2026-09-25T14:02:21.564Z",
       "stale": false
     },
     "2D-22735599": {
@@ -56456,7 +56456,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-24T17:12:27.076Z",
+      "scrapedAt": "2026-09-25T14:02:21.564Z",
       "stale": false
     },
     "2D-22735791": {
@@ -56468,7 +56468,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-24T17:12:27.076Z",
+      "scrapedAt": "2026-09-25T14:02:21.564Z",
       "stale": false
     },
     "2D-22740493": {
