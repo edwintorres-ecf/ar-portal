@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-25T01:12:27.230Z",
+  "generatedAt": "2026-09-25T03:01:44.132Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1245,
-  "scraped": 1240,
-  "ok": 1240,
+  "openTotal": 1246,
+  "scraped": 1,
+  "ok": 1,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -56577,6 +56577,18 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-25T01:12:27.230Z",
+      "stale": false
+    },
+    "2D-22767814": {
+      "available": 20689.89,
+      "poAmount": 20689.89,
+      "status": "Open",
+      "site": "CLE3",
+      "desc": "CLE3 Plant Removal",
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-25T03:01:44.132Z",
       "stale": false
     }
   }
