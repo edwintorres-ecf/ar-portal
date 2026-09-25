@@ -6260,7 +6260,7 @@ function _outInvoiceTable(s) {
     <thead><tr style="border-bottom:1px solid var(--gray-200)">
       ${sortTh([['Invoice', 'invoiceId'], ['Site', 'site'], ['PO', 'po'], ['Service centre', 'serviceCenter'],
                 ['Billed', 'invoiceDate'], ['Age', 'ageDays', 'right'], ['Amount', 'amount', 'right'],
-                ['Amazon status', 'payeeStatus']], key, 'renderPoOutstanding')}
+                ['Amazon status', 'payeeStatus'], ['Amazon due', 'amazonDueDate']], key, 'renderPoOutstanding')}
     </tr></thead>
     <tbody>
       ${shown.map(i => `<tr style="border-bottom:1px solid var(--gray-100)">
@@ -6272,6 +6272,7 @@ function _outInvoiceTable(s) {
         <td style="padding:6px 8px;text-align:right">${i.ageDays === null ? '—' : i.ageDays + 'd'}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:600">${fmt$(i.amount)}</td>
         <td style="padding:6px 8px;color:var(--gray-500)">${escHtml(i.payeeStatus || 'not in Payee')}</td>
+        <td style="padding:6px 8px;color:var(--gray-500)" title="Amazon's own Estimated Due Date, not our payment terms">${escHtml(i.amazonDueDate || '—')}</td>
       </tr>`).join('')}
     </tbody>
   </table>

@@ -573,6 +573,11 @@ function buildAmazonRows(allInvoices, opts = {}) {
       payeeAttempts: pay ? (pay.attemptCount || 1) : 0,
       payeeDuplicateLive: pay ? !!pay.duplicateLive : false,
       payeeEntryDate: pay ? (pay.entryDate || '') : '',
+      // Amazon's OWN Estimated Due Date. `dueDate` above is Sage's, which is our
+      // payment terms and says nothing about when Amazon intends to pay — the
+      // two are routinely months apart on a scheduled invoice. Anything asking
+      // "has Amazon missed its date" must read THIS one.
+      payeeDueDate: pay ? (pay.dueDate || '') : '',
       // The clock that matters for Amazon. Sage's due date describes OUR terms;
       // Amazon's own processing runs from the day the invoice landed in Payee
       // Central, so outreach has to be driven by this, not by days-overdue

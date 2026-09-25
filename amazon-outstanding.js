@@ -63,9 +63,9 @@ const STAGES = [
   { key: 'in-progress',  label: 'In progress',               half: 'uploaded', whose: 'amazon',
     reason: 'Moving normally through Amazon' },
   { key: 'scheduled',    label: 'Scheduled for payment',     half: 'uploaded', whose: 'amazon',
-    reason: 'Amazon has scheduled it and the date has not passed' },
+    reason: 'Amazon has scheduled it and its own estimated date has not passed' },
   { key: 'scheduled-late', label: 'Scheduled — date passed',  half: 'uploaded', whose: 'amazon',
-    reason: 'Amazon scheduled it, then missed its own estimated date' },
+    reason: 'Amazon scheduled it, then missed its OWN estimated date — not our payment terms' },
   // ── settled ──
   { key: 'apply-cash',   label: 'Paid — needs applying',     half: 'settled', whose: 'accounting',
     reason: 'Amazon paid. The balance is open in Intacct only, and chasing it would be wrong' },
@@ -109,7 +109,14 @@ function stageOf(row, nu) {
   if (st === 'Insufficient PO Funds Hold' || st === 'Insufficient Amazon PO Manager Hold') return 'funds-hold';
   if (st === 'Pending Goods Receipt Hold') return 'goods-receipt';
   if (st === 'Scheduled for payment') {
-    const due = Date.parse(row.dueDate);
+    // AMAZON's Estimated Due Date, never Sage's. Sage's `dueDate` is our payment
+    // terms; Amazon runs its own clock from the day the invoice landed in Payee
+    // Central and the two are routinely months apart. Reading the Sage date here
+    // called all 264 scheduled-and-past-term invoices late ($5.37M) when not one
+    // had passed Amazon's date — ECI-021128 was "5 months overdue" against an
+    // Amazon date of Oct 31. Same trap the entry-date note in site-ledger warns
+    // about (Edwin 2026-09-10).
+    const due = Date.parse(row.payeeDueDate);
     return (!isNaN(due) && due < Date.now()) ? 'scheduled-late' : 'scheduled';
   }
   return 'in-progress';
@@ -178,7 +185,8 @@ function classify(invoices) {
       po: r.po || '',
       poNumber: r.po || '',
       invoiceDate: r.invoiceDate || '',
-      dueDate: r.dueDate || '',
+      dueDate: r.dueDate || '',                 // Sage's, i.e. OUR terms
+      amazonDueDate: r.payeeDueDate || '',      // Amazon's Estimated Due Date
       ageDays: ageDays(r),
       daysInPayee: r.daysInPayee ?? null,
       payeeStatus: r.payeeStatus || '',
