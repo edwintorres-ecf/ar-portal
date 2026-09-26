@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-26T02:33:11.729Z",
+  "generatedAt": "2026-09-26T11:59:58.640Z",
   "source": "payee-po-detail-scraper",
-  "openTotal": 1249,
-  "scraped": 1,
-  "ok": 1,
+  "openTotal": 1251,
+  "scraped": 4,
+  "ok": 4,
   "failed": 0,
   "failRatio": 0,
   "trustworthy": true,
@@ -56420,7 +56420,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T07:15:35.492Z",
+      "scrapedAt": "2026-09-26T04:02:58.621Z",
       "stale": false
     },
     "2D-22715148": {
@@ -56432,7 +56432,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T14:02:21.564Z",
+      "scrapedAt": "2026-09-26T11:59:58.640Z",
       "stale": false
     },
     "2D-22721527": {
@@ -56444,7 +56444,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T14:02:21.564Z",
+      "scrapedAt": "2026-09-26T11:59:58.640Z",
       "stale": false
     },
     "2D-22735599": {
@@ -56456,7 +56456,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T14:02:21.564Z",
+      "scrapedAt": "2026-09-26T11:59:58.640Z",
       "stale": false
     },
     "2D-22735791": {
@@ -56468,7 +56468,7 @@
       "masked": false,
       "matched": [],
       "matchedCount": 0,
-      "scrapedAt": "2026-09-25T14:02:21.564Z",
+      "scrapedAt": "2026-09-26T11:59:58.640Z",
       "stale": false
     },
     "2D-22740493": {
@@ -56625,6 +56625,30 @@
       "matched": [],
       "matchedCount": 0,
       "scrapedAt": "2026-09-25T21:08:21.698Z",
+      "stale": false
+    },
+    "2D-22784618": {
+      "available": 36682,
+      "poAmount": 36682,
+      "status": "Open",
+      "site": "UNY5",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-26T04:02:58.621Z",
+      "stale": false
+    },
+    "2D-22784617": {
+      "available": 65200,
+      "poAmount": 65200,
+      "status": "Open",
+      "site": "UNY2",
+      "desc": null,
+      "masked": false,
+      "matched": [],
+      "matchedCount": 0,
+      "scrapedAt": "2026-09-26T04:02:58.621Z",
       "stale": false
     }
   }
