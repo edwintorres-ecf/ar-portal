@@ -454,6 +454,24 @@ function initSchema() {
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold INTEGER DEFAULT 0"); } catch(e) {}
   try { db.exec("ALTER TABLE customer_accounts ADD COLUMN dunning_hold_reason TEXT DEFAULT NULL"); } catch(e) {}
 
+  // ─── How does an invoice actually REACH this customer? (2026-09-25, Edwin)
+  // "while amazon is the largest volume we do have other customers and portals
+  // we need to submit invoices to." Amazon has a whole pipeline — Needs Upload,
+  // EDI 810, Payee Central reconciliation — and the other $2.6M across 151
+  // customers had no route recorded anywhere. An invoice could sit posted in
+  // Sage, never submitted, and nothing would surface it.
+  //
+  // channel: portal | email | edi | mail | none | '' (not yet recorded)
+  // portal_name: the system, e.g. Corrigo (JLL/CyrusOne), Payee Central.
+  // portal_url + portal_ref: where to go and our identifier there.
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_channel TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_portal TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_url TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_ref TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_notes TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_set_by TEXT DEFAULT NULL"); } catch(e) {}
+  try { db.exec("ALTER TABLE customer_accounts ADD COLUMN submission_set_at TEXT DEFAULT NULL"); } catch(e) {}
+
   // ─── Requested reports (2026-09-10, Edwin) ────────────────────────────────
   // An Omnia invoice PDF takes 17-26 seconds to fetch, so asking for a handful
   // of copies meant sitting on a spinner for minutes and being unable to do
@@ -2477,9 +2495,14 @@ function getCustomerAccount(customerId) {
 function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
   const existing = getCustomerAccount(customerId);
   if (!existing) {
+    const hasSub = ['submission_channel', 'submission_portal', 'submission_url', 'submission_ref', 'submission_notes']
+      .some(f => fields[f] !== undefined);
     db.prepare(`
-      INSERT INTO customer_accounts (customer_id, customer_name, stop_service, owner_name, owner_email, notes, house_account, house_account_label, updated_by)
-      VALUES (?,?,?,?,?,?,?,?,?)
+      INSERT INTO customer_accounts (customer_id, customer_name, stop_service, owner_name, owner_email, notes,
+        house_account, house_account_label, updated_by,
+        submission_channel, submission_portal, submission_url, submission_ref, submission_notes,
+        submission_set_by, submission_set_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${hasSub ? "datetime('now')" : 'NULL'})
     `).run(customerId, customerName,
       fields.stop_service ?? 0,
       fields.owner_name ?? null,
@@ -2487,7 +2510,13 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
       fields.notes ?? null,
       fields.house_account ? 1 : 0,
       fields.house_account_label ?? null,
-      updatedBy ?? null);
+      updatedBy ?? null,
+      fields.submission_channel ?? null,
+      fields.submission_portal ?? null,
+      fields.submission_url ?? null,
+      fields.submission_ref ?? null,
+      fields.submission_notes ?? null,
+      hasSub ? (updatedBy ?? null) : null);
   } else {
     const sets = [];
     const vals = [];
@@ -2503,6 +2532,16 @@ function upsertCustomerAccount(customerId, customerName, fields, updatedBy) {
     if (fields.dunning_hold_reason !== undefined) { sets.push('dunning_hold_reason=?'); vals.push(fields.dunning_hold_reason || null); }
     if (fields.house_account_label !== undefined) { sets.push('house_account_label=?'); vals.push(fields.house_account_label || null); }
     if (fields.notes !== undefined)        { sets.push('notes=?');        vals.push(fields.notes); }
+    // Submission route. Stamped with who said so, because "how do we bill this
+    // customer" is knowledge held by people, not derivable from the data.
+    let touchedSubmission = false;
+    for (const f of ['submission_channel', 'submission_portal', 'submission_url', 'submission_ref', 'submission_notes']) {
+      if (fields[f] !== undefined) { sets.push(`${f}=?`); vals.push(fields[f] || null); touchedSubmission = true; }
+    }
+    if (touchedSubmission) {
+      sets.push("submission_set_at=datetime('now')");
+      sets.push('submission_set_by=?'); vals.push(updatedBy ?? null);
+    }
     if (fields.customer_name || customerName) { sets.push('customer_name=?'); vals.push(fields.customer_name || customerName); }
     sets.push("updated_at=datetime('now')");
     sets.push('updated_by=?'); vals.push(updatedBy ?? null);

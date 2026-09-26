@@ -1162,28 +1162,6 @@ app.get('/api/amazon/statement', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Per-site Slack visibility, published by slack-intel as a JSON snapshot so the
-// two apps stay decoupled (the portal never reaches into that database).
-// A site with no channel is NOT a fault — many are only now coming online.
-const SLACK_STATUS_PATH = '/home/ecf-admin/slack-intel/site-slack-status.json';
-let _slackStatus = { sites: {}, generated_at: null }, _slackStatusMtime = 0;
-function slackSiteStatus() {
-  try {
-    const st = fs.statSync(SLACK_STATUS_PATH);
-    if (st.mtimeMs !== _slackStatusMtime) {
-      _slackStatus = JSON.parse(fs.readFileSync(SLACK_STATUS_PATH, 'utf8'));
-      _slackStatusMtime = st.mtimeMs;
-    }
-  } catch (e) { /* snapshot absent — every site simply reads as not connected */ }
-  return _slackStatus.sites || {};
-}
-
-// Slack visibility for every site, for any screen that wants to show it.
-app.get('/api/sites/slack-status', requireAuth, (req, res) => {
-  try { res.json({ sites: slackSiteStatus() }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
   try {
     const contacts = db.getSiteContactMap();
@@ -1220,11 +1198,7 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
         poNumber: pc.po_number, name: pc.contact_name, email: pc.contact_email, docDate: pc.doc_date,
       });
     }
-    const slk = slackSiteStatus();
-    // Sites that exist only in Slack (a channel opened before the paperwork)
-    // still belong in this list, otherwise a new site stays invisible here.
-    const sites = new Set([...Object.keys(contacts), ...Object.keys(bySite),
-                           ...Object.keys(collectors), ...Object.keys(slk)]);
+    const sites = new Set([...Object.keys(contacts), ...Object.keys(bySite), ...Object.keys(collectors)]);
     res.json({
       sites: [...sites].sort().map(code => {
         const c = contacts[code] || {};
@@ -1245,7 +1219,6 @@ app.get('/api/amazon/site-contacts', requireAuth, (req, res) => {
           note: c.note || null,
           poCount: pos.length,
           pos: pos.slice(0, 8),
-          slack: slk[code] || null,
         };
       }),
     });
@@ -3928,6 +3901,48 @@ app.post('/api/site-pos/service-center', requireAuth, requirePerm('po.view'), (r
     // The whole stack goes back, so the UI can say what a release would expose
     // instead of implying the site would go blank.
     res.json({ ...now, was: (was && was.serviceCenter) || '' });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─── API: Submission routes — how an invoice reaches each customer ─────────
+// Amazon has Needs Upload and EDI; everyone else had no route recorded at all.
+// This lists customers with open AR against the channel someone has written
+// down, and flags the ones with none.
+app.get('/api/customers/submission-routes', requireAuth, async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    res.json(require('./submission-routes').build(invoices,
+      { includeAmazon: req.query.amazon === '1' }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Recording the route is the point of the screen: it is knowledge held by
+// people, not derivable from the data, so it is written down once and stamped
+// with who said so.
+app.post('/api/customers/:customerId/submission', requireAuth, requirePerm('customers.manage'), (req, res) => {
+  try {
+    const { CHANNELS } = require('./submission-routes');
+    const cid = String(req.params.customerId || '').trim();
+    if (!cid) return res.status(400).json({ error: 'customer id is required' });
+    const b = req.body || {};
+    const channel = String(b.channel || '').trim().toLowerCase();
+    if (channel && !CHANNELS[channel]) {
+      return res.status(400).json({ error: `channel must be one of ${Object.keys(CHANNELS).join(', ')} (or blank to clear)` });
+    }
+    const fields = {
+      submission_channel: channel || null,
+      submission_portal: String(b.portal || '').trim() || null,
+      submission_url: String(b.url || '').trim() || null,
+      submission_ref: String(b.ref || '').trim() || null,
+      submission_notes: String(b.notes || '').trim() || null,
+    };
+    const out = db.upsertCustomerAccount(cid, String(b.customerName || '').trim() || null,
+      fields, req.session.user.email);
+    db.auditLog(req.session.user.email, 'customer_submission_set', null,
+      `${cid}: ${channel || '(cleared)'}${fields.submission_portal ? ' via ' + fields.submission_portal : ''}`);
+    res.json({ ok: true, account: out });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
