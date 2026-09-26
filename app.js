@@ -3904,6 +3904,39 @@ app.post('/api/site-pos/service-center', requireAuth, requirePerm('po.view'), (r
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ─── API: Corrigo work order inbox ──────────────────────────────────────────
+// The loop this replaces (Edwin 2026-09-26): go into JLL's portal, work out
+// where each order belongs, read the details, complete it, then make sure the
+// reference reaches the invoice. That last carry is where it gets dropped —
+// 28 of CyrusOne's 109 open invoices arrive with no work order on them.
+app.get('/api/corrigo/inbox', requireAuth, requirePerm('finance.view'), async (req, res) => {
+  try {
+    let invoices = sage.getCachedInvoices();
+    if (invoices.length === 0) invoices = await sage.getInvoices();
+    invoices = applyUserFilter(invoices, req.session.user);
+    const store = require('./corrigo-store');
+    if (req.query.seed === '1') store.seedFromInvoices(invoices);
+    const out = store.inbox(invoices);
+    out.connection = require('./corrigo').status();
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Does the integration have credentials, and do they work? Deliberately its
+// own route so the first question — "is the CorrigoPro Direct tile even
+// switched on" — can be answered without running a sync.
+app.get('/api/corrigo/status', requireAuth, requirePerm('finance.view'), async (req, res) => {
+  try {
+    const corrigo = require('./corrigo');
+    const out = corrigo.status();
+    if (out.configured && req.query.test === '1') {
+      try { await corrigo.token(true); out.authOk = true; }
+      catch (e) { out.authOk = false; out.authError = e.message; }
+    }
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── API: Submission routes — how an invoice reaches each customer ─────────
 // Amazon has Needs Upload and EDI; everyone else had no route recorded at all.
 // This lists customers with open AR against the channel someone has written
