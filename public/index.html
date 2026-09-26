@@ -582,6 +582,7 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
         <div class="nav-drop-item" data-view="sitepos" onclick="navGo('sitepos')">📋 Purchase Orders</div>
         <div class="nav-drop-item" data-view="search" onclick="navGo('search')">🔎 Search</div>
         <div class="nav-drop-item" data-view="service-centers" onclick="navGo('service-centers')">🏢 Service Centers</div>
+        <div class="nav-drop-item" data-view="submission-routes" onclick="navGo('submission-routes')">📤 Submission Routes</div>
       </div>
     </div>
 
@@ -1057,6 +1058,21 @@ input:focus, select:focus, textarea:focus { border-color: #1e3a5f !important; bo
 
 
 <!-- ─── AMAZON VIEW ─── -->
+<!-- ─── SUBMISSION ROUTES ─── -->
+<div id="view-submission-routes" class="view">
+  <div style="padding:20px 24px;max-width:1300px;margin:0 auto;">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px;flex-wrap:wrap">
+      <h2 style="font-size:18px;font-weight:700;color:var(--navy);margin:0;">📤 Submission Routes</h2>
+      <span id="sr-meta" style="font-size:12px;color:var(--gray-500)"></span>
+    </div>
+    <div style="font-size:12.5px;color:var(--gray-600);margin-bottom:14px;max-width:900px">
+      How an invoice actually reaches each customer. Amazon has its own pipeline
+      (Needs Upload → EDI → Payee Central) and is excluded here; this is everyone else.
+    </div>
+    <div id="sr-content"><div style="padding:30px;text-align:center;color:var(--gray-500)">Loading…</div></div>
+  </div>
+</div>
+
 <div id="view-amazon" class="view">
   <div style="padding:20px 24px;max-width:1200px;margin:0 auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -2632,6 +2648,7 @@ function switchView(name, el) {
   if (name === 'watchlist') { loadWatchlist(); }
   if (name === 'my-work') { loadMyWork(); }
   if (name === 'amazon') { loadAmazonView(); }
+  if (name === 'submission-routes') { loadSubmissionRoutes(); }
   if (name === 'amazon-drilldown' && typeof amazonLoad === 'function') { amazonLoad(); }
   if (name === 'amazon-accruals' && typeof accrualsLoad === 'function') { accrualsLoad(); }
   if (name === 'activity') { loadActivityLog(); }
@@ -8380,6 +8397,166 @@ function renderActivityLog() {
 }
 
 // ─── Amazon View ──────────────────────────────────────────────────────────────
+// ─── Submission routes ──────────────────────────────────────────────────────
+// Where each non-Amazon invoice has to go, and whether anything records that
+// it went. The honest framing matters: almost all of this billing happens
+// outside the portal today, so "no send record" means THE PORTAL HAS NO
+// RECORD, not that the invoice was never sent. Calling $2.6M unsubmitted on
+// that basis would be inventing a finding.
+let _srData = null, _srOpen = new Set(), _srFilter = '';
+
+async function loadSubmissionRoutes() {
+  const el = document.getElementById('sr-content');
+  if (!el) return;
+  try {
+    _srData = await apiFetch('/api/customers/submission-routes');
+    renderSubmissionRoutes();
+  } catch (e) {
+    el.innerHTML = `<div style="padding:20px;color:var(--red)">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function srSetFilter(v) { _srFilter = _srFilter === v ? '' : v; renderSubmissionRoutes(); }
+function srToggle(cid) {
+  if (_srOpen.has(cid)) _srOpen.delete(cid); else _srOpen.add(cid);
+  renderSubmissionRoutes();
+}
+
+const SR_CHANNEL_STYLE = {
+  portal: { bg: '#ede9fe', fg: '#5b21b6', icon: '🌐' },
+  email:  { bg: '#e0f2fe', fg: '#075985', icon: '✉️' },
+  edi:    { bg: '#dcfce7', fg: '#166534', icon: '🔌' },
+  mail:   { bg: '#fef3c7', fg: '#92400e', icon: '📮' },
+  none:   { bg: '#f1f5f9', fg: '#334155', icon: '—' },
+};
+
+function srChannelChip(r) {
+  if (!r.channel) return `<span style="color:#b45309;font-size:11px;font-weight:600">no route recorded</span>`;
+  const s = SR_CHANNEL_STYLE[r.channel] || SR_CHANNEL_STYLE.none;
+  return `<span style="background:${s.bg};color:${s.fg};border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap">${s.icon} ${escHtml(r.channelLabel)}</span>`
+    + (r.portal ? ` <b style="font-size:11.5px">${escHtml(r.portal)}</b>` : '');
+}
+
+function renderSubmissionRoutes() {
+  const el = document.getElementById('sr-content');
+  const d = _srData;
+  if (!el || !d) return;
+  const meta = document.getElementById('sr-meta');
+  if (meta) meta.textContent = `${d.totals.customers} customers · ${d.totals.count} open invoices · ${fmt$(d.totals.amount)}`;
+
+  let rows = d.rows;
+  if (_srFilter === 'unrouted') rows = rows.filter(r => !r.routeKnown);
+  else if (_srFilter === 'routed') rows = rows.filter(r => r.routeKnown);
+  else if (_srFilter) rows = rows.filter(r => r.channel === _srFilter);
+
+  const canEdit = currentUser && ['admin', 'manager', 'ar_specialist'].includes(currentUser.role);
+
+  const tile = (label, value, sub, colour) => `<div style="background:var(--white);border-radius:9px;box-shadow:var(--shadow);padding:12px 16px;min-width:180px;flex:1;border-left:4px solid ${colour}">
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:${colour}">${label}</div>
+    <div style="font-size:20px;font-weight:700;color:var(--navy);margin-top:2px">${value}</div>
+    <div style="font-size:11px;color:var(--gray-500)">${sub}</div></div>`;
+
+  const head = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      ${tile('Open AR', fmt$(d.totals.amount), `${d.totals.count} invoices · ${d.totals.customers} customers`, 'var(--navy)')}
+      ${tile('No route recorded', fmt$(d.unrouted.amount), `${d.unrouted.customers} customers · nobody has written down where it goes`, '#b45309')}
+      ${tile('Portal has a send record', d.withRecord.count ? fmt$(d.withRecord.amount) : '—', `${d.withRecord.count} invoice${d.withRecord.count !== 1 ? 's' : ''} emailed from here`, '#0369a1')}
+    </div>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;margin-bottom:12px;font-size:12px;color:#92400e">
+      <b>“No send record” means the portal has none</b> — almost all of this billing happens outside the portal,
+      so absence here is not evidence an invoice was never sent. Recording the route is what makes the gap real.
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <button class="cust-pill${!_srFilter ? ' active' : ''}" onclick="srSetFilter('')">All ${d.rows.length}</button>
+      <button class="cust-pill${_srFilter === 'unrouted' ? ' active' : ''}" onclick="srSetFilter('unrouted')">No route ${d.unrouted.customers}</button>
+      ${(d.byChannel || []).map(c => `<button class="cust-pill${_srFilter === c.key ? ' active' : ''}" onclick="srSetFilter('${c.key}')" title="${escHtml(c.note)}">${(SR_CHANNEL_STYLE[c.key] || {}).icon || ''} ${escHtml(c.label)} ${c.customers}</button>`).join('')}
+    </div>`;
+
+  const body = rows.length ? `
+    <div style="background:var(--white);border-radius:10px;box-shadow:var(--shadow);overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="background:var(--gray-50)">
+          ${sortTh([['Customer', 'customerName'], ['Invoices', 'count', 'right'], ['Open AR', 'amount', 'right'],
+                    ['Past due', 'pastDueAmount', 'right'], ['Oldest', 'oldestDays', 'right'],
+                    ['Route', 'channel'], ['', null]], 'subroutes', 'renderSubmissionRoutes')}
+        </tr></thead>
+        <tbody>
+        ${tblSortRows(rows, 'subroutes', 'amount', -1).map(r => {
+          const open = _srOpen.has(r.customerId);
+          return `<tr style="border-top:1px solid var(--gray-100)">
+            <td style="padding:7px 10px">
+              <b style="color:var(--navy);cursor:pointer" onclick="srToggle('${escHtml(r.customerId)}')">${escHtml(r.customerName || r.customerId)}</b>
+              <span style="color:var(--gray-500);margin-left:6px">${open ? '▴' : '▾'}</span>
+              <div style="font-size:10.5px;color:var(--gray-500)">${escHtml(r.customerId)}${r.houseAccount ? ' · house account' : ''}</div>
+            </td>
+            <td style="padding:7px 10px;text-align:right">${r.count}</td>
+            <td style="padding:7px 10px;text-align:right;font-weight:600">${fmt$(r.amount)}</td>
+            <td style="padding:7px 10px;text-align:right;color:${r.pastDueAmount ? '#b91c1c' : 'var(--gray-400)'}">${r.pastDueAmount ? fmt$(r.pastDueAmount) : '—'}</td>
+            <td style="padding:7px 10px;text-align:right;color:${r.oldestDays > 90 ? '#b91c1c' : 'inherit'}">${r.oldestDays ? r.oldestDays + 'd' : '—'}</td>
+            <td style="padding:7px 10px">${srChannelChip(r)}${r.notes ? `<div style="font-size:10.5px;color:var(--gray-500)">${escHtml(r.notes)}</div>` : ''}</td>
+            <td style="padding:7px 10px;text-align:right">${canEdit
+              ? `<button class="btn-sm" style="background:#e0f2fe;color:#075985" onclick="srEdit('${escHtml(r.customerId)}')">${r.routeKnown ? 'Edit' : 'Set route'}</button>` : ''}</td>
+          </tr>
+          ${open ? `<tr><td colspan="7" style="padding:0 10px 12px">${srInvoiceTable(r)}</td></tr>` : ''}`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="padding:30px;text-align:center;color:var(--gray-500)">Nothing in this filter</div>`;
+
+  el.innerHTML = head + body;
+}
+
+function srInvoiceTable(r) {
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--gray-50);border-radius:8px">
+    <thead><tr style="color:var(--gray-500);font-size:10.5px;text-transform:uppercase">
+      <th style="text-align:left;padding:4px 8px">Invoice</th><th style="text-align:left;padding:4px 8px">Service centre</th>
+      <th style="text-align:left;padding:4px 8px">Billed</th><th style="text-align:left;padding:4px 8px">Due</th>
+      <th style="text-align:right;padding:4px 8px">Days</th><th style="text-align:right;padding:4px 8px">Amount</th>
+      <th style="text-align:left;padding:4px 8px">Sent from the portal</th></tr></thead>
+    <tbody>${r.invoices.slice(0, 200).map(i => `<tr style="border-top:1px solid var(--gray-100)">
+      <td style="padding:4px 8px;font-family:monospace">${escHtml(i.invoiceId || i.recordNo)}</td>
+      <td style="padding:4px 8px;color:var(--gray-600)">${escHtml(i.locationName || '—')}</td>
+      <td style="padding:4px 8px">${escHtml(String(i.invoiceDate || '').slice(0, 10))}</td>
+      <td style="padding:4px 8px">${escHtml(String(i.dueDate || '').slice(0, 10))}</td>
+      <td style="padding:4px 8px;text-align:right;color:${i.daysOverdue > 90 ? '#b91c1c' : 'inherit'}">${i.daysOverdue > 0 ? i.daysOverdue : '—'}</td>
+      <td style="padding:4px 8px;text-align:right;font-weight:600">${fmt$(i.amount)}</td>
+      <td style="padding:4px 8px;color:${i.sentAt ? '#166534' : 'var(--gray-400)'}">${i.sentAt ? escHtml(String(i.sentAt).slice(0, 10)) : 'no record'}</td>
+    </tr>`).join('')}</tbody></table>
+    ${r.invoices.length > 200 ? `<div style="padding:5px 8px;font-size:11px;color:var(--gray-500)">Showing the largest 200 of ${r.invoices.length}.</div>` : ''}`;
+}
+
+async function srEdit(customerId) {
+  const r = (_srData.rows || []).find(x => x.customerId === customerId);
+  if (!r) return;
+  const keys = Object.keys(_srData.channels || {});
+  const channel = prompt(
+    `How do invoices reach ${r.customerName || customerId}?\n\n`
+    + keys.map(k => `  ${k} — ${_srData.channels[k].note}`).join('\n')
+    + `\n\nEnter one of: ${keys.join(', ')}  (blank to clear)`,
+    r.channel || '');
+  if (channel === null) return;
+  const c = String(channel).trim().toLowerCase();
+  if (c && !keys.includes(c)) { alert(`"${channel}" is not one of ${keys.join(', ')}`); return; }
+  let portal = r.portal, url = r.url, ref = r.ref, notes = r.notes;
+  if (c) {
+    portal = prompt('Which system? (e.g. Corrigo, Ariba, Coupa — blank if none)', portal || '');
+    if (portal === null) return;
+    url = prompt('Login URL (optional)', url || '');
+    if (url === null) return;
+    ref = prompt('Our identifier there — vendor/supplier number (optional)', ref || '');
+    if (ref === null) return;
+    notes = prompt('Anything else worth knowing (optional)', notes || '');
+    if (notes === null) return;
+  }
+  try {
+    await apiFetch(`/api/customers/${encodeURIComponent(customerId)}/submission`, {
+      method: 'POST',
+      body: JSON.stringify({ channel: c, portal, url, ref, notes, customerName: r.customerName }),
+    });
+    await loadSubmissionRoutes();
+  } catch (e) { alert('Could not save: ' + e.message); }
+}
+
 async function loadAmazonView() {
   const sumEl = document.getElementById('amazon-summary');
   const tblEl = document.getElementById('amazon-table-wrap');
