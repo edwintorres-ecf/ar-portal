@@ -24,9 +24,17 @@
 
 const db = require('./db');
 
-// Amazon has its own pipeline; including it here would bury the 151 customers
-// this exists for under one that already has an answer.
-const AMAZON = new Set(['C-00403', 'C-00566']);
+// Amazon has its own pipeline; including it here would bury the customers this
+// exists for under one that already has an answer.
+//
+// ONLY C-00403. `C-00566 CW Amazon Services` is Cushman & Wakefield managing
+// Amazon property — it is billed to CW, NOT through Payee Central, and its
+// invoices are uploaded to CW's portal by hand. Excluding it (copied from
+// dunning.js, where pairing them is right for a different reason) hid a
+// customer that genuinely needs a route. Checked 2026-09-26: 0 of its 19 open
+// invoices are in the Payee feed and 0 are in the Amazon Needs Upload queue,
+// against 1,347 of 1,552 for C-00403.
+const AMAZON = new Set(['C-00403']);
 
 const CHANNELS = {
   portal: { label: 'Customer portal', note: 'Submitted through the customer’s own AP system' },
