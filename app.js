@@ -5762,7 +5762,16 @@ app.get('/api/search', requireAuth, async (req, res) => {
 // transmit until the uploader's account switcher is mapped). Live sends gated
 // by VELOCITY_TRANSMIT_ARMED. Tracks the last invoice number transmitted.
 const velocityBridge = require('./velocity-bridge');
-const AMAZON_CUSTS = new Set(['C-00403', 'C-00566']);
+// ONLY C-00403. `C-00566 CW Amazon Services` is Cushman & Wakefield managing
+// Amazon property — billed to CW, uploaded to VendorCafé by hand, and it never
+// touches Payee Central (Edwin, repeatedly; verified 2026-09-26: 0 of its 19
+// open invoices are in the Payee feed).
+//
+// It mattered here: LOC2 is for Amazon invoices NOT in the Payee feed, and a
+// CW invoice is never in that feed, so every one of them would have been
+// financed under the Amazon line. Nothing has been transmitted yet, so this is
+// a prospective fix rather than a correction.
+const AMAZON_CUSTS = new Set(['C-00403']);
 
 let _vNameMap = null;
 let _vFeed = { mtime: 0, map: {} };

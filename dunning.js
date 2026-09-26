@@ -30,6 +30,13 @@ const db = require('./db');
 const sage = require('./sage');
 const comms = require('./comms-service');
 
+// A DUNNING SUPPRESSION list, not a statement that both are Amazon.
+// C-00403 is Amazon. `C-00566 CW Amazon Services` is Cushman & Wakefield
+// managing Amazon property — a separate process, billed to CW and uploaded to
+// VendorCafé, which never touches Payee Central. It is held out of dunning
+// deliberately; do NOT read this Set as "these are Amazon pipeline customers"
+// and copy it elsewhere. Doing exactly that hid CW Amazon from the submission
+// routes view and pointed it at the wrong Velocity credit line (2026-09-26).
 const AMAZON_CUSTOMERS = new Set(['C-00403', 'C-00566']);
 const MIN_GAP_DAYS = parseInt(process.env.DUNNING_MIN_GAP_DAYS || '3', 10);
 
